@@ -6,14 +6,17 @@ import {
   failure,
   ApiError,
 } from "@/lib/server";
-import { getChatGPTUser } from "@/app/chatgpt-auth";
 import { hashPin, digest, sessionCookie } from "@/lib/pin";
 export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const sql = db();
     const count = await sql`SELECT count(*)::int AS n FROM horacerta.users`;
-    if (!count[0].n) return Response.json({ setup: true });
+    if (!count[0].n)
+      return Response.json(
+        { setup: true },
+        { headers: { "Cache-Control": "no-store" } },
+      );
     try {
       return Response.json(
         { me: await member() },
@@ -21,7 +24,10 @@ export async function GET() {
       );
     } catch (e) {
       if (e instanceof ApiError && [401, 403].includes(e.status))
-        return Response.json({ login: true });
+        return Response.json(
+          { login: true },
+          { headers: { "Cache-Control": "no-store" } },
+        );
       throw e;
     }
   } catch (e) {
@@ -30,12 +36,6 @@ export async function GET() {
 }
 export async function POST(req: Request) {
   try {
-    const gate = await getChatGPTUser();
-    if (process.env.NODE_ENV === "production" && !gate)
-      throw new ApiError(
-        403,
-        "Abra o site privado como proprietário para configurar o primeiro acesso.",
-      );
     const body = await payload(req),
       p = personSchema.parse({
         ...body,

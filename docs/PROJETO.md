@@ -68,7 +68,7 @@ PINs usam PBKDF2 com salt individual. Tokens aleatórios são armazenados por ha
 
 Todas as rotas verificam a conta ativa e suas permissões. O servidor determina o usuário dos registros do relógio e restringe novos registros manuais à pessoa conectada. Somente o coordenador recebe os dados da equipe; o colaborador recebe apenas seus próprios dados. Alterações conferem a origem da requisição.
 
-O primeiro coordenador é protegido por bloqueio transacional e índice único. A criação inicial exigiu o acesso autenticado do proprietário. O site agora é público, mas os dados permanecem protegidos pelo login interno: sem usuário e PIN não há acesso aos pontos. Recuperação de PIN do coordenador não tem fluxo público nesta versão e exige manutenção administrativa autorizada.
+Enquanto a equipe está vazia, a tela pública permite criar o primeiro coordenador. A criação é protegida por bloqueio transacional, verificação de equipe vazia e índice único; depois da primeira conta, o cadastro inicial é encerrado automaticamente. Os dados permanecem protegidos pelo login interno: sem usuário e PIN não há acesso aos pontos. Recuperação de PIN do coordenador não tem fluxo público nesta versão e exige manutenção administrativa autorizada.
 
 ## Verificação e evolução
 

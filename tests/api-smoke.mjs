@@ -4,14 +4,16 @@ import { neon } from "@neondatabase/serverless";
 const sql = neon(process.env.DATABASE_URL),
   base = "http://localhost:5173",
   tag = crypto.randomUUID(),
-  admin = crypto.randomUUID(),
+  adminSeed = crypto.randomUUID(),
   worker = crypto.randomUUID(),
   other = crypto.randomUUID(),
   client = crypto.randomUUID();
+let admin = adminSeed;
 const email = (id) => "qa-" + id + "@example.invalid";
 let passed = 0;
 const cookies = new Map();
 const username = (id) => "qa_" + id.slice(0, 8);
+const adminUsername = username(adminSeed);
 async function call(path, body, user = admin, method = "POST") {
   const headers =
     user && cookies.has(user) ? { cookie: cookies.get(user) } : {};
@@ -38,12 +40,45 @@ if (count[0].n !== 0)
     "Teste isolado requer equipe vazia; nenhum dado foi alterado.",
   );
 try {
+  const firstAccess = await call(
+    "/api/session",
+    {
+      name: "QA Coordenador",
+      username: adminUsername,
+      pin: "582941",
+      hourly_rate: 30,
+    },
+    null,
+  );
+  check(firstAccess.status, 200, "primeiro coordenador cria o próprio acesso");
+  assert.ok(firstAccess.cookie?.startsWith("hc_session="));
+  const createdAdmin =
+    await sql`SELECT id FROM horacerta.users WHERE username=${adminUsername}`;
+  assert.equal(createdAdmin.length, 1);
+  admin = createdAdmin[0].id;
+  cookies.set(admin, firstAccess.cookie);
+  check(
+    (
+      await call(
+        "/api/session",
+        {
+          name: "QA Segundo Coordenador",
+          username: "qa_second_" + tag.slice(0, 8),
+          pin: "314159",
+          hourly_rate: 30,
+        },
+        null,
+      )
+    ).status,
+    409,
+    "segundo primeiro acesso é bloqueado",
+  );
   await sql.transaction([
-    sql`INSERT INTO horacerta.users(id,subject,name,email,role,hourly_rate) VALUES(${admin},${"qa-" + admin},'QA Coordenador',${email(admin)},'coordinator',30),(${worker},${"qa-" + worker},'QA Colaborador',${email(worker)},'employee',30),(${other},${"qa-" + other},'QA Outro',${email(other)},'employee',30)`,
+    sql`INSERT INTO horacerta.users(id,subject,name,email,role,hourly_rate) VALUES(${worker},${"qa-" + worker},'QA Colaborador',${email(worker)},'employee',30),(${other},${"qa-" + other},'QA Outro',${email(other)},'employee',30)`,
     sql`INSERT INTO horacerta.clients(id,name) VALUES(${client},${"QA temporário " + tag})`,
   ]);
   const pinHash = await hashPin("582941");
-  for (const id of [admin, worker, other]) {
+  for (const id of [worker, other]) {
     await sql`UPDATE horacerta.users SET username=${username(id)},pin_hash=${pinHash} WHERE id=${id}`;
     const login = await call(
       "/api/login",
@@ -53,7 +88,7 @@ try {
     check(
       login.status,
       200,
-      "login individual " + (id === admin ? "coordenador" : "colaborador"),
+      "login individual do colaborador",
     );
     assert.ok(login.cookie?.startsWith("hc_session="));
     cookies.set(id, login.cookie);
@@ -410,6 +445,7 @@ try {
   console.log(passed + " verificações de API concluídas.");
 } finally {
   await sql.transaction([
+    sql`DELETE FROM horacerta.sessions WHERE user_id IN (SELECT id FROM horacerta.users WHERE username=${adminUsername})`,
     sql`DELETE FROM horacerta.sessions WHERE user_id IN (SELECT id FROM horacerta.users WHERE username LIKE ${"qa_more_" + tag.slice(0, 8) + "%"})`,
     sql`DELETE FROM horacerta.users WHERE username LIKE ${"qa_more_" + tag.slice(0, 8) + "%"}`,
     sql`DELETE FROM horacerta.audit WHERE actor_id IN (${admin},${worker},${other})`,
@@ -418,6 +454,7 @@ try {
     sql`DELETE FROM horacerta.sessions WHERE user_id IN (${admin},${worker},${other})`,
     sql`DELETE FROM horacerta.timers WHERE user_id IN (${admin},${worker},${other})`,
     sql`DELETE FROM horacerta.users WHERE id IN (${admin},${worker},${other})`,
+    sql`DELETE FROM horacerta.users WHERE username=${adminUsername}`,
   ]);
   console.log(
     "Dados temporários de teste removidos; banco pronto para o primeiro acesso.",
