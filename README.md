@@ -18,6 +18,8 @@ O site está público, mas os dados continuam protegidos pelo login individual d
 
 Node.js 22.13+ e npm. Configure DATABASE_URL no ambiente do servidor conforme .env.example. Nunca exponha a credencial em variáveis públicas ou no navegador.
 
+No Vercel, o projeto usa `npm run build:vercel`, definido em vercel.json, para gerar a saída nativa do Next.js. O build local e a publicação pelo Sites continuam usando Vinext.
+
 ```sh
 npm install
 npm run db:migrate
