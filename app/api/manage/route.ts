@@ -56,7 +56,7 @@ export async function POST(req: Request) {
       const pin = p.pin ? await hashPin(p.pin) : null;
       if (p.id) {
         await sql.transaction([
-          sql`UPDATE horacerta.users SET name=${p.name},username=${p.username},job=${p.job},phone=${p.phone},active=${p.active},can_edit=${p.can_edit},pin_hash=coalesce(${pin},pin_hash),login_attempts=CASE WHEN ${!!pin} THEN 0 ELSE login_attempts END WHERE id=${p.id}`,
+          sql`UPDATE horacerta.users SET name=${p.name},username=${p.username || old?.username || null},job=${p.job},phone=${p.phone},active=${p.active},can_edit=${p.can_edit},pin_hash=coalesce(${pin},pin_hash),login_attempts=CASE WHEN ${!!pin} THEN 0 ELSE login_attempts END WHERE id=${p.id}`,
           ...(pin || !p.active
             ? [sql`DELETE FROM horacerta.sessions WHERE user_id=${p.id}`]
             : []),
@@ -64,7 +64,7 @@ export async function POST(req: Request) {
       } else {
         if (!pin)
           throw new ApiError(400, "Defina um PIN inicial de 6 números.");
-        await sql`INSERT INTO horacerta.users(name,username,email,role,job,phone,hourly_rate,active,can_edit,pin_hash) VALUES(${p.name},${p.username},${p.email},'employee',${p.job},${p.phone},0,${p.active},${p.can_edit},${pin})`;
+        await sql`INSERT INTO horacerta.users(name,username,email,role,job,phone,hourly_rate,active,can_edit,pin_hash) VALUES(${p.name},${p.username || null},${p.email},'employee',${p.job},${p.phone},0,${p.active},${p.can_edit},${pin})`;
       }
     } else if (body.entity === "client") {
       const p = clientSchema.parse(body.data);

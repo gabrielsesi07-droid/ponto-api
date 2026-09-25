@@ -1,18 +1,42 @@
 import { db, payload, failure, ApiError } from "@/lib/server";
 import { digest, verifyPin, pinPattern, sessionCookie } from "@/lib/pin";
 import { z } from "zod";
+export const dynamic = "force-dynamic";
+export async function GET(req: Request) {
+  try {
+    const name = z
+        .string()
+        .trim()
+        .min(2, "Digite pelo menos 2 letras do seu nome.")
+        .max(80)
+        .parse(new URL(req.url).searchParams.get("name")),
+      sql = db();
+    const people =
+      await sql`SELECT name,access_code,job FROM horacerta.users WHERE active=true AND pin_hash IS NOT NULL AND (position(lower(${name}) in lower(name))>0 OR upper(access_code)=upper(${name})) ORDER BY CASE WHEN lower(name)=lower(${name}) THEN 0 WHEN position(lower(${name}) in lower(name))=1 THEN 1 ELSE 2 END,name,access_code LIMIT 8`;
+    return Response.json(
+      { people },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  } catch (e) {
+    return failure(e);
+  }
+}
 export async function POST(req: Request) {
   try {
     const p = z
         .object({
-          username: z.string().trim().toLowerCase().min(3).max(40),
+          access_code: z
+            .string()
+            .trim()
+            .toUpperCase()
+            .regex(/^HC-\d{6}$/, "Selecione seu cadastro novamente."),
           pin: z.string().regex(pinPattern, "O PIN precisa ter 6 números."),
           remember: z.boolean().default(true),
         })
         .parse(await payload(req)),
       sql = db();
     const r =
-      await sql`UPDATE horacerta.users SET login_attempts=CASE WHEN attempt_window IS NULL OR attempt_window<now()-interval '15 minutes' THEN 1 ELSE login_attempts+1 END, attempt_window=CASE WHEN attempt_window IS NULL OR attempt_window<now()-interval '15 minutes' THEN now() ELSE attempt_window END WHERE username=${p.username} AND active=true AND pin_hash IS NOT NULL AND (attempt_window IS NULL OR attempt_window<now()-interval '15 minutes' OR login_attempts<5) RETURNING id,pin_hash`;
+      await sql`UPDATE horacerta.users SET login_attempts=CASE WHEN attempt_window IS NULL OR attempt_window<now()-interval '15 minutes' THEN 1 ELSE login_attempts+1 END, attempt_window=CASE WHEN attempt_window IS NULL OR attempt_window<now()-interval '15 minutes' THEN now() ELSE attempt_window END WHERE access_code=${p.access_code} AND active=true AND pin_hash IS NOT NULL AND (attempt_window IS NULL OR attempt_window<now()-interval '15 minutes' OR login_attempts<5) RETURNING id,pin_hash`;
     if (!r.length)
       throw new ApiError(
         429,

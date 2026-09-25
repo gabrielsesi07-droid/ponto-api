@@ -1,6 +1,7 @@
 export type Person = {
   id: string;
   name: string;
+  access_code: string;
   username?: string;
   email: string;
   role: "coordinator" | "employee";

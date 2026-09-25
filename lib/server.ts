@@ -33,7 +33,7 @@ export async function member() {
   const token=(await cookies()).get('hc_session')?.value;
   if(!token)throw new ApiError(401,'Entre com seu login para continuar.');
   const sql=db();
-  const rows=await sql`SELECT u.id,u.name,u.username,u.email,u.role,u.job,u.phone,u.hourly_rate,u.active,u.can_edit FROM horacerta.users u JOIN horacerta.sessions s ON s.user_id=u.id WHERE s.token_hash=${await digest(token)} AND s.expires_at>now() AND u.active=true`;
+  const rows=await sql`SELECT u.id,u.name,u.access_code,u.username,u.email,u.role,u.job,u.phone,u.hourly_rate,u.active,u.can_edit FROM horacerta.users u JOIN horacerta.sessions s ON s.user_id=u.id WHERE s.token_hash=${await digest(token)} AND s.expires_at>now() AND u.active=true`;
   if (!rows[0])
     throw new ApiError(
       403,
@@ -77,7 +77,7 @@ export function failure(err: unknown) {
 export const personSchema = z.object({
   id: z.string().uuid().optional(),
   name: z.string().trim().min(2, "Informe o nome.").max(120),
-  username:z.string().trim().toLowerCase().regex(/^[a-z0-9._-]{3,40}$/,'Use 3 a 40 letras minúsculas, números, ponto ou hífen no login.'),
+  username:z.string().trim().toLowerCase().regex(/^[a-z0-9._-]{3,40}$/,'Use 3 a 40 letras minúsculas, números, ponto ou hífen no login.').optional(),
   pin:z.string().regex(/^\d{6}$/,'Use um PIN de 6 números.').optional(),
   email: z
     .string()

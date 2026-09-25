@@ -49,7 +49,7 @@ export async function POST(req: Request) {
       pin = await hashPin(p.pin),
       result = await sql.transaction([
         sql`SELECT id FROM horacerta.settings WHERE id=1 FOR UPDATE`,
-        sql`INSERT INTO horacerta.users(name,username,email,role,job,phone,hourly_rate,pin_hash) SELECT ${p.name},${p.username},${p.email},'coordinator',${p.job},${p.phone},${p.hourly_rate},${pin} WHERE NOT EXISTS(SELECT 1 FROM horacerta.users) RETURNING id`,
+        sql`INSERT INTO horacerta.users(name,username,email,role,job,phone,hourly_rate,pin_hash) SELECT ${p.name},${p.username || null},${p.email},'coordinator',${p.job},${p.phone},${p.hourly_rate},${pin} WHERE NOT EXISTS(SELECT 1 FROM horacerta.users) RETURNING id,access_code`,
       ]);
     if (!result[1].length)
       throw new ApiError(409, "O primeiro acesso já foi configurado.");

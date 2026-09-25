@@ -12,6 +12,7 @@ let admin = adminSeed;
 const email = (id) => "qa-" + id + "@example.invalid";
 let passed = 0;
 const cookies = new Map();
+const accessCodes = new Map();
 const username = (id) => "qa_" + id.slice(0, 8);
 const adminUsername = username(adminSeed);
 async function call(path, body, user = admin, method = "POST") {
@@ -53,9 +54,10 @@ try {
   check(firstAccess.status, 200, "primeiro coordenador cria o próprio acesso");
   assert.ok(firstAccess.cookie?.startsWith("hc_session="));
   const createdAdmin =
-    await sql`SELECT id FROM horacerta.users WHERE username=${adminUsername}`;
+    await sql`SELECT id,access_code FROM horacerta.users WHERE username=${adminUsername}`;
   assert.equal(createdAdmin.length, 1);
   admin = createdAdmin[0].id;
+  accessCodes.set(admin, createdAdmin[0].access_code);
   cookies.set(admin, firstAccess.cookie);
   check(
     (
@@ -80,9 +82,12 @@ try {
   const pinHash = await hashPin("582941");
   for (const id of [worker, other]) {
     await sql`UPDATE horacerta.users SET username=${username(id)},pin_hash=${pinHash} WHERE id=${id}`;
+    const person =
+      await sql`SELECT access_code FROM horacerta.users WHERE id=${id}`;
+    accessCodes.set(id, person[0].access_code);
     const login = await call(
       "/api/login",
-      { username: username(id), pin: "582941", remember: true },
+      { access_code: accessCodes.get(id), pin: "582941", remember: true },
       null,
     );
     check(
@@ -93,11 +98,21 @@ try {
     assert.ok(login.cookie?.startsWith("hc_session="));
     cookies.set(id, login.cookie);
   }
+  const found = await call("/api/login?name=QA", null, null);
+  check(found.status, 200, "busca pública encontra colaboradores pelo nome");
+  assert.ok(found.data.people.length >= 3);
+  assert.equal(
+    new Set(found.data.people.map((person) => person.access_code)).size,
+    found.data.people.length,
+    "cada resultado tem código único",
+  );
+  passed++;
+  console.log("OK resultados com códigos únicos");
   check(
     (
       await call(
         "/api/login",
-        { username: username(worker), pin: "000000" },
+        { access_code: accessCodes.get(worker), pin: "000000" },
         null,
       )
     ).status,
@@ -130,8 +145,9 @@ try {
     );
   }
   const expanded =
-    await sql`SELECT count(*)::int n FROM horacerta.users WHERE username LIKE ${extraPrefix + "%"}`;
+    await sql`SELECT count(*)::int n,count(DISTINCT access_code)::int codes FROM horacerta.users WHERE username LIKE ${extraPrefix + "%"}`;
   check(expanded[0].n, 3, "equipe pode ultrapassar quatro pessoas");
+  check(expanded[0].codes, 3, "novos colaboradores recebem códigos únicos");
   check(
     (
       await call(
@@ -159,7 +175,11 @@ try {
     (
       await call(
         "/api/login",
-        { username: username(worker), pin: "582941", remember: true },
+        {
+          access_code: accessCodes.get(worker),
+          pin: "582941",
+          remember: true,
+        },
         null,
       )
     ).status,
@@ -168,7 +188,11 @@ try {
   );
   const relogin = await call(
     "/api/login",
-    { username: username(worker), pin: "271828", remember: true },
+    {
+      access_code: accessCodes.get(worker),
+      pin: "271828",
+      remember: true,
+    },
     null,
   );
   check(relogin.status, 200, "novo PIN permite acesso");

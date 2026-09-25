@@ -20,6 +20,12 @@ import {
 } from "lucide-react";
 import { api } from "./editors";
 
+type AccessOption = {
+  name: string;
+  access_code: string;
+  job: string;
+};
+
 export function QuickLogin({
   setup,
   error,
@@ -36,7 +42,10 @@ export function QuickLogin({
   connected?: boolean;
 }) {
   const [step, setStep] = useState<"name" | "pin">("name");
-  const [username, setUsername] = useState("");
+  const [searchName, setSearchName] = useState("");
+  const [people, setPeople] = useState<AccessOption[]>([]);
+  const [searched, setSearched] = useState(false);
+  const [selected, setSelected] = useState<AccessOption | null>(null);
   const [pin, setPin] = useState("");
   const [name, setName] = useState("");
   const [rate, setRate] = useState("0");
@@ -45,13 +54,13 @@ export function QuickLogin({
   const [issue, setIssue] = useState("");
   const [showPin, setShowPin] = useState(false);
   const [paused, setPaused] = useState(false);
-  const usernameInput = useRef<HTMLInputElement>(null);
+  const nameInput = useRef<HTMLInputElement>(null);
   const pinInput = useRef<HTMLInputElement>(null);
   const hasAdvanced = useRef(false);
 
   useEffect(() => {
     if (step === "pin") pinInput.current?.focus();
-    else if (hasAdvanced.current) usernameInput.current?.focus();
+    else if (hasAdvanced.current) nameInput.current?.focus();
   }, [step]);
 
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -59,9 +68,26 @@ export function QuickLogin({
     if (busy || loading) return;
     setIssue("");
     if (!setup && step === "name") {
-      setUsername(username.trim().toLowerCase());
-      hasAdvanced.current = true;
-      setStep("pin");
+      const query = searchName.trim();
+      if (query.length < 2) {
+        setIssue("Digite pelo menos 2 letras do seu nome.");
+        nameInput.current?.focus();
+        return;
+      }
+      setBusy(true);
+      try {
+        const result = await api<{ people: AccessOption[] }>(
+          "/api/login?name=" + encodeURIComponent(query),
+        );
+        setPeople(result.people);
+        setSearched(true);
+        if (!result.people.length)
+          setIssue("Nenhum colaborador encontrado com esse nome.");
+      } catch (e) {
+        setIssue((e as Error).message);
+      } finally {
+        setBusy(false);
+      }
       return;
     }
     setBusy(true);
@@ -69,8 +95,8 @@ export function QuickLogin({
       await api(
         setup ? "/api/session" : "/api/login",
         setup
-          ? { name, username, pin, hourly_rate: Number(rate) }
-          : { username, pin, remember },
+          ? { name, pin, hourly_rate: Number(rate) }
+          : { access_code: selected?.access_code, pin, remember },
       );
       await reload();
     } catch (e) {
@@ -83,9 +109,17 @@ export function QuickLogin({
 
   function back() {
     setStep("name");
+    setSelected(null);
     setPin("");
     setShowPin(false);
     setIssue("");
+  }
+
+  function choose(person: AccessOption) {
+    setSelected(person);
+    setIssue("");
+    hasAdvanced.current = true;
+    setStep("pin");
   }
 
   return (
@@ -217,14 +251,14 @@ export function QuickLogin({
                 {setup
                   ? "Tudo começa aqui."
                   : step === "name"
-                    ? "Seu dia, no seu ritmo."
+                    ? "Encontre seu cadastro."
                     : "Só falta o seu PIN."}
               </h2>
               <p>
                 {setup
                   ? "Crie o acesso do coordenador para começar a organizar sua equipe."
                   : step === "name"
-                    ? "Entre para cuidar do que mais importa: o seu tempo."
+                    ? "Digite seu nome e escolha o cadastro identificado pelo seu código."
                     : "Digite os 6 números para entrar no seu espaço."}
               </p>
             </div>
@@ -274,41 +308,71 @@ export function QuickLogin({
                     </label>
                   )}
 
-                  {(setup || step === "name") && (
+                  {!setup && step === "name" && (
                     <div className="login-step-content" key="name">
-                      <label className="login-field" htmlFor="login-username">
-                        Nome de acesso
+                      <label className="login-field" htmlFor="login-name">
+                        Seu nome
                         <span className="login-input-wrap">
                           <UserRound size={19} aria-hidden="true" />
                           <input
-                            ref={usernameInput}
-                            id="login-username"
-                            name="username"
+                            ref={nameInput}
+                            id="login-name"
+                            name="name-search"
                             required
-                            minLength={3}
-                            maxLength={40}
-                            pattern="[a-z0-9._-]{3,40}"
-                            autoCapitalize="none"
-                            autoCorrect="off"
-                            spellCheck={false}
-                            autoComplete="username"
+                            minLength={2}
+                            maxLength={80}
+                            autoComplete="name"
                             aria-describedby="login-name-hint"
-                            placeholder="Ex.: gabriel"
-                            value={username}
+                            placeholder="Ex.: Gabriel Souza"
+                            value={searchName}
                             onChange={(e) => {
-                              setUsername(
-                                e.target.value.toLowerCase().replace(/\s/g, ""),
-                              );
+                              setSearchName(e.target.value);
+                              setPeople([]);
+                              setSearched(false);
                               setIssue("");
                             }}
                           />
                         </span>
                       </label>
                       <p className="login-field-hint" id="login-name-hint">
-                        {setup
-                          ? "Escolha um nome único, sem espaços ou acentos."
-                          : "Use o nome de acesso cadastrado pelo coordenador."}
+                        Pode digitar o nome completo ou apenas uma parte dele.
                       </p>
+                      {searched && people.length > 0 && (
+                        <div
+                          className="login-results"
+                          aria-label="Colaboradores encontrados"
+                        >
+                          <p>Selecione seu cadastro</p>
+                          <ul>
+                            {people.map((person) => (
+                              <li key={person.access_code}>
+                                <button
+                                  type="button"
+                                  onClick={() => choose(person)}
+                                >
+                                  <span className="login-result-avatar">
+                                    {person.name
+                                      .split(" ")
+                                      .filter(Boolean)
+                                      .slice(0, 2)
+                                      .map((part) => part[0])
+                                      .join("")
+                                      .toUpperCase()}
+                                  </span>
+                                  <span className="login-result-person">
+                                    <b>{person.name}</b>
+                                    <small>
+                                      {person.job || "Integrante da equipe"}
+                                    </small>
+                                  </span>
+                                  <code>{person.access_code}</code>
+                                  <ArrowRight size={16} aria-hidden="true" />
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -317,18 +381,21 @@ export function QuickLogin({
                       <span className="login-identity-icon">
                         <UserRound size={18} />
                       </span>
-                      <span className="login-identity-name">{username}</span>
+                      <span className="login-identity-name">
+                        {selected?.name}
+                        <small>{selected?.access_code}</small>
+                      </span>
                       <button
                         type="button"
                         onClick={back}
-                        aria-label="Alterar nome de acesso"
+                        aria-label="Escolher outro cadastro"
                       >
                         <ArrowLeft size={13} /> Alterar
                       </button>
                       <input
                         type="text"
-                        name="username"
-                        value={username}
+                        name="access_code"
+                        value={selected?.access_code || ""}
                         autoComplete="username"
                         readOnly
                         hidden
@@ -447,7 +514,7 @@ export function QuickLogin({
                         {setup
                           ? "Criar meu acesso"
                           : step === "name"
-                            ? "Continuar"
+                            ? "Buscar meu cadastro"
                             : "Entrar no meu espaço"}
                         <ArrowRight size={18} />
                       </>

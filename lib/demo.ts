@@ -6,6 +6,7 @@ export function demoState(): State {
       {
         id: "demo-1",
         name: "Gabriel Souza",
+        access_code: "HC-001001",
         username: "gabriel",
         email: "coordenador@example.com",
         role: "coordinator" as const,
@@ -18,6 +19,7 @@ export function demoState(): State {
       ...["Ana Lima", "Carlos Mendes", "Marina Costa"].map((name, i) => ({
         id: "demo-" + (i + 2),
         name,
+        access_code: "HC-" + String(i + 1002).padStart(6, "0"),
         username: name.split(" ")[0].toLowerCase(),
         email: "colaborador" + i + "@example.com",
         role: "employee" as const,

@@ -2,6 +2,12 @@ import {neon} from '@neondatabase/serverless';
 import {readFile} from 'node:fs/promises';
 const sql=neon(process.env.DATABASE_URL);
 const ddl=[
+ 'CREATE SEQUENCE IF NOT EXISTS horacerta.user_code_seq START WITH 1001',
+ 'ALTER TABLE horacerta.users ADD COLUMN IF NOT EXISTS access_code text DEFAULT (\'HC-\' || lpad(nextval(\'horacerta.user_code_seq\')::text,6,\'0\'))',
+ 'ALTER TABLE horacerta.users ALTER COLUMN access_code SET DEFAULT (\'HC-\' || lpad(nextval(\'horacerta.user_code_seq\')::text,6,\'0\'))',
+ 'UPDATE horacerta.users SET access_code=(\'HC-\' || lpad(nextval(\'horacerta.user_code_seq\')::text,6,\'0\')) WHERE access_code IS NULL',
+ 'ALTER TABLE horacerta.users ALTER COLUMN access_code SET NOT NULL',
+ 'CREATE UNIQUE INDEX IF NOT EXISTS users_access_code_key ON horacerta.users(access_code)',
  'ALTER TABLE horacerta.users ADD COLUMN IF NOT EXISTS username text UNIQUE',
  'ALTER TABLE horacerta.entries ALTER COLUMN client_id DROP NOT NULL',
  'ALTER TABLE horacerta.users ADD COLUMN IF NOT EXISTS pin_hash text',

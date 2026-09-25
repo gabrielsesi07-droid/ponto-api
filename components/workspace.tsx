@@ -25,7 +25,7 @@ import {
   CalendarDays,
   Search,
   Download,
-  Mail,
+  Fingerprint,
   ShieldCheck,
   LoaderCircle,
   AlertCircle,
@@ -1013,9 +1013,8 @@ export function Workspace() {
                               </span>
                             </div>
                             <p className="muted text-sm mt-5 break-all flex gap-2">
-                              <Mail size={16} className="shrink-0" />
-                              Login:{" "}
-                              {u.username || u.name.split(" ")[0].toLowerCase()}
+                              <Fingerprint size={16} className="shrink-0" />
+                              Código: {u.access_code}
                             </p>
                             <div className="border-t mt-5 pt-5 grid grid-cols-2 gap-4">
                               <div>
@@ -1263,8 +1262,7 @@ function Profile({
                 {data.me.job || "Integrante da equipe"}
               </p>
               <p className="muted text-sm">
-                Login:{" "}
-                {data.me.username || data.me.name.split(" ")[0].toLowerCase()}
+                Código de acesso: {data.me.access_code}
               </p>
             </div>
           </div>

@@ -4,15 +4,15 @@ Ponto exclusivo dos serviços técnicos, com um coordenador e quantos colaborado
 
 ## Primeiro acesso
 
-1. Abra o aplicativo e crie o usuário e PIN de seis números do coordenador.
-2. Em Colaboradores, cadastre o usuário e PIN inicial de cada integrante.
+1. Abra o aplicativo e crie o nome e PIN de seis números do coordenador. O código único é gerado automaticamente.
+2. Em Colaboradores, cadastre o nome e PIN inicial de cada integrante; cada pessoa recebe um código diferente, mesmo quando os nomes são iguais.
 3. Cada pessoa entra na própria conta e configura seu valor-hora em Meu acesso.
 4. Em Meu ponto, use Iniciar serviço, Pausar/Retomar e Encerrar serviço.
 5. Em Meu resumo, consulte extras por dia, calendário e comparativo dos últimos seis meses.
 
-A página `/login` apresenta o acesso em duas etapas: nome de acesso e PIN de seis números. O fundo tem animações com opção de pausa e respeita a preferência de movimento reduzido. Quem está desconectado também encontra essa tela na página inicial.
+A página `/login` apresenta o acesso em duas etapas: busca pelo nome, escolha do cadastro identificado pelo código único e PIN de seis números. O fundo tem animações com opção de pausa e respeita a preferência de movimento reduzido. Quem está desconectado também encontra essa tela na página inicial.
 
-O site está público, mas os dados continuam protegidos pelo login individual do aplicativo. Compartilhar o endereço não concede acesso aos pontos sem usuário e PIN. A prévia local usa o mesmo banco configurado no ambiente — não crie cadastros de teste manualmente durante o uso real.
+O site está público, mas os dados continuam protegidos pelo login individual do aplicativo. Compartilhar o endereço não concede acesso aos pontos sem o código selecionado e o PIN. A prévia local usa o mesmo banco configurado no ambiente — não crie cadastros de teste manualmente durante o uso real.
 
 ## Desenvolvimento
 
@@ -41,7 +41,7 @@ test:api exige servidor local na porta 5173 e equipe vazia. Recusa-se a executar
 
 ## Recursos e limites
 
-- Login individual por usuário e PIN, sessão protegida e limite de tentativas.
+- Busca por nome, código individual imutável, PIN, sessão protegida e limite de tentativas.
 - Relógio persistente, pausas e divisão automática quando o serviço atravessa a meia-noite.
 - Marcações manuais para esquecimento, sem escolher colaborador ou local.
 - Valor-hora configurado pelo próprio colaborador, preservando valores de registros anteriores.

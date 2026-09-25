@@ -73,7 +73,6 @@ export function EditDialog({
         }
       : {
           name: p?.name || "",
-          username: p?.username || "",
           email: p?.email || "",
           job: p?.job || "",
           phone: p?.phone || "",
@@ -172,7 +171,7 @@ export function EditDialog({
                 ? "Seu valor-hora vale para os próximos serviços. As marcações antigas mantêm o valor anterior."
                 : p
                   ? "Altere os dados ou defina um novo PIN de 6 números. Ao trocar o PIN, as sessões abertas dessa pessoa serão encerradas."
-                  : "Cada pessoa entra com seu próprio usuário e PIN. O valor-hora será configurado por ela."}
+                  : "Cada pessoa recebe automaticamente um código único e entra com esse código e seu PIN. O valor-hora será configurado por ela."}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="form-grid mt-2">
@@ -220,12 +219,16 @@ export function EditDialog({
           ) : (
             <>
               {input("name", "Nome completo", "text", true, { maxLength: 120 })}
-              {input("username", "Usuário de acesso", "text", true, {
-                disabled: editor.kind === "profile",
-                autoComplete: "username",
-                pattern: "[a-z0-9._-]{3,40}",
-                maxLength: 40,
-              })}
+              {p ? (
+                <div className="rounded-lg border bg-slate-50 px-4 py-3 text-sm">
+                  <span className="muted block text-xs">CÓDIGO DE ACESSO</span>
+                  <b className="mt-1 block tracking-wide">{p.access_code}</b>
+                </div>
+              ) : (
+                <p className="rounded-lg bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                  O código único será criado automaticamente ao salvar.
+                </p>
+              )}
               {editor.kind === "profile" &&
                 input("hourly_rate", "Quanto vale sua hora?", "number", true, {
                   min: 0,

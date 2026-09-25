@@ -1,10 +1,11 @@
 CREATE SCHEMA IF NOT EXISTS horacerta;
+CREATE SEQUENCE IF NOT EXISTS horacerta.user_code_seq START WITH 1001;
 CREATE TABLE IF NOT EXISTS horacerta.settings (
  id integer PRIMARY KEY CHECK(id=1), rules jsonb NOT NULL
 );
 INSERT INTO horacerta.settings(id,rules) VALUES(1,'{"daily_minutes":540,"weekday_bonus":50,"saturday_bonus":60,"sunday_bonus":100,"holiday_bonus":100,"allow_retro":true,"approval_required":true,"currency":"BRL","date_format":"dd/MM/yyyy","time_format":"24h"}') ON CONFLICT DO NOTHING;
 CREATE TABLE IF NOT EXISTS horacerta.users (
- id uuid PRIMARY KEY DEFAULT gen_random_uuid(), subject text UNIQUE, name text NOT NULL,
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(), subject text UNIQUE, access_code text NOT NULL UNIQUE DEFAULT ('HC-' || lpad(nextval('horacerta.user_code_seq')::text,6,'0')), name text NOT NULL,
  email text NOT NULL UNIQUE CHECK(email=lower(email)), role text NOT NULL CHECK(role IN ('coordinator','employee')),
  job text NOT NULL DEFAULT '', phone text NOT NULL DEFAULT '', hourly_rate numeric(12,2) NOT NULL CHECK(hourly_rate>=0),
  active boolean NOT NULL DEFAULT true, can_edit boolean NOT NULL DEFAULT true, created_at timestamptz NOT NULL DEFAULT now()

@@ -594,6 +594,86 @@
   line-height: 1.6;
   margin-top: 9px;
 }
+.login-results {
+  margin-top: 14px;
+}
+.login-results > p {
+  color: #65758a;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.login-results ul {
+  display: grid;
+  gap: 7px;
+  list-style: none;
+  padding: 0;
+}
+.login-results button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 58px;
+  padding: 8px 10px;
+  border: 1px solid #d3dfed;
+  border-radius: 10px;
+  background: #ffffffa8;
+  color: #263c57;
+  text-align: left;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+.login-results button:focus-visible {
+  outline: 2px solid #7399df;
+  outline-offset: 2px;
+}
+.login-result-avatar {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #dfeafb;
+  color: #365f9e;
+  font-size: 11px;
+  font-weight: 700;
+  flex: none;
+}
+.login-result-person {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+.login-result-person b,
+.login-result-person small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.login-result-person b {
+  font-size: 12px;
+}
+.login-result-person small {
+  color: #738197;
+  font-size: 10px;
+}
+.login-results code {
+  color: #285da9;
+  background: #e7f0ff;
+  border-radius: 999px;
+  padding: 4px 7px;
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
 .login-remember {
   display: flex;
   align-items: center;
@@ -705,10 +785,18 @@
   flex: none;
 }
 .login-identity-name {
+  display: grid;
+  gap: 2px;
   font-size: 13px;
   font-weight: 600;
   overflow-wrap: anywhere;
   min-width: 0;
+}
+.login-identity-name small {
+  color: #56729a;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 .login-identity button {
   display: flex;
@@ -890,6 +978,11 @@
   animation-play-state: paused;
 }
 @media (hover: hover) and (pointer: fine) {
+  .login-results button:hover {
+    transform: translateY(-1px);
+    border-color: #91ace0;
+    background: #f7faff;
+  }
   .login-submit:hover:not(:disabled) {
     transform: translateY(-1px);
     box-shadow: 0 9px 22px #245bdc35;
