@@ -5,7 +5,6 @@ import {
   useMemo,
   useCallback,
   useRef,
-  type FormEvent,
 } from "react";
 import {
   Clock3,
@@ -14,7 +13,6 @@ import {
   ListChecks,
   FileBarChart2,
   Users,
-  MapPin,
   Settings,
   Plus,
   ArrowUpRight,
@@ -22,8 +20,6 @@ import {
   LogOut,
   ChevronRight,
   ChevronLeft,
-  CalendarDays,
-  Search,
   Download,
   Fingerprint,
   ShieldCheck,
@@ -33,8 +29,6 @@ import {
   Pencil,
   KeyRound,
   Building2,
-  CheckCheck,
-  Play,
   Eye,
   ArrowRight,
 } from "lucide-react";
@@ -248,6 +242,7 @@ export function Workspace() {
   const [editor, setEditor] = useState<Editor | null>(null),
     [deleting, setDeleting] = useState<Entry | null>(null),
     [busy, setBusy] = useState(false),
+    [pinPromptBusy, setPinPromptBusy] = useState(false),
     [exporting, setExporting] = useState(false);
   const bounds = monthBounds(month),
     range =
@@ -300,33 +295,37 @@ export function Workspace() {
   }, [demo, fetchFrom, fetchTo]);
   const clearLoginError = useCallback(() => setError(""), []);
   useEffect(() => {
-    const p = new URLSearchParams(window.location.search);
-    setDemo(p.get("demo") === "1");
-    setReady(true);
-    const v = p.get("view");
-    if (nav.some((n) => n.key === v)) setView(v!);
-    const pop = () => {
+    const syncFromLocation = () => {
       const q = new URLSearchParams(window.location.search);
       setView(q.get("view") || "register");
       setDemo(q.get("demo") === "1");
+      setReady(true);
     };
-    window.addEventListener("popstate", pop);
-    return () => window.removeEventListener("popstate", pop);
+    const timer = window.setTimeout(syncFromLocation, 0);
+    window.addEventListener("popstate", syncFromLocation);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("popstate", syncFromLocation);
+    };
   }, []);
   useEffect(() => {
-    if (ready) void reload();
+    if (!ready) return;
+    const timer = window.setTimeout(() => void reload(), 0);
+    return () => window.clearTimeout(timer);
   }, [reload, ready]);
-  useEffect(
-    () => setPage(1),
-    [user, status, day, search, month, period, customFrom, customTo],
-  );
+  useEffect(() => {
+    const timer = window.setTimeout(() => setPage(1), 0);
+    return () => window.clearTimeout(timer);
+  }, [user, status, day, search, month, period, customFrom, customTo]);
   useEffect(() => {
     if (
-      data &&
-      nav.find((n) => n.key === view)?.admin &&
-      data.me.role !== "coordinator"
+      !data ||
+      !nav.find((n) => n.key === view)?.admin ||
+      data.me.role === "coordinator"
     )
-      setView("register");
+      return;
+    const timer = window.setTimeout(() => setView("register"), 0);
+    return () => window.clearTimeout(timer);
   }, [data, view]);
   const go = useCallback((v: string) => {
     setView(v);
@@ -369,7 +368,7 @@ export function Workspace() {
                 .includes(search.toLowerCase())),
         )
         .sort((a, b) => (b.date + b.start).localeCompare(a.date + a.start)),
-    [all, range.from, range.to, user, status, day, search, data],
+    [all, range.from, range.to, user, status, day, search],
   );
   const prev = all.filter(
       (e) =>
@@ -382,6 +381,20 @@ export function Workspace() {
   const title = nav.find((n) => n.key === view)?.label || "Dashboard";
   async function afterSave() {
     await reload();
+  }
+  async function postponePinChange() {
+    setPinPromptBusy(true);
+    try {
+      await api("/api/manage", { entity: "pin_prompt", data: {} });
+      await reload();
+      toast.info(
+        "Tudo bem. Você pode trocar o PIN quando quiser em Meu acesso.",
+      );
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setPinPromptBusy(false);
+    }
   }
   async function updateStatus(e: Entry, s: Entry["status"]) {
     if (demo) {
@@ -1117,6 +1130,9 @@ export function Workspace() {
                   )}
                   month={month}
                   onRegister={() => go("register")}
+                  onEditAccess={() =>
+                    setEditor({ kind: "profile", data: data.me })
+                  }
                 />
               )}
             </>
@@ -1165,6 +1181,46 @@ export function Workspace() {
           onSaved={afterSave}
         />
       )}
+      <AlertDialog
+        open={
+          !!data?.me.pin_change_required &&
+          !data.me.pin_change_prompted &&
+          !demo &&
+          !editor
+        }
+        onOpenChange={() => {}}
+      >
+        <AlertDialogContent className="max-w-md bg-white">
+          <AlertDialogHeader>
+            <div className="mb-2 flex size-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">
+              <KeyRound size={24} />
+            </div>
+            <AlertDialogTitle>Crie seu PIN pessoal</AlertDialogTitle>
+            <AlertDialogDescription className="leading-relaxed">
+              Você entrou com o PIN inicial padrão. Troque-o agora para manter
+              seu acesso protegido. Se preferir, poderá fazer isso depois em
+              <b> Meu acesso</b>.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-3 gap-2 sm:gap-2">
+            <Button
+              variant="outline"
+              disabled={pinPromptBusy}
+              onClick={() => void postponePinChange()}
+            >
+              {pinPromptBusy ? "Salvando…" : "Mudar depois"}
+            </Button>
+            <AlertDialogAction
+              disabled={pinPromptBusy}
+              onClick={() =>
+                data && setEditor({ kind: "profile", data: data.me })
+              }
+            >
+              Mudar PIN agora
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog
         open={!!deleting}
         onOpenChange={(open) => !open && !busy && setDeleting(null)}
@@ -1252,11 +1308,13 @@ function Profile({
   rows,
   month,
   onRegister,
+  onEditAccess,
 }: {
   data: State;
   rows: ReturnType<typeof calculate>;
   month: string;
   onRegister: () => void;
+  onEditAccess: () => void;
 }) {
   const t = totals(rows),
     [year, m] = month.split("-").map(Number),
@@ -1267,6 +1325,24 @@ function Profile({
     );
   return (
     <>
+      {data.me.pin_change_required && (
+        <section className="mb-6 flex flex-col gap-4 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-950 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-800">
+              <KeyRound size={20} />
+            </span>
+            <div>
+              <b>Seu PIN ainda é temporário</b>
+              <p className="mt-1 text-sm text-amber-900">
+                Crie um PIN pessoal de 6 números para proteger seu acesso.
+              </p>
+            </div>
+          </div>
+          <Button className="action shrink-0" onClick={onEditAccess}>
+            Trocar meu PIN
+          </Button>
+        </section>
+      )}
       <div className="grid xl:grid-cols-[1.4fr_1fr] gap-6">
         <section className="panel p-7">
           <div className="flex gap-4 items-center">

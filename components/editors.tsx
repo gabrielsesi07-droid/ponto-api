@@ -12,8 +12,6 @@ import { Button } from "@/components/ui/button";
 import { Pick } from "./controls";
 import {
   today,
-  minutes,
-  duration,
   type Person,
   type Client,
   type Entry,
@@ -22,6 +20,7 @@ import {
 } from "@/lib/domain";
 import { toast } from "sonner";
 import { LoaderCircle, Save, UserRound } from "lucide-react";
+import { DEFAULT_INITIAL_PIN } from "@/lib/pin";
 export type Editor =
   | { kind: "entry"; data?: Entry }
   | { kind: "user"; data?: Person }
@@ -79,7 +78,8 @@ export function EditDialog({
           hourly_rate: p?.hourly_rate ?? 0,
           active: p?.active ?? true,
           can_edit: p?.can_edit ?? true,
-          pin: "",
+          pin:
+            editor.kind === "user" && !p ? DEFAULT_INITIAL_PIN : "",
         },
   );
   const [busy, setBusy] = useState(false),
@@ -138,9 +138,11 @@ export function EditDialog({
         });
       await onSaved();
       toast.success(
-        form.pin
-          ? "Dados salvos. Use o novo PIN no próximo acesso."
-          : "Dados salvos.",
+        editor.kind === "user" && !p
+          ? `Acesso criado. O PIN inicial é ${DEFAULT_INITIAL_PIN}.`
+          : form.pin
+            ? "Dados salvos. Use o novo PIN no próximo acesso."
+            : "Dados salvos.",
       );
       onClose();
     } catch (err) {
@@ -171,7 +173,7 @@ export function EditDialog({
                 ? "Seu valor-hora vale para os próximos serviços. As marcações antigas mantêm o valor anterior."
                 : p
                   ? "Altere os dados ou defina um novo PIN de 6 números. Ao trocar o PIN, as sessões abertas dessa pessoa serão encerradas."
-                  : "Cada pessoa recebe automaticamente um código único e entra com esse código e seu PIN. O valor-hora será configurado por ela."}
+                  : `Cada pessoa recebe um código único e começa com o PIN ${DEFAULT_INITIAL_PIN}. No primeiro acesso, ela será orientada a criar um PIN pessoal.`}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="form-grid mt-2">
@@ -235,20 +237,33 @@ export function EditDialog({
                   max: 100000,
                   step: ".01",
                 })}
-              {input(
-                "pin",
-                p
-                  ? "Novo PIN (deixe vazio para manter)"
-                  : "PIN inicial (6 números)",
-                "password",
-                !p,
-                {
-                  inputMode: "numeric",
-                  pattern: "[0-9]{6}",
-                  minLength: 6,
-                  maxLength: 6,
-                  autoComplete: "new-password",
-                },
+              {editor.kind === "user" && !p ? (
+                <div className="full rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-950">
+                  <span className="block text-xs font-semibold uppercase tracking-wider text-blue-700">
+                    PIN inicial padrão
+                  </span>
+                  <code className="mt-1 block text-lg font-bold tracking-[.25em]">
+                    {DEFAULT_INITIAL_PIN}
+                  </code>
+                  <span className="mt-1 block text-blue-800">
+                    A pessoa poderá trocar esse PIN no primeiro acesso ou em
+                    “Meu acesso”.
+                  </span>
+                </div>
+              ) : (
+                input(
+                  "pin",
+                  "Novo PIN (deixe vazio para manter)",
+                  "password",
+                  false,
+                  {
+                    inputMode: "numeric",
+                    pattern: "[0-9]{6}",
+                    minLength: 6,
+                    maxLength: 6,
+                    autoComplete: "new-password",
+                  },
+                )
               )}
               {input("job", "Cargo (opcional)")}
               {input("phone", "Telefone (opcional)", "tel")}

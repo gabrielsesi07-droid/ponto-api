@@ -33,7 +33,7 @@ export async function member() {
   const token=(await cookies()).get('hc_session')?.value;
   if(!token)throw new ApiError(401,'Entre com seu login para continuar.');
   const sql=db();
-  const rows=await sql`SELECT u.id,u.name,u.access_code,u.username,u.email,u.role,u.job,u.phone,u.hourly_rate,u.active,u.can_edit FROM horacerta.users u JOIN horacerta.sessions s ON s.user_id=u.id WHERE s.token_hash=${await digest(token)} AND s.expires_at>now() AND u.active=true`;
+  const rows=await sql`SELECT u.id,u.name,u.access_code,u.username,u.email,u.role,u.job,u.phone,u.hourly_rate,u.active,u.can_edit,u.pin_change_required,u.pin_change_prompted FROM horacerta.users u JOIN horacerta.sessions s ON s.user_id=u.id WHERE s.token_hash=${await digest(token)} AND s.expires_at>now() AND u.active=true`;
   if (!rows[0])
     throw new ApiError(
       403,

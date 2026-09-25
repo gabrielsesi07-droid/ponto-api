@@ -10,17 +10,27 @@ import {
   failure,
   ApiError,
 } from "@/lib/server";
-import { hashPin } from "@/lib/pin";
+import { DEFAULT_INITIAL_PIN, hashPin } from "@/lib/pin";
 export async function POST(req: Request) {
   try {
     const me = await member(),
       body = z
         .object({
-          entity: z.enum(["profile", "user", "client", "settings"]),
+          entity: z.enum([
+            "profile",
+            "user",
+            "client",
+            "settings",
+            "pin_prompt",
+          ]),
           data: z.record(z.unknown()),
         })
         .parse(await payload(req)),
       sql = db();
+    if (body.entity === "pin_prompt") {
+      await sql`UPDATE horacerta.users SET pin_change_prompted=true WHERE id=${me.id}`;
+      return Response.json({ ok: true });
+    }
     if (body.entity === "profile") {
       const p = personSchema.parse({
         ...body.data,
@@ -30,7 +40,7 @@ export async function POST(req: Request) {
       });
       const pin = p.pin ? await hashPin(p.pin) : null;
       await sql.transaction([
-        sql`UPDATE horacerta.users SET name=${p.name},job=${p.job},phone=${p.phone},hourly_rate=${p.hourly_rate},pin_hash=coalesce(${pin},pin_hash),login_attempts=CASE WHEN ${!!pin} THEN 0 ELSE login_attempts END WHERE id=${me.id}`,
+        sql`UPDATE horacerta.users SET name=${p.name},job=${p.job},phone=${p.phone},hourly_rate=${p.hourly_rate},pin_hash=coalesce(${pin},pin_hash),login_attempts=CASE WHEN ${!!pin} THEN 0 ELSE login_attempts END,pin_change_required=CASE WHEN ${!!pin} THEN false ELSE pin_change_required END,pin_change_prompted=CASE WHEN ${!!pin} THEN true ELSE pin_change_prompted END WHERE id=${me.id}`,
         ...(pin
           ? [sql`DELETE FROM horacerta.sessions WHERE user_id=${me.id}`]
           : []),
@@ -56,15 +66,14 @@ export async function POST(req: Request) {
       const pin = p.pin ? await hashPin(p.pin) : null;
       if (p.id) {
         await sql.transaction([
-          sql`UPDATE horacerta.users SET name=${p.name},username=${p.username || old?.username || null},job=${p.job},phone=${p.phone},active=${p.active},can_edit=${p.can_edit},pin_hash=coalesce(${pin},pin_hash),login_attempts=CASE WHEN ${!!pin} THEN 0 ELSE login_attempts END WHERE id=${p.id}`,
+          sql`UPDATE horacerta.users SET name=${p.name},username=${p.username || old?.username || null},job=${p.job},phone=${p.phone},active=${p.active},can_edit=${p.can_edit},pin_hash=coalesce(${pin},pin_hash),login_attempts=CASE WHEN ${!!pin} THEN 0 ELSE login_attempts END,pin_change_required=CASE WHEN ${!!pin} THEN true ELSE pin_change_required END,pin_change_prompted=CASE WHEN ${!!pin} THEN false ELSE pin_change_prompted END WHERE id=${p.id}`,
           ...(pin || !p.active
             ? [sql`DELETE FROM horacerta.sessions WHERE user_id=${p.id}`]
             : []),
         ]);
       } else {
-        if (!pin)
-          throw new ApiError(400, "Defina um PIN inicial de 6 números.");
-        await sql`INSERT INTO horacerta.users(name,username,email,role,job,phone,hourly_rate,active,can_edit,pin_hash) VALUES(${p.name},${p.username || null},${p.email},'employee',${p.job},${p.phone},0,${p.active},${p.can_edit},${pin})`;
+        const initialPin = pin || (await hashPin(DEFAULT_INITIAL_PIN));
+        await sql`INSERT INTO horacerta.users(name,username,email,role,job,phone,hourly_rate,active,can_edit,pin_hash,pin_change_required,pin_change_prompted) VALUES(${p.name},${p.username || null},${p.email},'employee',${p.job},${p.phone},0,${p.active},${p.can_edit},${initialPin},true,false)`;
       }
     } else if (body.entity === "client") {
       const p = clientSchema.parse(body.data);

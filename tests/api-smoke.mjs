@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { hashPin } from "../lib/pin.ts";
+import {
+  DEFAULT_INITIAL_PIN,
+  hashPin,
+  verifyPin,
+} from "../lib/pin.ts";
 import { neon } from "@neondatabase/serverless";
 const sql = neon(process.env.DATABASE_URL),
   base = "http://localhost:5173",
@@ -46,7 +50,6 @@ try {
     {
       name: "QA Coordenador",
       username: adminUsername,
-      pin: "582941",
       hourly_rate: 30,
     },
     null,
@@ -55,8 +58,15 @@ try {
   assert.ok(firstAccess.cookie?.startsWith("hc_session="));
   assert.match(firstAccess.data.person?.access_code || "", /^HC-\d{6}$/);
   const createdAdmin =
-    await sql`SELECT id,access_code FROM horacerta.users WHERE username=${adminUsername}`;
+    await sql`SELECT id,access_code,pin_hash,pin_change_required,pin_change_prompted FROM horacerta.users WHERE username=${adminUsername}`;
   assert.equal(createdAdmin.length, 1);
+  assert.equal(
+    await verifyPin(DEFAULT_INITIAL_PIN, createdAdmin[0].pin_hash),
+    true,
+    "primeiro coordenador recebe o PIN padrão",
+  );
+  assert.equal(createdAdmin[0].pin_change_required, true);
+  assert.equal(createdAdmin[0].pin_change_prompted, false);
   admin = createdAdmin[0].id;
   accessCodes.set(admin, createdAdmin[0].access_code);
   cookies.set(admin, firstAccess.cookie);
@@ -67,7 +77,6 @@ try {
         {
           name: "QA Segundo Coordenador",
           username: "qa_second_" + tag.slice(0, 8),
-          pin: "314159",
           hourly_rate: 30,
         },
         null,
@@ -132,7 +141,6 @@ try {
             data: {
               name: "QA Novo " + i,
               username: extraPrefix + "_" + i,
-              pin: "314159",
               job: "Técnico",
               phone: "",
               active: true,
@@ -150,6 +158,15 @@ try {
     await sql`SELECT count(*)::int n,count(DISTINCT access_code)::int codes FROM horacerta.users WHERE username LIKE ${extraPrefix + "%"}`;
   check(expanded[0].n, 3, "equipe pode ultrapassar quatro pessoas");
   check(expanded[0].codes, 3, "novos colaboradores recebem códigos únicos");
+  const defaultAccess =
+    await sql`SELECT pin_hash,pin_change_required,pin_change_prompted FROM horacerta.users WHERE username=${extraPrefix + "_1"}`;
+  assert.equal(
+    await verifyPin(DEFAULT_INITIAL_PIN, defaultAccess[0].pin_hash),
+    true,
+    "novo colaborador recebe o PIN padrão",
+  );
+  assert.equal(defaultAccess[0].pin_change_required, true);
+  assert.equal(defaultAccess[0].pin_change_prompted, false);
   check(
     (
       await call(

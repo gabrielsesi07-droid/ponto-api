@@ -10,6 +10,8 @@ export type Person = {
   hourly_rate: number;
   active: boolean;
   can_edit: boolean;
+  pin_change_required: boolean;
+  pin_change_prompted: boolean;
 };
 export type Client = {
   id: string;

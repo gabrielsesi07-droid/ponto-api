@@ -15,6 +15,8 @@ export function demoState(): State {
         hourly_rate: 34,
         active: true,
         can_edit: true,
+        pin_change_required: false,
+        pin_change_prompted: false,
       },
       ...["Ana Lima", "Carlos Mendes", "Marina Costa"].map((name, i) => ({
         id: "demo-" + (i + 2),
@@ -28,6 +30,8 @@ export function demoState(): State {
         hourly_rate: [29, 31.5, 28.5][i],
         active: true,
         can_edit: true,
+        pin_change_required: false,
+        pin_change_prompted: false,
       })),
     ],
     clients = [

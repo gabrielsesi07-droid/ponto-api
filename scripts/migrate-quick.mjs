@@ -13,6 +13,8 @@ const ddl=[
  'ALTER TABLE horacerta.users ADD COLUMN IF NOT EXISTS pin_hash text',
  'ALTER TABLE horacerta.users ADD COLUMN IF NOT EXISTS login_attempts integer NOT NULL DEFAULT 0',
  'ALTER TABLE horacerta.users ADD COLUMN IF NOT EXISTS attempt_window timestamptz',
+ 'ALTER TABLE horacerta.users ADD COLUMN IF NOT EXISTS pin_change_required boolean NOT NULL DEFAULT true',
+ 'ALTER TABLE horacerta.users ADD COLUMN IF NOT EXISTS pin_change_prompted boolean NOT NULL DEFAULT false',
  'CREATE TABLE IF NOT EXISTS horacerta.sessions (token_hash text PRIMARY KEY,user_id uuid NOT NULL REFERENCES horacerta.users(id),expires_at timestamptz NOT NULL,created_at timestamptz NOT NULL DEFAULT now())',
  'CREATE TABLE IF NOT EXISTS horacerta.timers (user_id uuid PRIMARY KEY REFERENCES horacerta.users(id), started_at timestamptz NOT NULL,paused_at timestamptz,pauses jsonb NOT NULL DEFAULT \'[]\',rate numeric(12,2) NOT NULL,rules jsonb NOT NULL)',
  // The original generated check name is resolved before changing only the duration check.

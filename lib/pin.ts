@@ -1,4 +1,5 @@
 export const pinPattern = /^\d{6}$/;
+export const DEFAULT_INITIAL_PIN = "123456";
 const hex = (b: ArrayBuffer) =>
   Array.from(new Uint8Array(b), (x) => x.toString(16).padStart(2, "0")).join(
     "",

@@ -8,7 +8,9 @@ CREATE TABLE IF NOT EXISTS horacerta.users (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), subject text UNIQUE, access_code text NOT NULL UNIQUE DEFAULT ('HC-' || lpad(nextval('horacerta.user_code_seq')::text,6,'0')), name text NOT NULL,
  email text NOT NULL UNIQUE CHECK(email=lower(email)), role text NOT NULL CHECK(role IN ('coordinator','employee')),
  job text NOT NULL DEFAULT '', phone text NOT NULL DEFAULT '', hourly_rate numeric(12,2) NOT NULL CHECK(hourly_rate>=0),
- active boolean NOT NULL DEFAULT true, can_edit boolean NOT NULL DEFAULT true, created_at timestamptz NOT NULL DEFAULT now()
+ active boolean NOT NULL DEFAULT true, can_edit boolean NOT NULL DEFAULT true,
+ pin_change_required boolean NOT NULL DEFAULT true, pin_change_prompted boolean NOT NULL DEFAULT false,
+ created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS one_coordinator ON horacerta.users(role) WHERE role='coordinator';
 CREATE TABLE IF NOT EXISTS horacerta.clients (

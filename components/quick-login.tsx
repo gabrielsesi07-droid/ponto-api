@@ -20,6 +20,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { api } from "./editors";
+import { DEFAULT_INITIAL_PIN } from "@/lib/pin";
 
 type AccessOption = {
   name: string;
@@ -167,7 +168,7 @@ export function QuickLogin({
       const result = await api<{ ok: boolean; person?: AccessOption }>(
         setup ? "/api/session" : "/api/login",
         setup
-          ? { name, pin, hourly_rate: Number(rate) }
+          ? { name, hourly_rate: Number(rate) }
           : { access_code: selected?.access_code, pin, remember },
       );
       const person = result.person || selected;
@@ -345,7 +346,7 @@ export function QuickLogin({
               </h2>
               <p>
                 {setup
-                  ? "Crie o acesso do coordenador para começar a organizar sua equipe."
+                  ? `Crie o acesso do coordenador. O PIN inicial será ${DEFAULT_INITIAL_PIN} e poderá ser trocado assim que você entrar.`
                   : step === "name"
                     ? remembered && !showSearch
                       ? "Seu acesso já está pronto neste aparelho."
@@ -552,13 +553,11 @@ export function QuickLogin({
                     </div>
                   )}
 
-                  {(setup || step === "pin") && (
+                  {!setup && step === "pin" && (
                     <div className="login-step-content" key="pin">
                       <div className="login-pin-label">
                         <label htmlFor="login-pin">
-                          {setup
-                            ? "Crie seu PIN de 6 números"
-                            : "PIN de 6 números"}
+                          PIN de 6 números
                         </label>
                         <button
                           className="login-reveal"
@@ -581,9 +580,7 @@ export function QuickLogin({
                           pattern="[0-9]{6}"
                           minLength={6}
                           maxLength={6}
-                          autoComplete={
-                            setup ? "new-password" : "current-password"
-                          }
+                          autoComplete="current-password"
                           aria-describedby="login-pin-hint"
                           aria-invalid={!!issue}
                           value={pin}
@@ -607,9 +604,19 @@ export function QuickLogin({
                         </div>
                       </div>
                       <p className="login-field-hint" id="login-pin-hint">
-                        <LockKeyhole size={12} /> Seu PIN é pessoal. Não
-                        compartilhe.
+                        <LockKeyhole size={12} /> No primeiro acesso, use o PIN
+                        padrão {DEFAULT_INITIAL_PIN}.
                       </p>
+                    </div>
+                  )}
+
+                  {setup && (
+                    <div className="login-field-hint rounded-xl border border-blue-200 bg-blue-50 p-4 text-blue-900">
+                      <b className="block text-sm">PIN inicial</b>
+                      <code className="my-1 block text-lg font-bold tracking-[.25em]">
+                        {DEFAULT_INITIAL_PIN}
+                      </code>
+                      Você poderá criar um PIN pessoal logo após entrar.
                     </div>
                   )}
 
