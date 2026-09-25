@@ -10,7 +10,7 @@ Ponto exclusivo dos serviços técnicos de uma equipe de quatro pessoas (um coor
 4. Em Meu ponto, use Iniciar serviço, Pausar/Retomar e Encerrar serviço.
 5. Em Meu resumo, consulte extras por dia, calendário e comparativo dos últimos seis meses.
 
-O site permanece privado. Para acesso remoto da equipe, conceda também a permissão de visualização na plataforma de hospedagem; o login do aplicativo é separado. O primeiro cadastro em produção exige o acesso privado do proprietário. A prévia local permite configurar a equipe conectada ao mesmo banco — não crie cadastros de teste manualmente durante o uso real.
+O site está público, mas os dados continuam protegidos pelo login individual do aplicativo. Compartilhar o endereço não concede acesso aos pontos sem usuário e PIN. A prévia local usa o mesmo banco configurado no ambiente — não crie cadastros de teste manualmente durante o uso real.
 
 ## Desenvolvimento
 
