@@ -16,21 +16,13 @@ DECLARE
  entry_id uuid;
  total_records integer := 0;
 BEGIN
+ IF p_action='start' THEN
+   RETURN horacerta.clock_start(p_user,current_time_value,'Empresa não informada','Serviço técnico','');
+ END IF;
  SELECT * INTO u FROM horacerta.users WHERE id=p_user AND active=true FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'Conta indisponível.'; END IF;
  SELECT rules INTO current_rules FROM horacerta.settings WHERE id=1;
  SELECT * INTO t FROM horacerta.timers WHERE user_id=p_user;
- IF p_action='start' THEN
-   IF FOUND THEN RAISE EXCEPTION 'Já existe um serviço em andamento.'; END IF;
-   IF EXISTS(SELECT 1 FROM horacerta.entries WHERE user_id=p_user AND deleted_at IS NULL AND "end" IS NULL) THEN
-     RAISE EXCEPTION 'Finalize a saída do registro em aberto antes de iniciar.';
-   END IF;
-   IF EXISTS(SELECT 1 FROM horacerta.entries WHERE user_id=p_user AND deleted_at IS NULL AND date=(current_time_value AT TIME ZONE 'America/Sao_Paulo')::date AND "end">(current_time_value AT TIME ZONE 'America/Sao_Paulo')::time) THEN
-     RAISE EXCEPTION 'Há horários lançados após o momento atual. Revise os registros.';
-   END IF;
-   INSERT INTO horacerta.timers(user_id,started_at,rate,rules) VALUES(p_user,current_time_value,u.hourly_rate,current_rules);
-   RETURN jsonb_build_object('ok',true,'action','start');
- END IF;
  IF t.user_id IS NULL THEN RAISE EXCEPTION 'Não há serviço em andamento.'; END IF;
  IF p_action='pause' THEN
    IF t.paused_at IS NOT NULL THEN RAISE EXCEPTION 'O serviço já está pausado.'; END IF;
@@ -63,8 +55,8 @@ BEGIN
    IF EXISTS(SELECT 1 FROM horacerta.entries WHERE user_id=p_user AND date=day_value AND deleted_at IS NULL AND start<end_value AND coalesce("end",'24:00'::time)>(segment_start AT TIME ZONE 'America/Sao_Paulo')::time) THEN
      RAISE EXCEPTION 'Há um registro sobreposto. Revise os horários antes de encerrar.';
    END IF;
-   INSERT INTO horacerta.entries(user_id,client_id,date,start,"end",break_minutes,service,status,rate,rules)
-   VALUES(p_user,NULL,day_value,(segment_start AT TIME ZONE 'America/Sao_Paulo')::time,end_value,break_value,'Serviço técnico',CASE WHEN (current_rules->>'approval_required')::boolean THEN 'Pendente' ELSE 'Aprovado' END,t.rate,t.rules)
+   INSERT INTO horacerta.entries(user_id,client_id,date,start,"end",break_minutes,company,service,notes,status,rate,rules)
+   VALUES(p_user,NULL,day_value,(segment_start AT TIME ZONE 'America/Sao_Paulo')::time,end_value,break_value,coalesce(nullif(trim(t.company),''),'Empresa não informada'),coalesce(nullif(trim(t.service),''),'Serviço técnico'),coalesce(t.notes,''),CASE WHEN (current_rules->>'approval_required')::boolean THEN 'Pendente' ELSE 'Aprovado' END,t.rate,t.rules)
    RETURNING id INTO entry_id;
    INSERT INTO horacerta.audit(actor_id,entry_id,action,after_value)
      SELECT p_user,id,'clock',to_jsonb(e) FROM horacerta.entries e WHERE id=entry_id;

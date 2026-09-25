@@ -24,7 +24,7 @@ export async function GET(req: Request) {
           ? sql`SELECT id,name,access_code,username,email,role,job,phone,hourly_rate,active,can_edit,pin_change_required,pin_change_prompted FROM horacerta.users ORDER BY role,name,access_code`
           : Promise.resolve([me]),
         Promise.resolve([]),
-        sql`SELECT id,user_id,client_id,date::text,start::text,"end"::text,break_minutes,service,service_type,notes,holiday,status,rate,rules,version FROM horacerta.entries WHERE deleted_at IS NULL AND (date BETWEEN ${from}::date AND ${to}::date OR "end" IS NULL) AND (${me.role === "coordinator"} OR user_id=${me.id}::uuid) ORDER BY date DESC,start DESC`,
+        sql`SELECT id,user_id,client_id,date::text,start::text,"end"::text,break_minutes,company,service,service_type,notes,holiday,status,rate,rules,version FROM horacerta.entries WHERE deleted_at IS NULL AND (date BETWEEN ${from}::date AND ${to}::date OR "end" IS NULL) AND (${me.role === "coordinator"} OR user_id=${me.id}::uuid) ORDER BY date DESC,start DESC`,
         sql`SELECT rules FROM horacerta.settings WHERE id=1`,
         sql`SELECT * FROM horacerta.timers WHERE user_id=${me.id}`,
         me.role === "coordinator"

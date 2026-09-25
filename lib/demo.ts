@@ -60,6 +60,7 @@ export function demoState(): State {
         start: "08:00",
         end: 17 + ((d + i) % 4) + ":" + ((d + i) % 2 ? "30" : "00"),
         break_minutes: 60,
+        company: clients[(d + i) % 4].name,
         service: [
           "Manutenção preventiva de equipamentos",
           "Instalação e testes de sensores",

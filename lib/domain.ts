@@ -42,6 +42,7 @@ export type Entry = {
   start: string;
   end: string | null;
   break_minutes: number;
+  company: string;
   service: string;
   service_type: string;
   notes: string;
@@ -76,6 +77,9 @@ export type State = {
     started_at: string;
     paused_at: string | null;
     pauses: { start: string; end: string }[];
+    company: string;
+    service: string;
+    notes: string;
     rate: number;
     rules: Rules;
   } | null;

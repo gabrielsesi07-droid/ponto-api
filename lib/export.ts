@@ -1,5 +1,5 @@
 import type { Calculated, State } from "./domain";
-import { duration, money } from "./domain";
+import { duration } from "./domain";
 export async function exportReport(
   format: "csv" | "xlsx" | "pdf",
   rows: Calculated[],
@@ -9,6 +9,8 @@ export async function exportReport(
   const headers = [
     "Data",
     "Colaborador",
+    "Empresa atendida",
+    "Serviço",
     "Entrada",
     "Saída",
     "Intervalo min",
@@ -22,6 +24,8 @@ export async function exportReport(
   const data = rows.map((e) => [
     e.date,
     state.users.find((u) => u.id === e.user_id)?.name || "",
+    e.company || "Não informada",
+    e.service || "Serviço técnico",
     e.start.slice(0, 5),
     e.end?.slice(0, 5) || "Em aberto",
     e.break_minutes,
@@ -70,10 +74,10 @@ export async function exportReport(
       fgColor: { argb: "FF142B42" },
     };
     sheet.columns.forEach(
-      (c, i) => (c.width = i === 1 ? 28 : 18),
+      (c, i) => (c.width = [1, 2, 3].includes(i) ? 28 : 18),
     );
     sheet.views = [{ state: "frozen", ySplit: 1 }];
-    sheet.autoFilter = { from: "A1", to: "K1" };
+    sheet.autoFilter = { from: "A1", to: "M1" };
     download(
       new Blob([(await book.xlsx.writeBuffer()) as ArrayBuffer], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

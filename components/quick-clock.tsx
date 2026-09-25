@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, type FormEvent } from "react";
 import {
   Play,
   Pause,
@@ -9,10 +9,18 @@ import {
   Wallet,
   ArrowRight,
   Pencil,
-  CheckCircle2,
   LoaderCircle,
+  Building2,
+  ClipboardList,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { api } from "./editors";
 import {
@@ -23,6 +31,39 @@ import {
   money,
   type State,
 } from "@/lib/domain";
+
+type StartForm = {
+  date: string;
+  time: string;
+  company: string;
+  service: string;
+  notes: string;
+};
+
+function startDefaults(company = ""): StartForm {
+  return {
+    date: today(),
+    time: new Intl.DateTimeFormat("en-GB", {
+      timeZone: "America/Sao_Paulo",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).format(new Date()),
+    company,
+    service: "Serviço técnico",
+    notes: "",
+  };
+}
+
+function earliestStartDate() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(Date.now() - 7 * 24 * 60 * 60_000));
+}
+
 export function QuickClock({
   state,
   demo,
@@ -40,7 +81,9 @@ export function QuickClock({
 }) {
   const [now, setNow] = useState(Date.now()),
     [busy, setBusy] = useState(false),
-    [demoTimer, setDemoTimer] = useState<State["timer"]>(null);
+    [demoTimer, setDemoTimer] = useState<State["timer"]>(null),
+    [startOpen, setStartOpen] = useState(false),
+    [startForm, setStartForm] = useState<StartForm>(() => startDefaults());
   const timer = demo ? demoTimer : state.timer,
     paused = !!timer?.paused_at;
   useEffect(() => {
@@ -97,17 +140,33 @@ export function QuickClock({
     ]
       .map((n) => String(n).padStart(2, "0"))
       .join(":");
-  async function action(action: "start" | "pause" | "resume" | "stop") {
+  function openStart() {
+    let company = "";
+    try {
+      company = localStorage.getItem("horacerta:last-company:v1") || "";
+    } catch {}
+    setStartForm(startDefaults(company));
+    setStartOpen(true);
+  }
+  async function action(
+    action: "start" | "pause" | "resume" | "stop",
+    details?: StartForm,
+  ) {
     setBusy(true);
     try {
       if (demo) {
-        const at = new Date().toISOString();
+        const at = details
+          ? new Date(`${details.date}T${details.time}:00-03:00`).toISOString()
+          : new Date().toISOString();
         if (action === "start")
           setDemoTimer({
             user_id: state.me.id,
             started_at: at,
             paused_at: null,
             pauses: [],
+            company: details?.company || "Empresa de demonstração",
+            service: details?.service || "Serviço técnico",
+            notes: details?.notes || "",
             rate: state.me.hourly_rate,
             rules: state.settings,
           });
@@ -130,7 +189,18 @@ export function QuickClock({
             : "Demonstração: marcação simulada.",
         );
       } else {
-        await api("/api/clock", { action });
+        await api(
+          "/api/clock",
+          action === "start" && details
+            ? {
+                action,
+                started_at: `${details.date}T${details.time}`,
+                company: details.company,
+                service: details.service,
+                notes: details.notes,
+              }
+            : { action },
+        );
         await onChanged();
         toast.success(
           {
@@ -141,11 +211,24 @@ export function QuickClock({
           }[action],
         );
       }
+      return true;
     } catch (e) {
       toast.error((e as Error).message);
+      return false;
     } finally {
       setBusy(false);
     }
+  }
+  async function submitStart(ev: FormEvent) {
+    ev.preventDefault();
+    if (!(await action("start", startForm))) return;
+    try {
+      localStorage.setItem(
+        "horacerta:last-company:v1",
+        startForm.company.trim(),
+      );
+    } catch {}
+    setStartOpen(false);
   }
   return (
     <div className="max-w-4xl mx-auto">
@@ -190,12 +273,30 @@ export function QuickClock({
             ? "Tempo líquido deste serviço"
             : "Pronto para começar seu próximo serviço?"}
         </p>
+        {timer && (
+          <div className="mx-auto mt-5 grid max-w-xl gap-2 rounded-xl border bg-slate-50 px-4 py-3 text-left text-sm sm:grid-cols-2">
+            <span className="flex items-center gap-2">
+              <Building2 size={16} className="text-blue-600" />
+              <span>
+                <span className="muted block text-xs">EMPRESA</span>
+                <b>{timer.company || "Não informada"}</b>
+              </span>
+            </span>
+            <span className="flex items-center gap-2">
+              <ClipboardList size={16} className="text-blue-600" />
+              <span>
+                <span className="muted block text-xs">SERVIÇO</span>
+                <b>{timer.service || "Serviço técnico"}</b>
+              </span>
+            </span>
+          </div>
+        )}
         <div className="flex flex-wrap justify-center gap-3 mt-8">
           {!timer ? (
             <Button
               disabled={busy}
               className="min-h-16! px-9 text-lg rounded-xl"
-              onClick={() => void action("start")}
+              onClick={openStart}
             >
               {busy ? (
                 <LoaderCircle className="animate-spin" />
@@ -227,8 +328,8 @@ export function QuickClock({
           )}
         </div>
         <p className="muted text-xs mt-5">
-          Horário registrado automaticamente. Sem formulário e sem seleção de
-          pessoa.
+          A pessoa é identificada pelo login. Data e hora vêm preenchidas e
+          podem ser ajustadas antes de iniciar.
         </p>
         {timer && !demo && (
           <p className="muted text-xs mt-3">
@@ -292,6 +393,106 @@ export function QuickClock({
         <br />
         Continue usando o ponto da empresa no dia a dia.
       </p>
+      <Dialog
+        open={startOpen}
+        onOpenChange={(open) => !busy && setStartOpen(open)}
+      >
+        <DialogContent className="max-h-[90svh] overflow-y-auto bg-white sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Iniciar serviço</DialogTitle>
+            <DialogDescription>
+              Confira os dados do atendimento. A data e o horário de Brasília
+              já estão preenchidos; altere somente se precisar.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={submitStart} className="form-grid mt-2">
+            <label>
+              Data
+              <input
+                type="date"
+                required
+                min={earliestStartDate()}
+                max={today()}
+                value={startForm.date}
+                onChange={(e) =>
+                  setStartForm((form) => ({ ...form, date: e.target.value }))
+                }
+              />
+            </label>
+            <label>
+              Hora de início
+              <input
+                type="time"
+                required
+                value={startForm.time}
+                onChange={(e) =>
+                  setStartForm((form) => ({ ...form, time: e.target.value }))
+                }
+              />
+            </label>
+            <label className="full">
+              Empresa atendida
+              <input
+                autoFocus
+                required
+                minLength={2}
+                maxLength={160}
+                placeholder="Ex.: Empresa Nova Era"
+                value={startForm.company}
+                onChange={(e) =>
+                  setStartForm((form) => ({
+                    ...form,
+                    company: e.target.value,
+                  }))
+                }
+              />
+              <span className="muted mt-1 block text-xs">
+                Na próxima vez, a última empresa usada aparecerá preenchida.
+              </span>
+            </label>
+            <label className="full">
+              Serviço a realizar
+              <input
+                required
+                minLength={2}
+                maxLength={500}
+                value={startForm.service}
+                onChange={(e) =>
+                  setStartForm((form) => ({
+                    ...form,
+                    service: e.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label className="full">
+              Observação (opcional)
+              <textarea
+                maxLength={2000}
+                placeholder="Detalhes importantes do atendimento"
+                value={startForm.notes}
+                onChange={(e) =>
+                  setStartForm((form) => ({ ...form, notes: e.target.value }))
+                }
+              />
+            </label>
+            <div className="full flex justify-end gap-3 border-t pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() => setStartOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={busy}>
+                {busy ? <LoaderCircle className="animate-spin" /> : <Play />}
+                Iniciar agora
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

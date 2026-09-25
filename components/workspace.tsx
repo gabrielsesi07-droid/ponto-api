@@ -362,7 +362,13 @@ export function Workspace() {
             (status === "all" || e.status === status) &&
             (day === "all" || e.kind === day) &&
             (!search ||
-              [e.date, e.date.split("-").reverse().join("/"), e.notes]
+              [
+                e.date,
+                e.date.split("-").reverse().join("/"),
+                e.company,
+                e.service,
+                e.notes,
+              ]
                 .join(" ")
                 .toLowerCase()
                 .includes(search.toLowerCase())),
@@ -793,7 +799,7 @@ export function Workspace() {
                       <label className="flex-1 min-w-44">
                         Buscar marcação
                         <input
-                          placeholder="Buscar por data ou observação"
+                          placeholder="Buscar por data, empresa ou serviço"
                           value={search}
                           onChange={(e) => setSearch(e.target.value)}
                         />
@@ -930,15 +936,20 @@ export function Workspace() {
                   <section className="panel p-6">
                     <div className="flex flex-wrap gap-4 items-start justify-between">
                       <div>
-                        <h2>Relatório do período</h2>
+                        <h2>
+                          {admin
+                            ? "Relatório do período"
+                            : "Meu relatório mensal"}
+                        </h2>
                         <p className="muted text-sm mt-2">
                           {range.from.split("-").reverse().join("/")} a{" "}
                           {range.to.split("-").reverse().join("/")} ·{" "}
                           {rows.length} serviços
                         </p>
                         <p className="muted text-sm mt-1">
-                          Exportações respeitam os filtros e as permissões de
-                          acesso.
+                          {admin
+                            ? "Exportações respeitam os filtros e as permissões de acesso."
+                            : "Aqui aparecem somente os seus pontos. Baixe em PDF, Excel ou CSV."}
                         </p>
                       </div>
                       <div className="flex gap-2 flex-wrap">
@@ -957,21 +968,41 @@ export function Workspace() {
                       </div>
                     </div>
                     <div className="mt-7">
-                      <Tabs defaultValue="people">
-                        <TabsList className="h-auto flex-wrap">
-                          <TabsTrigger className="action" value="people">
-                            Por colaborador
-                          </TabsTrigger>
-                          <TabsTrigger className="action" value="finance">
-                            Financeiro
-                          </TabsTrigger>
-                        </TabsList>
-                        {(["people", "finance"] as const).map((mode) => (
-                          <TabsContent key={mode} value={mode}>
-                            <ReportGroups rows={rows} data={data} mode={mode} />
-                          </TabsContent>
-                        ))}
-                      </Tabs>
+                      {admin ? (
+                        <Tabs defaultValue="people">
+                          <TabsList className="h-auto flex-wrap">
+                            <TabsTrigger className="action" value="people">
+                              Por colaborador
+                            </TabsTrigger>
+                            <TabsTrigger className="action" value="finance">
+                              Financeiro
+                            </TabsTrigger>
+                          </TabsList>
+                          {(["people", "finance"] as const).map((mode) => (
+                            <TabsContent key={mode} value={mode}>
+                              <ReportGroups
+                                rows={rows}
+                                data={data}
+                                mode={mode}
+                              />
+                            </TabsContent>
+                          ))}
+                        </Tabs>
+                      ) : (
+                        <div className="overflow-hidden rounded-xl border">
+                          <EntriesTable
+                            rows={rows}
+                            state={data}
+                            onEdit={(entry) =>
+                              setEditor({ kind: "entry", data: entry })
+                            }
+                            onDelete={setDeleting}
+                            onStatus={updateStatus}
+                            compact
+                            busy={busy}
+                          />
+                        </div>
+                      )}
                     </div>
                   </section>
                 </>
@@ -1152,6 +1183,7 @@ export function Workspace() {
             { key: "register", label: "Ponto", Icon: Timer },
             { key: "insights", label: "Resumo", Icon: FileBarChart2 },
             { key: "entries", label: "Histórico", Icon: ListChecks },
+            { key: "reports", label: "Relatório", Icon: Download },
             { key: "profile", label: "Meu acesso", Icon: UserRound },
           ].map(({ key, label, Icon }) => (
             <button

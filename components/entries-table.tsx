@@ -124,6 +124,10 @@ export function EntriesTable({
             <p className="text-sm muted mt-2">
               {time(e.start)} — {time(e.end)} · {e.break_minutes} min de pausa
             </p>
+            <p className="mt-2 text-sm">
+              <b>{e.company || "Empresa não informada"}</b>
+              <span className="muted"> · {e.service}</span>
+            </p>
             <div className="grid grid-cols-2 gap-3 my-4">
               <div>
                 <span className="muted text-xs">TRABALHADAS</span>
@@ -153,6 +157,7 @@ export function EntriesTable({
                 "Data",
                 ...(admin ? ["Colaborador"] : []),
                 "Entrada · saída",
+                "Empresa · serviço",
                 ...(!compact ? ["Intervalo", "Tipo"] : []),
                 "Trabalhadas",
                 "Extras",
@@ -187,6 +192,12 @@ export function EntriesTable({
                     <span className="muted px-1">—</span>
                     <span className={!e.end ? "text-amber-700" : ""}>
                       {time(e.end)}
+                    </span>
+                  </TableCell>
+                  <TableCell className="min-w-52">
+                    <b className="block">{e.company || "Não informada"}</b>
+                    <span className="muted block max-w-64 truncate text-xs">
+                      {e.service}
                     </span>
                   </TableCell>
                   {!compact && (

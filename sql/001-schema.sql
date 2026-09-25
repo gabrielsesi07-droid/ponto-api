@@ -19,9 +19,9 @@ CREATE TABLE IF NOT EXISTS horacerta.clients (
 );
 CREATE TABLE IF NOT EXISTS horacerta.entries (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL REFERENCES horacerta.users(id),
- client_id uuid NOT NULL REFERENCES horacerta.clients(id), date date NOT NULL, start time NOT NULL, "end" time,
+ client_id uuid REFERENCES horacerta.clients(id), date date NOT NULL, start time NOT NULL, "end" time,
  break_minutes integer NOT NULL DEFAULT 0 CHECK(break_minutes>=0 AND break_minutes<1440),
- service text NOT NULL, service_type text NOT NULL DEFAULT '', notes text NOT NULL DEFAULT '', holiday boolean NOT NULL DEFAULT false,
+ company text NOT NULL DEFAULT '', service text NOT NULL, service_type text NOT NULL DEFAULT '', notes text NOT NULL DEFAULT '', holiday boolean NOT NULL DEFAULT false,
  status text NOT NULL CHECK(status IN ('Pendente','Aprovado','Revisado')), rate numeric(12,2) NOT NULL CHECK(rate>=0), rules jsonb NOT NULL,
  version integer NOT NULL DEFAULT 1, deleted_at timestamptz, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
  CHECK("end" IS NULL OR ("end">start AND extract(epoch from ("end"-start))/60>break_minutes))

@@ -224,6 +224,7 @@ try {
     start: "08:00",
     end: "19:00",
     break_minutes: 60,
+    company: "Empresa de Teste",
     service: "Teste temporário de jornada",
     service_type: "QA",
     notes: tag,
@@ -404,13 +405,31 @@ try {
     "novo ponto vinculado somente ao próprio login",
   );
 
+  const startedAt = new Intl.DateTimeFormat("sv-SE", {
+      timeZone: "America/Sao_Paulo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    })
+      .format(new Date())
+      .replace(" ", "T"),
+    clockStart = {
+      action: "start",
+      started_at: startedAt,
+      company: "Cliente do relógio",
+      service: "Inspeção dos equipamentos",
+      notes: "Formulário automático",
+    };
   check(
-    (await call("/api/clock", { action: "start" }, other)).status,
+    (await call("/api/clock", clockStart, other)).status,
     200,
-    "serviço iniciado sem formulário",
+    "serviço iniciado com formulário preenchido",
   );
   check(
-    (await call("/api/clock", { action: "start" }, other)).status,
+    (await call("/api/clock", clockStart, other)).status,
     409,
     "serviço duplicado bloqueado",
   );
@@ -450,13 +469,44 @@ try {
     200,
     "encerramento salva ponto de curta duração",
   );
+  const clockEntry =
+    await sql`SELECT company,service,notes FROM horacerta.entries WHERE user_id=${other} ORDER BY created_at DESC LIMIT 1`;
+  check(
+    clockEntry[0].company,
+    clockStart.company,
+    "empresa do serviço persistida",
+  );
+  check(
+    clockEntry[0].service,
+    clockStart.service,
+    "descrição do serviço persistida",
+  );
   check(
     (await call("/api/clock", { action: "stop" }, other)).status,
     409,
     "encerramento duplicado bloqueado",
   );
   check(
-    (await call("/api/clock", { action: "start" }, other)).status,
+    (
+      await call(
+        "/api/clock",
+        {
+          ...clockStart,
+          started_at: new Intl.DateTimeFormat("sv-SE", {
+            timeZone: "America/Sao_Paulo",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            hourCycle: "h23",
+          })
+            .format(new Date())
+            .replace(" ", "T"),
+        },
+        other,
+      )
+    ).status,
     200,
     "novo serviço após encerrar",
   );

@@ -20,6 +20,7 @@ const schema = z.object({
     .regex(/^(?:([01]\d|2[0-3]):[0-5]\d|24:00)$/)
     .nullable(),
   break_minutes: z.coerce.number().int().min(0).max(1439),
+  company: z.string().trim().min(2).max(160),
   service: z
     .string()
     .trim()
@@ -99,11 +100,11 @@ export async function POST(req: Request) {
       status = settings.approval_required || !p.end ? "Pendente" : "Aprovado",
       id = p.id || crypto.randomUUID();
     const mutation = sql`WITH changed AS (
- INSERT INTO horacerta.entries AS current(id,user_id,client_id,date,start,"end",break_minutes,service,service_type,notes,holiday,status,rate,rules)
- SELECT ${id}::uuid,${p.user_id}::uuid,${p.client_id}::uuid,${p.date}::date,${p.start}::time,${p.end}::time,${p.break_minutes},${p.service},${p.service_type},${p.notes},${p.holiday},${status},${rate},${JSON.stringify(rules)}::jsonb
+ INSERT INTO horacerta.entries AS current(id,user_id,client_id,date,start,"end",break_minutes,company,service,service_type,notes,holiday,status,rate,rules)
+ SELECT ${id}::uuid,${p.user_id}::uuid,${p.client_id}::uuid,${p.date}::date,${p.start}::time,${p.end}::time,${p.break_minutes},${p.company},${p.service},${p.service_type},${p.notes},${p.holiday},${status},${rate},${JSON.stringify(rules)}::jsonb
  WHERE NOT EXISTS(SELECT 1 FROM horacerta.entries e WHERE e.user_id=${p.user_id}::uuid AND e.date=${p.date}::date AND e.deleted_at IS NULL AND e.id<>${id}::uuid AND e.start<coalesce(${p.end}::time,'24:00'::time) AND coalesce(e."end",'24:00'::time)>${p.start}::time)
  AND NOT EXISTS(SELECT 1 FROM horacerta.timers t WHERE t.user_id=${p.user_id}::uuid AND (t.started_at AT TIME ZONE 'America/Sao_Paulo')<(${p.date}::date+coalesce(${p.end}::time,'24:00'::time)))
- ON CONFLICT(id) DO UPDATE SET client_id=excluded.client_id,date=excluded.date,start=excluded.start,"end"=excluded."end",break_minutes=excluded.break_minutes,service=excluded.service,service_type=excluded.service_type,notes=excluded.notes,holiday=excluded.holiday,status=excluded.status,version=current.version+1,updated_at=now()
+ ON CONFLICT(id) DO UPDATE SET client_id=excluded.client_id,date=excluded.date,start=excluded.start,"end"=excluded."end",break_minutes=excluded.break_minutes,company=excluded.company,service=excluded.service,service_type=excluded.service_type,notes=excluded.notes,holiday=excluded.holiday,status=excluded.status,version=current.version+1,updated_at=now()
  WHERE current.version=${p.version ?? 0} AND current.deleted_at IS NULL
  RETURNING * ) INSERT INTO horacerta.audit(actor_id,entry_id,action,before_value,after_value) SELECT ${me.id}::uuid,id,${old ? "edit" : "create"},${old ? JSON.stringify(old) : null}::jsonb,to_jsonb(changed) FROM changed RETURNING entry_id`;
     const result = await sql.transaction([

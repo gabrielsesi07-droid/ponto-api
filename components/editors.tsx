@@ -67,6 +67,8 @@ export function EditDialog({
           start: e?.start.slice(0, 5) || "08:00",
           end: e?.end?.slice(0, 5) || "",
           break_minutes: e?.break_minutes ?? 0,
+          company: e?.company || "",
+          service: e?.service || "Serviço técnico",
           notes: e?.notes || "",
           holiday: e?.holiday || false,
         }
@@ -120,7 +122,6 @@ export function EditDialog({
           ...form,
           user_id: e?.user_id || state.me.id,
           client_id: e?.client_id || null,
-          service: e?.service || "Serviço técnico",
           service_type: e?.service_type || "",
           end: form.end || null,
           break_minutes: Number(form.break_minutes),
@@ -200,6 +201,19 @@ export function EditDialog({
                 pattern: "([01][0-9]|2[0-3]):[0-5][0-9]|24:00",
                 maxLength: 5,
               })}
+              <div className="full">
+                {input("company", "Empresa atendida", "text", true, {
+                  minLength: 2,
+                  maxLength: 160,
+                  placeholder: "Ex.: Empresa Nova Era",
+                })}
+              </div>
+              <div className="full">
+                {input("service", "Serviço realizado", "text", true, {
+                  minLength: 2,
+                  maxLength: 500,
+                })}
+              </div>
               <label className="full flex-row! justify-between items-center">
                 Foi feriado?
                 <Switch
