@@ -11,16 +11,21 @@ const sql = neon(process.env.DATABASE_URL),
 const email = (id) => "qa-" + id + "@example.invalid";
 let passed = 0;
 const cookies = new Map();
-const username = id => "qa_" + id.slice(0,8);
+const username = (id) => "qa_" + id.slice(0, 8);
 async function call(path, body, user = admin, method = "POST") {
-  const headers = user && cookies.has(user) ? {cookie:cookies.get(user)} : {};
+  const headers =
+    user && cookies.has(user) ? { cookie: cookies.get(user) } : {};
   if (body) headers["Content-Type"] = "application/json";
   const r = await fetch(base + path, {
     method: body ? method : "GET",
     headers,
     body: body ? JSON.stringify(body) : undefined,
   });
-  return { status: r.status, data: await r.json(), cookie:r.headers.get("set-cookie")?.split(";")[0] };
+  return {
+    status: r.status,
+    data: await r.json(),
+    cookie: r.headers.get("set-cookie")?.split(";")[0],
+  };
 }
 const check = (actual, expected, label) => {
   assert.equal(actual, expected, label);
@@ -37,15 +42,102 @@ try {
     sql`INSERT INTO horacerta.users(id,subject,name,email,role,hourly_rate) VALUES(${admin},${"qa-" + admin},'QA Coordenador',${email(admin)},'coordinator',30),(${worker},${"qa-" + worker},'QA Colaborador',${email(worker)},'employee',30),(${other},${"qa-" + other},'QA Outro',${email(other)},'employee',30)`,
     sql`INSERT INTO horacerta.clients(id,name) VALUES(${client},${"QA temporário " + tag})`,
   ]);
-  const pinHash=await hashPin("582941");
-  for(const id of [admin,worker,other]) {
+  const pinHash = await hashPin("582941");
+  for (const id of [admin, worker, other]) {
     await sql`UPDATE horacerta.users SET username=${username(id)},pin_hash=${pinHash} WHERE id=${id}`;
-    const login=await call("/api/login",{username:username(id),pin:"582941",remember:true},null);
-    check(login.status,200,"login individual "+(id===admin?"coordenador":"colaborador"));
+    const login = await call(
+      "/api/login",
+      { username: username(id), pin: "582941", remember: true },
+      null,
+    );
+    check(
+      login.status,
+      200,
+      "login individual " + (id === admin ? "coordenador" : "colaborador"),
+    );
     assert.ok(login.cookie?.startsWith("hc_session="));
-    cookies.set(id,login.cookie);
+    cookies.set(id, login.cookie);
   }
-  check((await call("/api/login",{username:username(worker),pin:"000000"},null)).status,401,"PIN incorreto rejeitado");
+  check(
+    (
+      await call(
+        "/api/login",
+        { username: username(worker), pin: "000000" },
+        null,
+      )
+    ).status,
+    401,
+    "PIN incorreto rejeitado",
+  );
+  const extraPrefix = "qa_more_" + tag.slice(0, 8);
+  for (let i = 1; i <= 3; i++) {
+    check(
+      (
+        await call(
+          "/api/manage",
+          {
+            entity: "user",
+            data: {
+              name: "QA Novo " + i,
+              username: extraPrefix + "_" + i,
+              pin: "314159",
+              job: "Técnico",
+              phone: "",
+              active: true,
+              can_edit: true,
+            },
+          },
+          admin,
+        )
+      ).status,
+      200,
+      "coordenador adiciona colaborador " + i,
+    );
+  }
+  const expanded =
+    await sql`SELECT count(*)::int n FROM horacerta.users WHERE username LIKE ${extraPrefix + "%"}`;
+  check(expanded[0].n, 3, "equipe pode ultrapassar quatro pessoas");
+  check(
+    (
+      await call(
+        "/api/manage",
+        {
+          entity: "user",
+          data: {
+            id: worker,
+            name: "QA Colaborador",
+            username: username(worker),
+            pin: "271828",
+            job: "Técnico",
+            phone: "",
+            active: true,
+            can_edit: true,
+          },
+        },
+        admin,
+      )
+    ).status,
+    200,
+    "coordenador troca PIN do colaborador",
+  );
+  check(
+    (
+      await call(
+        "/api/login",
+        { username: username(worker), pin: "582941", remember: true },
+        null,
+      )
+    ).status,
+    401,
+    "PIN anterior deixa de funcionar",
+  );
+  const relogin = await call(
+    "/api/login",
+    { username: username(worker), pin: "271828", remember: true },
+    null,
+  );
+  check(relogin.status, 200, "novo PIN permite acesso");
+  cookies.set(worker, relogin.cookie);
   const draft = {
     user_id: worker,
     client_id: client,
@@ -185,38 +277,131 @@ try {
     "exclusão lógica com auditoria",
   );
 
-  const profile={entity:"profile",data:{name:"QA Colaborador",hourly_rate:47.5,job:"Técnico",phone:""}};
-  check((await call("/api/manage",profile,worker)).status,200,"colaborador configura sua própria hora");
-  const profileState=await call("/api/state?from=2026-09-01&to=2026-09-30",null,worker);
-  check(Number(profileState.data.me.hourly_rate),47.5,"valor-hora individual persistido");
-  const oldRate=await sql`SELECT rate FROM horacerta.entries WHERE id=${open.data.id}`;
-  check(Number(oldRate[0].rate),30,"mudança de hora preserva registros anteriores");
-  check((await call("/api/manage",{entity:"user",data:{id:other,name:"Intruso"}},worker)).status,403,"colaborador não gerencia outra conta");
-  check((await call("/api/entries",draft,admin)).status,403,"novo ponto vinculado somente ao próprio login");
+  const profile = {
+    entity: "profile",
+    data: {
+      name: "QA Colaborador",
+      hourly_rate: 47.5,
+      job: "Técnico",
+      phone: "",
+    },
+  };
+  check(
+    (await call("/api/manage", profile, worker)).status,
+    200,
+    "colaborador configura sua própria hora",
+  );
+  const profileState = await call(
+    "/api/state?from=2026-09-01&to=2026-09-30",
+    null,
+    worker,
+  );
+  check(
+    Number(profileState.data.me.hourly_rate),
+    47.5,
+    "valor-hora individual persistido",
+  );
+  const oldRate =
+    await sql`SELECT rate FROM horacerta.entries WHERE id=${open.data.id}`;
+  check(
+    Number(oldRate[0].rate),
+    30,
+    "mudança de hora preserva registros anteriores",
+  );
+  check(
+    (
+      await call(
+        "/api/manage",
+        { entity: "user", data: { id: other, name: "Intruso" } },
+        worker,
+      )
+    ).status,
+    403,
+    "colaborador não gerencia outra conta",
+  );
+  check(
+    (await call("/api/entries", draft, admin)).status,
+    403,
+    "novo ponto vinculado somente ao próprio login",
+  );
 
-  check((await call("/api/clock",{action:"start"},other)).status,200,"serviço iniciado sem formulário");
-  check((await call("/api/clock",{action:"start"},other)).status,409,"serviço duplicado bloqueado");
-  check((await call("/api/clock",{action:"pause"},other)).status,200,"pausa registrada");
-  const active=await call("/api/state?from=2026-09-01&to=2026-09-30",null,other);
+  check(
+    (await call("/api/clock", { action: "start" }, other)).status,
+    200,
+    "serviço iniciado sem formulário",
+  );
+  check(
+    (await call("/api/clock", { action: "start" }, other)).status,
+    409,
+    "serviço duplicado bloqueado",
+  );
+  check(
+    (await call("/api/clock", { action: "pause" }, other)).status,
+    200,
+    "pausa registrada",
+  );
+  const active = await call(
+    "/api/state?from=2026-09-01&to=2026-09-30",
+    null,
+    other,
+  );
   assert.ok(active.data.timer.paused_at);
-  check(active.data.teamTimers.length,0,"colaborador não recebe relógios da equipe");
-  const overview=await call("/api/state?from=2026-09-01&to=2026-09-30",null,admin);
-  check(overview.data.teamTimers.length,1,"coordenador vê quem está em serviço");
-  check((await call("/api/clock",{action:"resume"},other)).status,200,"retomada registrada");
-  check((await call("/api/clock",{action:"stop"},other)).status,200,"encerramento salva ponto de curta duração");
-  check((await call("/api/clock",{action:"stop"},other)).status,409,"encerramento duplicado bloqueado");
-  check((await call("/api/clock",{action:"start"},other)).status,200,"novo serviço após encerrar");
+  check(
+    active.data.teamTimers.length,
+    0,
+    "colaborador não recebe relógios da equipe",
+  );
+  const overview = await call(
+    "/api/state?from=2026-09-01&to=2026-09-30",
+    null,
+    admin,
+  );
+  check(
+    overview.data.teamTimers.length,
+    1,
+    "coordenador vê quem está em serviço",
+  );
+  check(
+    (await call("/api/clock", { action: "resume" }, other)).status,
+    200,
+    "retomada registrada",
+  );
+  check(
+    (await call("/api/clock", { action: "stop" }, other)).status,
+    200,
+    "encerramento salva ponto de curta duração",
+  );
+  check(
+    (await call("/api/clock", { action: "stop" }, other)).status,
+    409,
+    "encerramento duplicado bloqueado",
+  );
+  check(
+    (await call("/api/clock", { action: "start" }, other)).status,
+    200,
+    "novo serviço após encerrar",
+  );
   // Shift only the disposable fixture across midnight; preserve real user data.
   await sql`DELETE FROM horacerta.audit WHERE actor_id=${other}`;
   await sql`DELETE FROM horacerta.entries WHERE user_id=${other}`;
   await sql`UPDATE horacerta.timers SET started_at=((now() AT TIME ZONE 'America/Sao_Paulo')::date-1+time '23:00') AT TIME ZONE 'America/Sao_Paulo',pauses='[]',paused_at=NULL WHERE user_id=${other}`;
-  check((await call("/api/clock",{action:"stop"},other)).status,200,"serviço atravessa meia-noite");
-  const split=await sql`SELECT date::text,start::text,"end"::text FROM horacerta.entries WHERE user_id=${other} ORDER BY date`;
-  check(split.length,2,"virada separada por data");
-  check(split[0].end,"24:00:00","primeiro dia encerra à meia-noite");
-  const invalidated=await call("/api/login",{},worker,"DELETE");
-  check(invalidated.status,200,"saída encerra sessão");
-  check((await call("/api/state?from=2026-09-01&to=2026-09-30",null,worker)).status,403,"sessão encerrada não pode ser reutilizada");
+  check(
+    (await call("/api/clock", { action: "stop" }, other)).status,
+    200,
+    "serviço atravessa meia-noite",
+  );
+  const split =
+    await sql`SELECT date::text,start::text,"end"::text FROM horacerta.entries WHERE user_id=${other} ORDER BY date`;
+  check(split.length, 2, "virada separada por data");
+  check(split[0].end, "24:00:00", "primeiro dia encerra à meia-noite");
+  const invalidated = await call("/api/login", {}, worker, "DELETE");
+  check(invalidated.status, 200, "saída encerra sessão");
+  check(
+    (await call("/api/state?from=2026-09-01&to=2026-09-30", null, worker))
+      .status,
+    403,
+    "sessão encerrada não pode ser reutilizada",
+  );
   const audit =
     await sql`SELECT count(*)::int n FROM horacerta.audit WHERE actor_id IN (${admin},${worker},${other})`;
   assert.ok(audit[0].n >= 4);
@@ -225,6 +410,8 @@ try {
   console.log(passed + " verificações de API concluídas.");
 } finally {
   await sql.transaction([
+    sql`DELETE FROM horacerta.sessions WHERE user_id IN (SELECT id FROM horacerta.users WHERE username LIKE ${"qa_more_" + tag.slice(0, 8) + "%"})`,
+    sql`DELETE FROM horacerta.users WHERE username LIKE ${"qa_more_" + tag.slice(0, 8) + "%"}`,
     sql`DELETE FROM horacerta.audit WHERE actor_id IN (${admin},${worker},${other})`,
     sql`DELETE FROM horacerta.entries WHERE user_id IN (${admin},${worker},${other})`,
     sql`DELETE FROM horacerta.clients WHERE id=${client}`,

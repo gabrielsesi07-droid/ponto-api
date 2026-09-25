@@ -162,7 +162,7 @@ export function EditDialog({
               : editor.kind === "profile"
                 ? "Meu acesso e valor-hora"
                 : p
-                  ? "Editar acesso"
+                  ? "Editar acesso e PIN"
                   : "Criar acesso do colaborador"}
           </DialogTitle>
           <DialogDescription>
@@ -170,7 +170,9 @@ export function EditDialog({
               ? "A pessoa é identificada automaticamente pelo login. Use esta tela apenas para correções ou marcações esquecidas."
               : editor.kind === "profile"
                 ? "Seu valor-hora vale para os próximos serviços. As marcações antigas mantêm o valor anterior."
-                : "Cada pessoa entra com seu próprio usuário e PIN. O valor-hora será configurado por ela."}
+                : p
+                  ? "Altere os dados ou defina um novo PIN de 6 números. Ao trocar o PIN, as sessões abertas dessa pessoa serão encerradas."
+                  : "Cada pessoa entra com seu próprio usuário e PIN. O valor-hora será configurado por ela."}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="form-grid mt-2">

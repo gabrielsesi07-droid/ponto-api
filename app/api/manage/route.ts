@@ -64,12 +64,7 @@ export async function POST(req: Request) {
       } else {
         if (!pin)
           throw new ApiError(400, "Defina um PIN inicial de 6 números.");
-        const r = await sql.transaction([
-          sql`SELECT id FROM horacerta.settings WHERE id=1 FOR UPDATE`,
-          sql`INSERT INTO horacerta.users(name,username,email,role,job,phone,hourly_rate,active,can_edit,pin_hash) SELECT ${p.name},${p.username},${p.email},'employee',${p.job},${p.phone},0,${p.active},${p.can_edit},${pin} WHERE (SELECT count(*) FROM horacerta.users)<4 RETURNING id`,
-        ]);
-        if (!r[1].length)
-          throw new ApiError(409, "Limite de quatro pessoas atingido.");
+        await sql`INSERT INTO horacerta.users(name,username,email,role,job,phone,hourly_rate,active,can_edit,pin_hash) VALUES(${p.name},${p.username},${p.email},'employee',${p.job},${p.phone},0,${p.active},${p.can_edit},${pin})`;
       }
     } else if (body.entity === "client") {
       const p = clientSchema.parse(body.data);

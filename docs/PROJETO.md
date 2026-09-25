@@ -2,18 +2,18 @@
 
 ## Objetivo e perfis
 
-Controle de pontos durante serviços técnicos, separado do sistema diário da empresa. Equipe limitada a quatro contas: um coordenador e três colaboradores. Cada pessoa usa seu próprio login e define seu próprio valor-hora. Nomes alternativos considerados: Jornada360 e TempoEquipe.
+Controle de pontos durante serviços técnicos, separado do sistema diário da empresa. Há um coordenador e não existe limite de colaboradores. Cada pessoa usa seu próprio login e define seu próprio valor-hora. Nomes alternativos considerados: Jornada360 e TempoEquipe.
 
-| Área | Colaborador | Coordenador |
-| --- | --- | --- |
-| Meu ponto | Iniciar, pausar, retomar e encerrar o próprio serviço | O mesmo, apenas para si |
-| Meu resumo | Extras por dia, seis meses, calendário e valores pessoais | O próprio resumo, separado da equipe |
-| Histórico | Somente seus pontos; ajustes conforme permissão | Pontos de todos, revisão, aprovação e exclusão lógica |
-| Relatórios | Somente dados pessoais | Consolidação da equipe e filtros por pessoa |
-| Meu acesso | Nome, cargo, telefone, PIN e valor-hora próprios | O mesmo para si |
-| Visão da equipe | Sem acesso | Relógios em serviço/pausa, horas, extras, valores e pendências |
-| Colaboradores | Sem acesso | Criar login/PIN, redefinir acesso, ativar/desativar e permitir ajustes |
-| Configurações | Sem acesso | Jornada, adicionais, retroatividade e aprovação |
+| Área            | Colaborador                                               | Coordenador                                                                             |
+| --------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Meu ponto       | Iniciar, pausar, retomar e encerrar o próprio serviço     | O mesmo, apenas para si                                                                 |
+| Meu resumo      | Extras por dia, seis meses, calendário e valores pessoais | O próprio resumo, separado da equipe                                                    |
+| Histórico       | Somente seus pontos; ajustes conforme permissão           | Pontos de todos, revisão, aprovação e exclusão lógica                                   |
+| Relatórios      | Somente dados pessoais                                    | Consolidação da equipe e filtros por pessoa                                             |
+| Meu acesso      | Nome, cargo, telefone, PIN e valor-hora próprios          | O mesmo para si                                                                         |
+| Visão da equipe | Sem acesso                                                | Relógios em serviço/pausa, horas, extras, valores e pendências                          |
+| Colaboradores   | Sem acesso                                                | Criar quantos logins forem necessários, trocar PIN, ativar/desativar e permitir ajustes |
+| Configurações   | Sem acesso                                                | Jornada, adicionais, retroatividade e aprovação                                         |
 
 Rotas de interface: ?view=register, insights, entries, reports, profile, dashboard, people e settings. A página inicial abre Meu ponto. ?demo=1 apresenta exemplos fictícios claramente identificados e sem gravação.
 
@@ -50,15 +50,15 @@ React 19, TypeScript, Vinext/Vite e Cloudflare Workers; Tailwind, Radix/shadcn, 
 
 app/api contém sessão, login, estado, relógio, cadastros e CRUD de pontos. lib/domain.ts contém cálculos compartilhados; lib/pin.ts protege PINs e tokens; components concentra interface; sql e scripts contêm migrações; tests contém verificações.
 
-| Tabela no esquema horacerta | Finalidade |
-| --- | --- |
-| users | Login único, PIN protegido, nome, papel, valor-hora, ativo e permissão de ajuste |
-| sessions | Hash do token, usuário e expiração |
-| timers | Um serviço ativo por pessoa, início, pausas e valor/regras históricos |
-| entries | Pessoa, data, horários, pausas, feriado, observação, status, versão e valor/regras históricos |
-| settings | Regras compartilhadas para próximos serviços |
-| audit | Ator, ponto, ação e valores anteriores/posteriores |
-| clients | Legado compatível, opcional e fora da interface atual |
+| Tabela no esquema horacerta | Finalidade                                                                                    |
+| --------------------------- | --------------------------------------------------------------------------------------------- |
+| users                       | Login único, PIN protegido, nome, papel, valor-hora, ativo e permissão de ajuste              |
+| sessions                    | Hash do token, usuário e expiração                                                            |
+| timers                      | Um serviço ativo por pessoa, início, pausas e valor/regras históricos                         |
+| entries                     | Pessoa, data, horários, pausas, feriado, observação, status, versão e valor/regras históricos |
+| settings                    | Regras compartilhadas para próximos serviços                                                  |
+| audit                       | Ator, ponto, ação e valores anteriores/posteriores                                            |
+| clients                     | Legado compatível, opcional e fora da interface atual                                         |
 
 ## Segurança e operação
 

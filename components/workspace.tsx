@@ -31,6 +31,7 @@ import {
   AlertCircle,
   RefreshCw,
   Pencil,
+  KeyRound,
   Building2,
   CheckCheck,
   Play,
@@ -326,7 +327,7 @@ export function Workspace() {
   }, []);
   function changeDemo(next: boolean) {
     setDemo(next);
-    setUser('all');
+    setUser("all");
     setData(null);
     setSession(null);
     setError("");
@@ -490,7 +491,9 @@ export function Workspace() {
               Área de trabalho
             </span>
             <ChevronRight size={14} className="muted hidden sm:inline" />
-            <span className="text-sm font-medium hidden min-[400px]:inline">{title}</span>
+            <span className="text-sm font-medium hidden min-[400px]:inline">
+              {title}
+            </span>
           </div>
           <div className="flex items-center gap-3">
             {demo ? (
@@ -511,7 +514,7 @@ export function Workspace() {
                   try {
                     await api("/api/login", {}, "DELETE");
                     setData(null);
-                    setUser('all');
+                    setUser("all");
                     go("register");
                     await reload();
                   } catch (e) {
@@ -619,7 +622,6 @@ export function Workspace() {
                     <Button
                       onClick={() => setEditor({ kind: "user" })}
                       className="action"
-                      disabled={data.users.length >= 4}
                     >
                       <Plus />
                       Adicionar colaborador
@@ -974,8 +976,8 @@ export function Workspace() {
                   <>
                     <div className="flex items-center gap-2 text-sm muted mb-6">
                       <Users size={18} />
-                      {data.users.length} de 4 vagas utilizadas · 1 coordenador
-                      e 3 colaboradores
+                      {data.users.length} pessoas cadastradas · adicione novos
+                      colaboradores quando a equipe crescer
                     </div>
                     <div className="grid lg:grid-cols-2 xl:grid-cols-3 gap-5">
                       {data.users.map((u) => {
@@ -1045,23 +1047,40 @@ export function Workspace() {
                                 </b>
                               </div>
                             </div>
-                            <Button
-                              className="mt-5 w-full action"
-                              variant="outline"
-                              onClick={() => {
-                                setUser(u.id);
-                                go("entries");
-                              }}
-                            >
-                              Ver histórico <ArrowRight size={16} />
-                            </Button>
+                            <div className="grid sm:grid-cols-2 gap-2 mt-5">
+                              <Button
+                                className="action"
+                                variant="outline"
+                                onClick={() => {
+                                  setUser(u.id);
+                                  go("entries");
+                                }}
+                              >
+                                Ver histórico <ArrowRight size={16} />
+                              </Button>
+                              <Button
+                                className="action"
+                                variant="outline"
+                                onClick={() =>
+                                  setEditor(
+                                    u.id === data.me.id
+                                      ? { kind: "profile", data: u }
+                                      : { kind: "user", data: u },
+                                  )
+                                }
+                              >
+                                <KeyRound size={16} /> Trocar PIN
+                              </Button>
+                            </div>
                           </section>
                         );
                       })}
                     </div>
                     <p className="muted text-sm mt-6">
-                      Cadastre um login e PIN inicial para cada colaborador.
-                      Cada pessoa configura o próprio valor-hora em Meu acesso.
+                      Não há limite de colaboradores. Para redefinir um acesso,
+                      use “Trocar PIN” no cartão da pessoa. Ela será
+                      desconectada dos outros aparelhos e entrará novamente com
+                      o novo PIN.
                     </p>
                   </>
                 ) : (

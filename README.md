@@ -1,6 +1,6 @@
 # HoraCerta
 
-Ponto exclusivo dos serviços técnicos de uma equipe de quatro pessoas (um coordenador e três colaboradores). Não substitui o ponto diário da empresa.
+Ponto exclusivo dos serviços técnicos, com um coordenador e quantos colaboradores a empresa precisar. Não substitui o ponto diário da empresa.
 
 ## Primeiro acesso
 
@@ -42,7 +42,7 @@ test:api exige servidor local na porta 5173 e equipe vazia. Recusa-se a executar
 - Marcações manuais para esquecimento, sem escolher colaborador ou local.
 - Valor-hora configurado pelo próprio colaborador, preservando valores de registros anteriores.
 - Resumo pessoal, histórico responsivo, gráficos, calendário e exportações PDF, Excel e CSV.
-- Coordenador: visão da equipe, revisão/aprovação, cadastros, regras e relatórios.
+- Coordenador: equipe sem limite de pessoas, troca de PIN, revisão/aprovação, cadastros, regras e relatórios.
 - Extras após 9h em serviços por dia útil. Sábados +60%, domingos +100%.
 - Adicional útil inicial de 50%, configurável. Não há folha de pagamento, adicional noturno ou homologação como sistema oficial de ponto.
 
