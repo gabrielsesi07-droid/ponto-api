@@ -53,6 +53,7 @@ try {
   );
   check(firstAccess.status, 200, "primeiro coordenador cria o próprio acesso");
   assert.ok(firstAccess.cookie?.startsWith("hc_session="));
+  assert.match(firstAccess.data.person?.access_code || "", /^HC-\d{6}$/);
   const createdAdmin =
     await sql`SELECT id,access_code FROM horacerta.users WHERE username=${adminUsername}`;
   assert.equal(createdAdmin.length, 1);
@@ -95,6 +96,7 @@ try {
       200,
       "login individual do colaborador",
     );
+    assert.equal(login.data.person?.access_code, accessCodes.get(id));
     assert.ok(login.cookie?.startsWith("hc_session="));
     cookies.set(id, login.cookie);
   }
@@ -196,6 +198,7 @@ try {
     null,
   );
   check(relogin.status, 200, "novo PIN permite acesso");
+  assert.equal(relogin.data.person?.access_code, accessCodes.get(worker));
   cookies.set(worker, relogin.cookie);
   const draft = {
     user_id: worker,

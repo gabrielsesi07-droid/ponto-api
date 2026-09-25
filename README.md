@@ -10,7 +10,7 @@ Ponto exclusivo dos serviços técnicos, com um coordenador e quantos colaborado
 4. Em Meu ponto, use Iniciar serviço, Pausar/Retomar e Encerrar serviço.
 5. Em Meu resumo, consulte extras por dia, calendário e comparativo dos últimos seis meses.
 
-A página `/login` apresenta o acesso em duas etapas: busca pelo nome, escolha do cadastro identificado pelo código único e PIN de seis números. O fundo tem animações com opção de pausa e respeita a preferência de movimento reduzido. Quem está desconectado também encontra essa tela na página inicial.
+A página `/login` apresenta o acesso em duas etapas: sugestões automáticas pelo nome, escolha do cadastro identificado pelo código único e PIN de seis números. Depois do primeiro login, o aparelho lembra somente o nome e o código para oferecer “Continuar como”; o PIN nunca é armazenado. Falhas transitórias são repetidas automaticamente e avisos antigos desaparecem quando a conexão volta. O fundo tem animações com opção de pausa e respeita a preferência de movimento reduzido.
 
 O site está público, mas os dados continuam protegidos pelo login individual do aplicativo. Compartilhar o endereço não concede acesso aos pontos sem o código selecionado e o PIN. A prévia local usa o mesmo banco configurado no ambiente — não crie cadastros de teste manualmente durante o uso real.
 

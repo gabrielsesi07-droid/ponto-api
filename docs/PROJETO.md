@@ -15,7 +15,7 @@ Controle de pontos durante serviços técnicos, separado do sistema diário da e
 | Colaboradores   | Sem acesso                                                | Criar quantos acessos forem necessários, consultar códigos, trocar PIN, ativar/desativar e permitir ajustes |
 | Configurações   | Sem acesso                                                | Jornada, adicionais, retroatividade e aprovação                                         |
 
-Rotas de interface: ?view=register, insights, entries, reports, profile, dashboard, people e settings. A página inicial abre Meu ponto para quem já está conectado e o login para quem está desconectado. /login é uma página dedicada: busca o nome no banco, mostra os cadastros correspondentes com códigos únicos e solicita o PIN após a escolha. O fundo tem animação, pausa de efeitos e suporte a movimento reduzido. ?demo=1 apresenta exemplos fictícios claramente identificados e sem gravação.
+Rotas de interface: ?view=register, insights, entries, reports, profile, dashboard, people e settings. A página inicial abre Meu ponto para quem já está conectado e o login para quem está desconectado. /login é uma página dedicada: sugere cadastros após duas letras, identifica cada pessoa pelo código único e solicita o PIN após a escolha. O aparelho pode lembrar apenas nome/código para oferecer “Continuar como”, nunca o PIN. Falhas transitórias de sessão recebem até duas novas tentativas e um sucesso limpa o erro anterior. O fundo tem animação, pausa de efeitos e suporte a movimento reduzido. ?demo=1 apresenta exemplos fictícios claramente identificados e sem gravação.
 
 ## Fluxos e interface
 

@@ -49,14 +49,21 @@ export async function POST(req: Request) {
       pin = await hashPin(p.pin),
       result = await sql.transaction([
         sql`SELECT id FROM horacerta.settings WHERE id=1 FOR UPDATE`,
-        sql`INSERT INTO horacerta.users(name,username,email,role,job,phone,hourly_rate,pin_hash) SELECT ${p.name},${p.username || null},${p.email},'coordinator',${p.job},${p.phone},${p.hourly_rate},${pin} WHERE NOT EXISTS(SELECT 1 FROM horacerta.users) RETURNING id,access_code`,
+        sql`INSERT INTO horacerta.users(name,username,email,role,job,phone,hourly_rate,pin_hash) SELECT ${p.name},${p.username || null},${p.email},'coordinator',${p.job},${p.phone},${p.hourly_rate},${pin} WHERE NOT EXISTS(SELECT 1 FROM horacerta.users) RETURNING id,name,access_code,job`,
       ]);
     if (!result[1].length)
       throw new ApiError(409, "O primeiro acesso já foi configurado.");
     const token = crypto.randomUUID() + crypto.randomUUID();
     await sql`INSERT INTO horacerta.sessions(token_hash,user_id,expires_at) VALUES(${await digest(token)},${result[1][0].id},now()+interval '30 days')`;
     return Response.json(
-      { ok: true },
+      {
+        ok: true,
+        person: {
+          name: result[1][0].name,
+          access_code: result[1][0].access_code,
+          job: result[1][0].job,
+        },
+      },
       { headers: { "Set-Cookie": sessionCookie(token, req) } },
     );
   } catch (e) {

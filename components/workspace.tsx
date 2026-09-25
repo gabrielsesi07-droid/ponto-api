@@ -110,6 +110,21 @@ type Session = {
   me?: Person;
   error?: string;
 };
+async function loadSessionWithRetry() {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await api<Session>("/api/session");
+    } catch (error) {
+      lastError = error;
+      if (attempt < 2)
+        await new Promise((resolve) =>
+          window.setTimeout(resolve, 500 * (attempt + 1)),
+        );
+    }
+  }
+  throw lastError;
+}
 function Navigation({
   view,
   go,
@@ -267,7 +282,7 @@ export function Workspace() {
     setLoading(true);
     setError("");
     try {
-      const s = await api<Session>("/api/session");
+      const s = await loadSessionWithRetry();
       const result = s.me
         ? await api<State>("/api/state?from=" + fetchFrom + "&to=" + fetchTo)
         : null;
@@ -283,6 +298,7 @@ export function Workspace() {
       if (version === requestVersion.current) setLoading(false);
     }
   }, [demo, fetchFrom, fetchTo]);
+  const clearLoginError = useCallback(() => setError(""), []);
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     setDemo(p.get("demo") === "1");
@@ -482,6 +498,7 @@ export function Workspace() {
       <QuickLogin
         setup={!!session?.setup}
         error={error}
+        clearError={clearLoginError}
         loading={loading}
         reload={reload}
         demo={() => changeDemo(true)}

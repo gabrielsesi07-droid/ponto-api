@@ -20,7 +20,7 @@ export function db() {
   if (!url)
     throw new ApiError(
       503,
-      "A conexão com o banco ainda não está configurada.",
+      "Não conseguimos acessar o sistema agora. Tente novamente em instantes.",
     );
   return neon(url);
 }

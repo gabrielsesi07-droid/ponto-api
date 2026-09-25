@@ -36,7 +36,7 @@ export async function POST(req: Request) {
         .parse(await payload(req)),
       sql = db();
     const r =
-      await sql`UPDATE horacerta.users SET login_attempts=CASE WHEN attempt_window IS NULL OR attempt_window<now()-interval '15 minutes' THEN 1 ELSE login_attempts+1 END, attempt_window=CASE WHEN attempt_window IS NULL OR attempt_window<now()-interval '15 minutes' THEN now() ELSE attempt_window END WHERE access_code=${p.access_code} AND active=true AND pin_hash IS NOT NULL AND (attempt_window IS NULL OR attempt_window<now()-interval '15 minutes' OR login_attempts<5) RETURNING id,pin_hash`;
+      await sql`UPDATE horacerta.users SET login_attempts=CASE WHEN attempt_window IS NULL OR attempt_window<now()-interval '15 minutes' THEN 1 ELSE login_attempts+1 END, attempt_window=CASE WHEN attempt_window IS NULL OR attempt_window<now()-interval '15 minutes' THEN now() ELSE attempt_window END WHERE access_code=${p.access_code} AND active=true AND pin_hash IS NOT NULL AND (attempt_window IS NULL OR attempt_window<now()-interval '15 minutes' OR login_attempts<5) RETURNING id,pin_hash,name,access_code,job`;
     if (!r.length)
       throw new ApiError(
         429,
@@ -53,7 +53,14 @@ export async function POST(req: Request) {
       sql`DELETE FROM horacerta.sessions WHERE expires_at<now()`,
     ]);
     return Response.json(
-      { ok: true },
+      {
+        ok: true,
+        person: {
+          name: r[0].name,
+          access_code: r[0].access_code,
+          job: r[0].job,
+        },
+      },
       {
         headers: {
           "Set-Cookie": sessionCookie(token, req, days),
