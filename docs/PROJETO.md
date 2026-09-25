@@ -15,13 +15,13 @@ Controle de pontos durante serviços técnicos, separado do sistema diário da e
 | Colaboradores   | Sem acesso                                                | Criar quantos logins forem necessários, trocar PIN, ativar/desativar e permitir ajustes |
 | Configurações   | Sem acesso                                                | Jornada, adicionais, retroatividade e aprovação                                         |
 
-Rotas de interface: ?view=register, insights, entries, reports, profile, dashboard, people e settings. A página inicial abre Meu ponto. ?demo=1 apresenta exemplos fictícios claramente identificados e sem gravação.
+Rotas de interface: ?view=register, insights, entries, reports, profile, dashboard, people e settings. A página inicial abre Meu ponto para quem já está conectado e o login para quem está desconectado. /login é uma página dedicada, com nome de acesso seguido do PIN, fundo animado, pausa de efeitos e suporte a movimento reduzido. ?demo=1 apresenta exemplos fictícios claramente identificados e sem gravação.
 
 ## Fluxos e interface
 
 Colaborador: login por usuário/PIN → configurar sua hora → iniciar serviço → registrar pausas → encerrar → consultar Meu resumo ou Histórico. Não seleciona pessoa nem cliente/local. Marcações esquecidas usam um formulário secundário com data, entrada/saída, pausa, feriado e observação opcional.
 
-Coordenador: criar primeiro acesso → cadastrar até três colaboradores → acompanhar equipe → revisar horários e valores → aprovar → exportar relatórios. Cada colaborador continua responsável por configurar seu valor-hora; o coordenador pode visualizá-lo, mas a edição do cadastro da equipe não o altera.
+Coordenador: criar primeiro acesso → cadastrar os colaboradores → acompanhar equipe → revisar horários e valores → aprovar → exportar relatórios. Cada colaborador continua responsável por configurar seu valor-hora; o coordenador pode visualizá-lo, mas a edição do cadastro da equipe não o altera.
 
 No celular há navegação inferior fixa com Ponto, Resumo, Histórico e Meu acesso. O menu lateral reúne as áreas adicionais. Indicadores adaptam-se à largura; gráficos ocupam uma coluna em telas estreitas; o histórico vira cartões. O calendário permite selecionar uma data e conferir as marcações daquele dia. O resumo mensal compara seis meses de dados próprios.
 

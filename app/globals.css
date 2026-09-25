@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "../vendor/shadcn-tailwind-4.13.0.css";
+@import "./login.css";
 :root {
   --background: #f4f6fa;
   --foreground: #1b2b42;
@@ -348,6 +349,10 @@ small {
   }
 }
 @media (max-width: 767px) {
-  .content { padding-bottom: 100px; }
-  .panel { min-width: 0; }
+  .content {
+    padding-bottom: 100px;
+  }
+  .panel {
+    min-width: 0;
+  }
 }

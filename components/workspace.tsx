@@ -51,7 +51,6 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -478,6 +477,17 @@ export function Workspace() {
       busy={busy}
     />
   );
+  if (!data) {
+    return (
+      <QuickLogin
+        setup={!!session?.setup}
+        error={error}
+        loading={loading}
+        reload={reload}
+        demo={() => changeDemo(true)}
+      />
+    );
+  }
   return (
     <SidebarProvider
       style={{ "--sidebar-width": "15.5rem" } as React.CSSProperties}
@@ -548,30 +558,7 @@ export function Workspace() {
           </div>
         )}
         <div className="content">
-          {loading && !data ? (
-            <>
-              <div className="flex justify-between mb-8">
-                <Skeleton className="h-12 w-60" />
-                <Skeleton className="h-12 w-40" />
-              </div>
-              <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-5">
-                {[1, 2, 3, 4].map((i) => (
-                  <Skeleton key={i} className="h-44" />
-                ))}
-              </div>
-              <Skeleton className="h-80 mt-6" />
-              <p className="muted text-sm mt-4" role="status">
-                Carregando seu espaço…
-              </p>
-            </>
-          ) : !data ? (
-            <Access
-              session={session}
-              error={error}
-              reload={reload}
-              demo={() => changeDemo(true)}
-            />
-          ) : (
+          {data && (
             <>
               <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
                 <div>
@@ -1190,26 +1177,6 @@ export function Workspace() {
         </AlertDialogContent>
       </AlertDialog>
     </SidebarProvider>
-  );
-}
-function Access({
-  session,
-  error,
-  reload,
-  demo,
-}: {
-  session: Session | null;
-  error: string;
-  reload: () => Promise<void>;
-  demo: () => void;
-}) {
-  return (
-    <QuickLogin
-      setup={!!session?.setup}
-      error={error}
-      reload={reload}
-      demo={demo}
-    />
   );
 }
 function ReportGroups({
