@@ -6,7 +6,7 @@
 - Cancelar interrompe o atendimento, não apaga execução nem inventa horários/quilometragem. Pontos continuam até cada pessoa encerrar em Meu ponto. A contagem inclui o tempo real até esse encerramento, conforme as regras de ponto já existentes.
 - Pessoas designadas podem registrar retorno da viagem existente, com validação de km e atualização automática da frota, e concluir checklists já vinculados. Coordenador acompanha ou reabre conferência com justificativa; não preenche a conferência pelo colaborador.
 - Não permite novas saídas, início de atendimento/ponto na OS ou novos vínculos de checklist após cancelar. O cadastro geral de ponto continua independente.
-- Canceladas com pontos, viagens ou conferências iniciadas pendentes permanecem visíveis em Abertas e Pendências, além do histórico Cancelada/Todas. Uma cópia de checklist nunca utilizada não força uma conferência fictícia. Salvar uma conferência atualiza os indicadores da OS.
+- Canceladas ficam na área separada Histórico de OS, com filtro Pendências para pontos, viagens ou conferências iniciadas ainda abertas. Um aviso na área operacional permite acessar essas pendências sem misturar as canceladas com as OS ativas. Uma cópia de checklist nunca utilizada não força uma conferência fictícia. Salvar uma conferência atualiza os indicadores da OS.
 - Veículo não pode ser desativado enquanto houver uma viagem sem retorno, mesmo de uma OS cancelada.
 - Exclusão permanece restrita às OS sem execução. O botão usa a mesma regra do servidor e explica a alternativa de cancelamento.
 

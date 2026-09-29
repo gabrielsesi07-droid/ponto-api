@@ -28,6 +28,7 @@ import {
   Building2,
   Trash2,
   Ban,
+  History,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
@@ -51,7 +52,7 @@ import {
   type ServiceClient,
 } from "@/lib/orders";
 import { today, type Person } from "@/lib/domain";
-import { hasCancelledPending, matchesOrderFilter } from '@/lib/order-lifecycle';
+import { hasCancelledPending, matchesOrderSection } from '@/lib/order-lifecycle';
 
 const dateLabel = (v: string) =>
   new Intl.DateTimeFormat("pt-BR", {
@@ -126,12 +127,14 @@ export function ServiceOrders({
   demo,
   blocked,
   onPoint,
+  onNavigate,
 }: {
   me: Person;
   view: string;
   demo: boolean;
   blocked: boolean;
   onPoint: () => Promise<void>;
+  onNavigate: (view: string) => void;
 }) {
   const [data, setData] = useState<OperationsData>(emptyData),
     [loading, setLoading] = useState(true),
@@ -144,6 +147,11 @@ export function ServiceOrders({
     } | null>(null);
   const [filter, setFilter] = useState("Abertas"),
     [search, setSearch] = useState("");
+  const [historyFilter, setHistoryFilter] = useState('Todas'), [historySearch, setHistorySearch] = useState(''), [historyMonth, setHistoryMonth] = useState('');
+  const history = view === 'order-history';
+  const currentFilter = history ? historyFilter : filter;
+  const currentSearch = history ? historySearch : search;
+  const pendingCount = data.orders.filter(hasCancelledPending).length;
   const dismissed = useRef(new Set<string>()),
     request = useRef(0);
   const admin = me.role === "coordinator";
@@ -192,7 +200,7 @@ export function ServiceOrders({
         o.status === "Em andamento"))),
   );
   useEffect(() => {
-    if (blocked || selected || editOrder || resource || demo || view === 'register') return;
+    if (blocked || selected || editOrder || resource || demo || view === 'register' || view === 'order-history') return;
     const next = data.orders.find(
       (o) =>
         o.members.includes(me.id) &&
@@ -213,16 +221,17 @@ export function ServiceOrders({
     () =>
       data.orders.filter(
         (o) =>
-          matchesOrderFilter(o, filter) &&
+          matchesOrderSection(o, history, currentFilter) &&
+          (!history || !historyMonth || localDateTime(o.starts_at).slice(0, 7) === historyMonth) &&
           [orderNumber(o.number), o.client_name, o.title, o.address]
             .join(" ")
             .toLowerCase()
-            .includes(search.toLowerCase()),
+            .includes(currentSearch.trim().toLowerCase()),
       ),
-    [data.orders, filter, search],
+    [data.orders, history, currentFilter, historyMonth, currentSearch],
   );
   const order = data.orders.find((o) => o.id === selected);
-  const shown = ["orders", "vehicles", "clients"].includes(view);
+  const shown = ["orders", "order-history", "vehicles", "clients"].includes(view);
   return (
     <>
       {error && (
@@ -266,15 +275,18 @@ export function ServiceOrders({
           Carregando ordens de serviço…
         </p>
       )}
-      {view === "orders" && (
+      {(view === "orders" || history) && (
         <>
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <p className="muted text-sm">
-              {admin
+              {history ? 'Consulte as OS concluídas e canceladas, sem misturar com a agenda e os atendimentos em andamento.' : admin
                 ? "Planeje os atendimentos e acompanhe a equipe. Cada nova OS recebe um número sequencial, que não muda ao editar."
                 : "Seus atendimentos, equipe, trajetos e instruções."}
             </p>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => onNavigate(history ? 'orders' : 'order-history')}>
+                {history ? <ClipboardList /> : <History />}{history ? 'OS em aberto' : 'Histórico de OS'}
+              </Button>
               <Button
                 variant="outline"
                 aria-label="Atualizar ordens"
@@ -282,7 +294,7 @@ export function ServiceOrders({
               >
                 <RefreshCw />
               </Button>
-              {admin && (
+              {admin && !history && (
                 <Button onClick={() => setEditOrder("new")}>
                   <Plus />
                   Gerar OS
@@ -290,8 +302,13 @@ export function ServiceOrders({
               )}
             </div>
           </div>
+          {!history && pendingCount > 0 && <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" role="status"><p>{pendingCount} OS cancelada(s) ainda com pendências de ponto, retorno ou conferência. Consulte no histórico.</p><Button variant="outline" onClick={() => { setHistoryFilter('Pendências'); setHistoryMonth(''); setHistorySearch(''); onNavigate('order-history'); }}>Resolver pendências</Button></div>}
           <div className="mb-5 grid gap-3 sm:grid-cols-3">
-            {[
+            {(history ? [
+              ['Concluídas', data.orders.filter(o => o.status === 'Concluída').length],
+              ['Canceladas', data.orders.filter(o => o.status === 'Cancelada').length],
+              ['Canceladas com pendências', pendingCount],
+            ] : [
               [
                 "Agendadas",
                 data.orders.filter((o) => o.status === "Agendada").length,
@@ -301,10 +318,10 @@ export function ServiceOrders({
                 data.orders.filter((o) => o.status === "Em andamento").length,
               ],
               [
-                "Concluídas",
-                data.orders.filter((o) => o.status === "Concluída").length,
+                "Total em aberto",
+                data.orders.filter((o) => ['Agendada', 'Em andamento'].includes(o.status)).length,
               ],
-            ].map(([label, n]) => (
+            ]).map(([label, n]) => (
               <div className="panel p-5" key={label}>
                 <p className="muted text-sm">{label}</p>
                 <b className="mt-1 block text-3xl">{n}</b>
@@ -315,30 +332,24 @@ export function ServiceOrders({
             <label>
               Buscar OS
               <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                value={currentSearch}
+                onChange={(e) => history ? setHistorySearch(e.target.value) : setSearch(e.target.value)}
                 placeholder="Número, cliente, serviço ou endereço"
               />
             </label>
             <label>
               Situação
               <select
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
+                value={currentFilter}
+                onChange={(e) => history ? setHistoryFilter(e.target.value) : setFilter(e.target.value)}
               >
-                {[
-                  "Abertas",
-                  "Pendências",
-                  "Todas",
-                  "Agendada",
-                  "Em andamento",
-                  "Concluída",
-                  "Cancelada",
-                ].map((s) => (
+                {(history ? ['Todas', 'Concluída', 'Cancelada', 'Pendências'] : ['Abertas', 'Agendada', 'Em andamento']).map((s) => (
                   <option key={s}>{s}</option>
                 ))}
               </select>
             </label>
+            {history && <label>Mês do atendimento (início previsto)<input type="month" value={historyMonth} onChange={e => setHistoryMonth(e.target.value)} /></label>}
+            {history && (historyMonth || historySearch || historyFilter !== 'Todas') && <Button variant="outline" className="self-end" onClick={() => { setHistoryMonth(''); setHistorySearch(''); setHistoryFilter('Todas'); }}>Limpar filtros do histórico</Button>}
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
             {rows.map((o) => (
@@ -378,7 +389,7 @@ export function ServiceOrders({
               <ClipboardList className="mx-auto mb-3 text-blue-600" />
               <h2>Nenhuma OS neste filtro</h2>
               <p className="muted mt-2">
-                {admin
+                {history ? 'As OS concluídas e canceladas aparecerão aqui. Se houver filtros selecionados, tente limpá-los.' : admin
                   ? "Use Gerar OS para programar um atendimento. Basta informar o nome do cliente, sem cadastro prévio."
                   : "As ordens designadas para você aparecerão aqui."}
               </p>

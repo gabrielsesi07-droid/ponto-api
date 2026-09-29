@@ -29,6 +29,7 @@ import {
   Car,
   BookOpen,
   Wrench,
+  History,
 } from "lucide-react";
 import {
   Sidebar,
@@ -93,6 +94,7 @@ const nav = [
   },
   { key: "register", label: "Meu ponto", icon: Timer },
   { key: "orders", label: "Ordens de serviço", icon: ClipboardList },
+  { key: "order-history", label: "Histórico de OS", icon: History },
   { key: "library", label: "Biblioteca técnica", icon: BookOpen },
   { key: "equipment", label: "Equipamentos", icon: Wrench, admin: true },
   { key: "vehicles", label: "Veículos", icon: Car, admin: true },
@@ -671,7 +673,7 @@ export function Workspace() {
                     </Button>
                   ) : (
                     view !== "settings" &&
-                    !["orders", "clients", "vehicles", "library", "equipment"].includes(view) &&
+                    !["orders", "order-history", "clients", "vehicles", "library", "equipment"].includes(view) &&
                     view !== "register" && (
                       <Button onClick={() => go("register")} className="action">
                         <Plus />
@@ -694,6 +696,7 @@ export function Workspace() {
                 key={data.me.id + String(demo)}
                 me={data.me}
                 view={view}
+                onNavigate={go}
                 demo={demo}
                 blocked={
                   !!editor ||

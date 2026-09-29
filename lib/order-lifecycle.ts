@@ -5,6 +5,10 @@ export function hasCancelledPending(order: PendingOrder) {
 export function matchesOrderFilter(order: PendingOrder, filter: string) {
   if (filter === 'Todas') return true;
   if (filter === 'Pendências') return hasCancelledPending(order);
-  if (filter === 'Abertas') return ['Agendada', 'Em andamento'].includes(order.status) || hasCancelledPending(order);
+  if (filter === 'Abertas') return ['Agendada', 'Em andamento'].includes(order.status);
   return order.status === filter;
+}
+export function matchesOrderSection(order: PendingOrder, history: boolean, filter: string) {
+  const statuses = history ? ['Concluída', 'Cancelada'] : ['Agendada', 'Em andamento'];
+  return statuses.includes(order.status) && matchesOrderFilter(order, filter);
 }
