@@ -2,6 +2,7 @@ CREATE OR REPLACE FUNCTION horacerta.order_action(actor uuid, action text, p jso
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
  u horacerta.users%ROWTYPE;
+ client_row horacerta.clients%ROWTYPE;
  o horacerta.orders%ROWTYPE;
  v horacerta.vehicles%ROWTYPE;
  t horacerta.vehicle_trips%ROWTYPE;
@@ -21,8 +22,24 @@ BEGIN
  PERFORM pg_advisory_xact_lock(2849061701);
  SELECT * INTO u FROM horacerta.users WHERE id=actor AND active;
  IF NOT FOUND THEN RAISE EXCEPTION 'Conta indisponível.'; END IF;
- IF action IN ('save_order','save_vehicle','save_client','delete_order') AND u.role<>'coordinator' THEN
+ IF action IN ('save_order','save_vehicle','save_client','delete_order','delete_client','archive_client','restore_client') AND u.role<>'coordinator' THEN
    RAISE EXCEPTION 'Somente o coordenador pode realizar este cadastro.';
+ END IF;
+ IF action IN ('delete_client','archive_client','restore_client') THEN
+   SELECT * INTO client_row FROM horacerta.clients WHERE id=target FOR UPDATE;
+   IF NOT FOUND THEN RAISE EXCEPTION 'Cliente não encontrado ou já excluído. Atualize a lista.'; END IF;
+   IF trim(coalesce(p->>'confirmation','')) IS DISTINCT FROM client_row.name THEN RAISE EXCEPTION 'Confirme o nome atual do cliente. Atualize a lista se ele foi alterado.'; END IF;
+   IF action='delete_client' THEN
+     IF horacerta.client_has_history(target) THEN RAISE EXCEPTION 'Este cliente tem OS ou pontos associados. Use Arquivar cliente para preservar o histórico.'; END IF;
+     DELETE FROM horacerta.clients WHERE id=target;
+   ELSE
+     IF client_row.active=(action='restore_client') THEN RAISE EXCEPTION 'Cliente já está nessa situação. Atualize a lista.'; END IF;
+     UPDATE horacerta.clients SET active=(action='restore_client') WHERE id=target;
+   END IF;
+   INSERT INTO horacerta.audit(actor_id,action,before_value,after_value) VALUES(actor,
+     CASE action WHEN 'delete_client' THEN 'Cliente excluído' WHEN 'archive_client' THEN 'Cliente arquivado' ELSE 'Cliente reativado' END,
+     to_jsonb(client_row),CASE WHEN action='delete_client' THEN NULL ELSE jsonb_build_object('id',target,'active',action='restore_client') END);
+   RETURN jsonb_build_object('ok',true,'id',target);
  END IF;
  IF action='save_client' THEN
    IF p ? 'id' AND NOT EXISTS(SELECT 1 FROM horacerta.clients WHERE id=target) THEN RAISE EXCEPTION 'Cliente não encontrado.'; END IF;
@@ -66,7 +83,7 @@ BEGIN
    IF EXISTS(SELECT 1 FROM unnest(team) AS assigned(user_id) WHERE NOT EXISTS(SELECT 1 FROM horacerta.users x WHERE x.id=assigned.user_id AND x.active)) THEN RAISE EXCEPTION 'Selecione apenas colaboradores ativos.'; END IF;
    IF p->>'client_id' IS NOT NULL THEN
      selected_client := (p->>'client_id')::uuid;
-     SELECT name INTO client_label FROM horacerta.clients WHERE id=(p->>'client_id')::uuid AND active;
+     SELECT name INTO client_label FROM horacerta.clients WHERE id=(p->>'client_id')::uuid AND (active OR id=o.client_id);
      IF NOT FOUND THEN RAISE EXCEPTION 'Cliente indisponível. Informe apenas o nome ou escolha outro cadastro.'; END IF;
      -- Retain the recorded name when editing an existing linked OS.
      client_label := coalesce(nullif(trim(p->>'client_name'),''),client_label);

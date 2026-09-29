@@ -1,11 +1,12 @@
 "use client";
-import { useEffect, useState } from 'react';
-import { Plus, Trash2, Save, CheckCheck, Printer, ClipboardList, ArrowUp, ArrowDown } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
+import { Plus, Trash2, Save, CheckCheck, Printer, ClipboardList, ArrowUp, ArrowDown, LoaderCircle } from 'lucide-react';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { api } from './editors';
 import { toast } from 'sonner';
-import { checklistProgress, newChecklistItem, type ChecklistItem, type ChecklistTemplate, type OrderChecklist } from '@/lib/checklists';
+import { checklistProgress, checklistCompletionIssues, newChecklistItem, type ChecklistItem, type ChecklistTemplate, type OrderChecklist } from '@/lib/checklists';
+import { submitChecklist } from '@/lib/checklist-request';
 
 export function ChecklistItems({ items, onChange, template = false, disabled = false }: {
   items: ChecklistItem[]; onChange: (items: ChecklistItem[]) => void; template?: boolean; disabled?: boolean;
@@ -98,23 +99,37 @@ export function OrderChecklistEditor({ checklist, admin, closed, onClose, onSave
   const [title, setTitle] = useState(checklist.title), [items, setItems] = useState(checklist.items);
   const [notes, setNotes] = useState(checklist.notes), [identification, setIdentification] = useState(checklist.identification);
   const [dirty, setDirty] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(''), [reason, setReason] = useState('');
+  const [attemptedComplete, setAttemptedComplete] = useState(false), [savingAction, setSavingAction] = useState('');
+  const sending = useRef(false), feedback = useRef<HTMLDivElement>(null), editor = useRef<HTMLDivElement>(null);
+  const issues = attemptedComplete ? checklistCompletionIssues(items) : [];
+  useEffect(() => { if (error) feedback.current?.focus(); }, [error]);
   const readOnly = admin || closed || checklist.detached || checklist.status === 'completed' || !checklist.items.length;
   const progress = checklistProgress(items);
   async function save(action: 'save' | 'complete' | 'reopen') {
-    setBusy(true); setError('');
-    try { await api('/api/checklists', { action, id: checklist.id, version: checklist.version, title, items, notes, identification, reason });
-      toast.success(action === 'complete' ? 'Checklist concluído.' : 'Checklist salvo.'); onSaved(); onClose();
-    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+    if (sending.current) return;
+    setError('');
+    if (action === 'complete') {
+      setAttemptedComplete(true);
+      if (!items.length || checklistCompletionIssues(items).length) {
+        setError('Ainda há itens pendentes. Confira a lista abaixo ou salve a conferência parcial para continuar depois.');
+        toast.error('Confira os itens pendentes antes de concluir.');
+        return;
+      }
+    }
+    sending.current = true; setBusy(true); setSavingAction(action);
+    try { await submitChecklist({ action, id: checklist.id, version: checklist.version, title, items, notes, identification, reason });
+      toast.success(action === 'complete' ? 'Checklist de ida e volta concluído.' : action === 'reopen' ? 'Checklist reaberto.' : 'Conferência parcial salva.'); onSaved(); onClose();
+    } catch (e) { const message = (e as Error).message; setError(message); toast.error(message); }
+    finally { sending.current = false; setBusy(false); setSavingAction(''); }
   }
   return <Dialog open onOpenChange={open => { if (!open && !busy && (!dirty || window.confirm('Sair sem salvar este checklist da OS?'))) onClose(); }}>
-    <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-3xl">
+    <DialogContent ref={editor} className="max-h-[92dvh] overflow-y-auto sm:max-w-3xl">
       <DialogHeader><DialogTitle>{checklist.model_name} · conferência</DialogTitle><DialogDescription>Cópia exclusiva desta OS. Editar aqui não altera o catálogo. {checklist.status === 'completed' ? 'Concluído.' : 'Em preenchimento.'}</DialogDescription></DialogHeader>
       <p className="rounded-lg bg-blue-50 p-3 text-sm">Ida: {progress.outgoing}/{progress.total} · Volta: {progress.incoming}/{progress.total}. {admin ? 'Acompanhamento do coordenador. A conferência é realizada por um colaborador da equipe.' : readOnly ? 'Conferência disponível para consulta e impressão.' : 'Confira os itens e salve pelo seu login. Seu nome será registrado no histórico.'}</p>
       {checklist.completed_by_name && <p className="text-sm font-semibold text-emerald-800">Conferência concluída por {checklist.completed_by_name}{checklist.completed_at ? ` em ${new Date(checklist.completed_at).toLocaleString('pt-BR')}` : ''}.</p>}
       {checklist.source_obsolete && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">A origem foi marcada como obsoleta. Consulte o coordenador antes de utilizar este checklist.</p>}
       {checklist.source_review_pending && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-950">Lista importada do documento do equipamento. Confira os itens físicos e registre diferenças; a lista não é uma aprovação técnica do procedimento.</p>}
       {!items.length && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">Este checklist está sem itens. O coordenador precisa vincular a lista do equipamento antes da conferência.</p>}
-      {error && <p role="alert" className="text-sm text-red-800">{error}</p>}
       <fieldset disabled={readOnly || busy} className="min-w-0 space-y-3">
         <label className="block text-sm">Título<input className="check-input" value={title} maxLength={180} onChange={e => { setTitle(e.target.value); setDirty(true); }} /></label>
         <label className="block text-sm">Identificação deste equipamento (opcional)<input className="check-input" value={identification} maxLength={160} placeholder="Número de série ou patrimônio desta unidade" onChange={e => { setIdentification(e.target.value); setDirty(true); }} /></label>
@@ -122,8 +137,12 @@ export function OrderChecklistEditor({ checklist, admin, closed, onClose, onSave
         <label className="block text-sm">Observações gerais<textarea className="check-input" maxLength={3000} value={notes} onChange={e => { setNotes(e.target.value); setDirty(true); }} /></label>
       </fieldset>
       <p className="text-xs text-slate-500">{checklist.source_name ? `Referência: ${checklist.source_name} · versão do checklist padrão ${checklist.template_version}` : 'Checklist personalizado nesta OS.'} · Revisão do preenchimento {checklist.version}</p>
-      <div className="flex flex-wrap gap-2">
-        {!readOnly && <><Button disabled={busy} onClick={() => void save('save')}><Save size={18} />Salvar conferência</Button><Button disabled={busy} variant="outline" onClick={() => void save('complete')}><CheckCheck size={18} />Concluir ida e volta</Button></>}
+      {error && <div ref={feedback} tabIndex={-1} role="alert" className="scroll-m-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 focus:outline-2 focus:outline-red-500"><p className="font-semibold">{error}</p>
+        {!!issues.length && <><p className="mt-2">{issues.length} item(ns) para revisar:</p><ul className="mt-2 max-h-48 space-y-2 overflow-y-auto">{issues.map(issue => <li key={issue.itemId}><button type="button" className="text-left underline underline-offset-2" onClick={() => { const field = editor.current?.querySelector<HTMLInputElement>(`[aria-label="Descrição do item ${issue.index}"]`); field?.scrollIntoView({ block: 'center' }); field?.focus({ preventScroll: true }); }}>Item {issue.index} — {issue.message}</button></li>)}</ul></>}
+      </div>}
+      {busy && <p role="status" className="flex items-center gap-2 text-sm text-blue-800"><LoaderCircle className="size-4 animate-spin" />{savingAction === 'complete' ? 'Concluindo ida e volta…' : savingAction === 'reopen' ? 'Reabrindo checklist…' : 'Salvando conferência…'} Aguarde a confirmação.</p>}
+      <div className="flex flex-wrap gap-2" aria-busy={busy}>
+        {!readOnly && <><Button type="button" disabled={busy} onClick={() => void save('save')}>{savingAction === 'save' ? <LoaderCircle className="animate-spin" size={18} /> : <Save size={18} />}{savingAction === 'save' ? 'Salvando…' : 'Salvar conferência'}</Button><Button type="button" disabled={busy} variant="outline" onClick={() => void save('complete')}>{savingAction === 'complete' ? <LoaderCircle className="animate-spin" size={18} /> : <CheckCheck size={18} />}{savingAction === 'complete' ? 'Concluindo…' : 'Concluir ida e volta'}</Button></>}
         {!dirty && <Button variant="outline" asChild><a href={`/checklists/${checklist.id}/print`} target="_blank" rel="noopener noreferrer"><Printer size={18} />Imprimir / salvar PDF</a></Button>}
       </div>
       {dirty && <p className="text-xs text-amber-800">Salve antes de imprimir. Somente os dados salvos entram no relatório.</p>}

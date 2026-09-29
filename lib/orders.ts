@@ -9,6 +9,7 @@ export type ServiceClient = {
   phone: string;
   notes: string;
   active: boolean;
+  has_history?: boolean;
 };
 export type Vehicle = {
   id: string;

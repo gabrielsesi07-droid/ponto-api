@@ -5,14 +5,16 @@ import {
   verifyPin,
 } from "../lib/pin.ts";
 import { neon } from "@neondatabase/serverless";
-const sql = neon(process.env.DATABASE_URL),
-  base = "http://localhost:5173",
+if (!process.env.TEST_DATABASE_URL) throw new Error('Use TEST_DATABASE_URL for an isolated empty test database; never run mutation smoke tests against production.');
+const sql = neon(process.env.TEST_DATABASE_URL),
+  base = process.env.TEST_BASE_URL || "http://localhost:5173",
   tag = crypto.randomUUID(),
   adminSeed = crypto.randomUUID(),
   worker = crypto.randomUUID(),
   other = crypto.randomUUID(),
   client = crypto.randomUUID();
 let admin = adminSeed;
+if (!['localhost','127.0.0.1'].includes(new URL(base).hostname)) throw new Error('Use a local test server connected to the isolated test database.');
 const email = (id) => "qa-" + id + "@example.invalid";
 let passed = 0;
 const cookies = new Map();

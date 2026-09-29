@@ -52,9 +52,20 @@ export async function payload(req: Request) {
     throw new ApiError(403, "Origem de requisição inválida.");
   if (Number(req.headers.get("content-length") || 0) > 30000)
     throw new ApiError(413, "Conteúdo muito grande.");
-  return z.record(z.unknown()).parse(await req.json());
+  const reader = req.body?.getReader();
+  if (!reader) throw new ApiError(400, 'Informe os dados.');
+  const parts: Uint8Array[] = []; let size = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.length;
+    if (size > 30000) { await reader.cancel(); throw new ApiError(413, 'Conteúdo muito grande.'); }
+    parts.push(value);
+  }
+  return z.record(z.unknown()).parse(JSON.parse(Buffer.concat(parts).toString('utf8')));
 }
 export function failure(err: unknown) {
+  if (err instanceof SyntaxError) return Response.json({ error: 'Dados inválidos. Confira o formulário e tente novamente.' }, { status: 400 });
   if (err instanceof ApiError)
     return Response.json({ error: err.message }, { status: err.status });
   if (err instanceof z.ZodError)
@@ -63,6 +74,7 @@ export function failure(err: unknown) {
       { status: 400 },
     );
   const code = (err as { code?: string })?.code;
+  if (code === '23503') return Response.json({ error: 'Este cadastro possui registros vinculados. Atualize a lista e preserve o histórico.' }, { status: 409 });
   if (code === "23505")
     return Response.json(
       { error: "Já existe um cadastro com estes dados." },

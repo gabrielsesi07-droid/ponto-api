@@ -36,6 +36,10 @@ export function checklistProblems(items: ChecklistItem[]) {
   });
 }
 
+export function checklistCompletionIssues(items: ChecklistItem[]) {
+  return items.flatMap((item, index) => checklistProblems([item]).map(message => ({ itemId: item.id, index: index + 1, message })));
+}
+
 // Only recognized item tables are candidates. Never import old dates, signatures,
 // comments, filled checkmarks, OS numbers or physical serial numbers as defaults.
 export function suggestChecklistItems(sections: { content: string }[], uuid: () => string): ChecklistItem[] {

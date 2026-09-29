@@ -29,7 +29,7 @@ export async function GET() {
         FROM horacerta.orders o WHERE (${admin} OR ${me.id}::uuid=ANY(o.members)) ORDER BY o.starts_at DESC`,
       sql`SELECT v.* FROM horacerta.vehicles v WHERE ${admin} OR EXISTS(SELECT 1 FROM horacerta.orders o WHERE o.vehicle_id=v.id AND ${me.id}::uuid=ANY(o.members)) ORDER BY plate`,
       admin
-        ? sql`SELECT id,name,address,contact,phone,notes,active FROM horacerta.clients ORDER BY name`
+        ? sql`SELECT id,name,address,contact,phone,notes,active,horacerta.client_has_history(id) has_history FROM horacerta.clients ORDER BY name`
         : Promise.resolve([]),
       admin
         ? sql`SELECT id,name,access_code,active FROM horacerta.users ORDER BY name,access_code`
@@ -59,14 +59,19 @@ export async function POST(req: Request) {
           "finish",
           "cancel",
           "delete_order",
+          "delete_client",
+          "archive_client",
+          "restore_client",
         ])
         .parse(body.action);
     let data;
-    if (action.startsWith("save_") || action === "cancel" || action === "delete_order") coordinator(me);
+    if (action.startsWith("save_") || action === "cancel" || action.startsWith('delete_') || action === 'archive_client' || action === 'restore_client') coordinator(me);
     if (action === "save_order") data = orderSchema.parse(body.data);
     else if (action === "save_client")
       data = serviceClientSchema.parse(body.data);
     else if (action === "save_vehicle") data = vehicleSchema.parse(body.data);
+    else if (['delete_client','archive_client','restore_client'].includes(action))
+      data = z.object({ id: z.string().uuid(), confirmation: z.string().trim().min(2).max(160) }).parse(body.data);
     else if (action === "delete_order")
       data = z.object({ id: z.string().uuid(), version: z.number().int().positive(),
         confirmation: z.string().trim().regex(/^OS-\d+$/, "Digite o número completo da OS para confirmar.") }).parse(body.data);

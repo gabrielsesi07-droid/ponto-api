@@ -1,5 +1,6 @@
 import { db, member, payload, failure, ApiError } from "@/lib/server";
 import { z } from "zod";
+import { isCalendarDate } from '@/lib/date-validation';
 
 const command = z.discriminatedUnion("action", [
   z.object({
@@ -21,7 +22,7 @@ export async function POST(req: Request) {
     if (p.action === "start") {
       const started = new Date(p.started_at + ":00-03:00");
       if (
-        !Number.isFinite(started.getTime()) ||
+        !isCalendarDate(p.started_at.slice(0, 10)) || !Number.isFinite(started.getTime()) ||
         started.getTime() < Date.now() - 7 * 24 * 60 * 60_000 ||
         started.getTime() > Date.now() + 5 * 60_000
       )

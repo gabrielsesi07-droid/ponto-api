@@ -1,4 +1,5 @@
 import { db, member, failure, ApiError } from "@/lib/server";
+import { isCalendarDate } from '@/lib/date-validation';
 export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   try {
@@ -10,10 +11,8 @@ export async function GET(req: Request) {
     if (
       !from ||
       !to ||
-      !/^\d{4}-\d{2}-\d{2}$/.test(from) ||
-      !/^\d{4}-\d{2}-\d{2}$/.test(to) ||
-      !Number.isFinite(new Date(from).getTime()) ||
-      !Number.isFinite(new Date(to).getTime()) ||
+      !isCalendarDate(from) ||
+      !isCalendarDate(to) ||
       from > to ||
       new Date(to).getTime() - new Date(from).getTime() > 370 * 86400000
     )

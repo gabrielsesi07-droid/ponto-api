@@ -1,6 +1,7 @@
 "use client";
 import { TechnicalLibrary } from "./technical-library";
 import { OrderChecklists } from './checklist-editor';
+import { ClientLifecycle } from './client-lifecycle';
 import {
   useCallback,
   useEffect,
@@ -147,6 +148,7 @@ export function ServiceOrders({
     } | null>(null);
   const [filter, setFilter] = useState("Abertas"),
     [search, setSearch] = useState("");
+  const [clientFilter, setClientFilter] = useState('Ativos'), [clientSearch, setClientSearch] = useState('');
   const [historyFilter, setHistoryFilter] = useState('Todas'), [historySearch, setHistorySearch] = useState(''), [historyMonth, setHistoryMonth] = useState('');
   const history = view === 'order-history';
   const currentFilter = history ? historyFilter : filter;
@@ -516,8 +518,9 @@ export function ServiceOrders({
               Cadastrar cliente
             </Button>
           </div>
+          <div className="ops-form mb-5"><label>Buscar cliente<input value={clientSearch} onChange={e => setClientSearch(e.target.value)} placeholder="Nome do cliente" /></label><label>Situação do cliente<select value={clientFilter} onChange={e => setClientFilter(e.target.value)}><option>Ativos</option><option>Arquivados</option><option>Todos</option></select></label></div>
           <div className="grid gap-4 lg:grid-cols-2">
-            {data.clients.map((c) => (
+            {data.clients.filter(c => (clientFilter === 'Todos' || c.active === (clientFilter === 'Ativos')) && c.name.toLocaleLowerCase('pt-BR').includes(clientSearch.trim().toLocaleLowerCase('pt-BR'))).map((c) => (
               <article className="panel min-w-0 p-5" key={c.id}>
                 <div className="flex justify-between gap-3">
                   <h2 className="flex gap-2">
@@ -540,15 +543,15 @@ export function ServiceOrders({
                   {c.contact} {c.phone}
                 </p>
                 <p className="mt-2 text-xs muted">
-                  {c.active ? "Ativo" : "Inativo"}
+                  {c.active ? "Ativo" : "Arquivado"}
                 </p>
+                <ClientLifecycle client={c} demo={demo} onSaved={reload} />
               </article>
             ))}
           </div>
-          {!loading && !data.clients.length && (
+          {!loading && !data.clients.some(c => (clientFilter === 'Todos' || c.active === (clientFilter === 'Ativos')) && c.name.toLocaleLowerCase('pt-BR').includes(clientSearch.trim().toLocaleLowerCase('pt-BR'))) && (
             <p className="panel p-8 text-center muted">
-              Cadastro opcional. Você pode gerar uma OS informando apenas o nome
-              do cliente.
+              Nenhum cliente neste filtro. Confira os arquivados ou cadastre um novo cliente. O cadastro prévio é opcional para gerar OS.
             </p>
           )}
         </>

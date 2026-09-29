@@ -175,7 +175,7 @@ export function OrderEditor({
   const change = (key: string, value: string) =>
     setForm((f) => ({ ...f, [key]: value }));
   const activeClients = data.clients.filter(c => c.active);
-  const knownNames = new Set(activeClients.map(c => clientNameKey(c.name)));
+  const knownNames = new Set(data.clients.map(c => clientNameKey(c.name)));
   const clientOptions: ClientSuggestion[] = activeClients.map(c => ({ id: c.id, name: c.name, detail: c.address || c.contact || 'Cliente cadastrado' }));
   for (const previous of data.orders) {
     const key = clientNameKey(previous.client_name);
@@ -297,7 +297,7 @@ export function OrderEditor({
                 ))}
               </select>
             </label>
-            {!!data.clients.filter((c) => c.active).length && (
+            {!!data.clients.filter((c) => c.active || c.id === order?.client_id).length && (
               <details className="full rounded-xl border p-3">
                 <summary className="cursor-pointer text-sm font-medium">
                   Usar dados de um cliente cadastrado (opcional)
@@ -325,10 +325,10 @@ export function OrderEditor({
                   >
                     <option value="">Somente o nome informado acima</option>
                     {data.clients
-                      .filter((c) => c.active)
+                      .filter((c) => c.active || c.id === order?.client_id)
                       .map((c) => (
                         <option key={c.id} value={c.id}>
-                          {c.name}
+                          {c.name}{!c.active ? ' (arquivado · vínculo existente)' : ''}
                         </option>
                       ))}
                   </select>

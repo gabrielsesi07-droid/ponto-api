@@ -9,9 +9,9 @@ const schema='qa_os_'+randomUUID().replaceAll('-','');
 const read=async name=>readFile(new URL('../sql/'+name,import.meta.url),'utf8');
 const statements=(await read('001-schema.sql')).split(';').filter(s=>s.trim());
 statements.push(`CREATE TABLE horacerta.timers(user_id uuid PRIMARY KEY REFERENCES horacerta.users(id),started_at timestamptz NOT NULL,paused_at timestamptz,pauses jsonb NOT NULL DEFAULT '[]',rate numeric(12,2) NOT NULL,rules jsonb NOT NULL,company text NOT NULL DEFAULT '',service text NOT NULL DEFAULT '',notes text NOT NULL DEFAULT '')`);
-for(const name of ['003-orders.sql','005-flexible-client.sql','006-library.sql','007-checklists.sql','009-imported-checklists.sql','010-client-search.sql','011-order-lifecycle.sql','008-checklist-actions.sql','004-order-actions.sql','002-clock-start-function.sql','002-clock-function.sql']) statements.push(...(await read(name)).split(/\r?\n-- statement-break\r?\n/).filter(s=>s.trim()));
+for(const name of ['003-orders.sql','005-flexible-client.sql','006-library.sql','007-checklists.sql','009-imported-checklists.sql','010-client-search.sql','011-order-lifecycle.sql','012-client-lifecycle.sql','008-checklist-actions.sql','004-order-actions.sql','002-clock-start-function.sql','002-clock-function.sql']) statements.push(...(await read(name)).split(/\r?\n-- statement-break\r?\n/).filter(s=>s.trim()));
 statements.push(`DO $$
-DECLARE admin uuid:=gen_random_uuid();worker uuid:=gen_random_uuid();model uuid:=gen_random_uuid();vehicle uuid:=gen_random_uuid();cid uuid;first_id uuid;second_id uuid;fresh_id uuid;result jsonb;p jsonb;first_num bigint;second_num bigint;seq_before bigint;count_before bigint;check_id uuid;item jsonb;blocked_action text;
+DECLARE admin uuid:=gen_random_uuid();worker uuid:=gen_random_uuid();model uuid:=gen_random_uuid();vehicle uuid:=gen_random_uuid();unused_client uuid:=gen_random_uuid();legacy_client uuid:=gen_random_uuid();other_order uuid;cid uuid;first_id uuid;second_id uuid;fresh_id uuid;result jsonb;p jsonb;first_num bigint;second_num bigint;seq_before bigint;count_before bigint;check_id uuid;item jsonb;blocked_action text;
 BEGIN
  INSERT INTO horacerta.users(id,name,email,role,hourly_rate) VALUES(admin,'QA admin','admin@example.invalid','coordinator',0),(worker,'QA worker','worker@example.invalid','employee',0);
  INSERT INTO horacerta.equipment_models(id,name,family) VALUES(model,'Radian QA','Laser Tracker');
@@ -61,7 +61,7 @@ BEGIN
    PERFORM horacerta.order_action(admin,'save_order',p||jsonb_build_object('starts_at',now()+interval '6 hours','ends_at',now()+interval '7 hours'));
    RAISE EXCEPTION 'Expected ambiguity block';
  EXCEPTION WHEN raise_exception THEN IF SQLERRM='Expected ambiguity block' THEN RAISE; END IF; END;
- PERFORM horacerta.order_action(admin,'save_order',p||jsonb_build_object('client_id',cid,'starts_at',now()+interval '6 hours','ends_at',now()+interval '7 hours'));
+ result:=horacerta.order_action(admin,'save_order',p||jsonb_build_object('client_id',cid,'starts_at',now()+interval '6 hours','ends_at',now()+interval '7 hours')); other_order:=(result->>'id')::uuid;
  PERFORM horacerta.checklist_action(worker,'save',jsonb_build_object('id',check_id,'version',1,'title','Conferência','notes','','identification','','items',jsonb_build_array(item||jsonb_build_object('outgoing',true,'outgoing_qty',1))));
  BEGIN
    PERFORM horacerta.order_action(admin,'delete_order',jsonb_build_object('id',first_id,'version',2,'confirmation','OS-000001'));
@@ -126,6 +126,36 @@ BEGIN
    PERFORM horacerta.checklist_action(admin,'sync',jsonb_build_object('order_id',fresh_id));
    RAISE EXCEPTION 'Checklist attachment to cancelled order unexpectedly allowed';
  EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'OS encerrada%' THEN RAISE; END IF; END;
+ INSERT INTO horacerta.clients(id,name) VALUES(unused_client,'Cliente descartável QA'),(legacy_client,' OUTRA  EMPRESA ');
+ ASSERT NOT horacerta.client_has_history(unused_client),'Unused client eligible for deletion';
+ ASSERT horacerta.client_has_history(cid),'OS and point history protects client';
+ BEGIN
+   PERFORM horacerta.order_action(worker,'delete_client',jsonb_build_object('id',unused_client,'confirmation','Cliente descartável QA'));
+   RAISE EXCEPTION 'Employee client deletion unexpectedly allowed';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'Somente o coordenador%' THEN RAISE; END IF; END;
+ BEGIN
+   PERFORM horacerta.order_action(admin,'delete_client',jsonb_build_object('id',unused_client,'confirmation','Nome errado'));
+   RAISE EXCEPTION 'Wrong name deletion unexpectedly allowed';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'Confirme o nome atual%' THEN RAISE; END IF; END;
+ PERFORM horacerta.order_action(admin,'delete_client',jsonb_build_object('id',unused_client,'confirmation','Cliente descartável QA'));
+ ASSERT NOT EXISTS(SELECT 1 FROM horacerta.clients WHERE id=unused_client),'Unused client deleted';
+ ASSERT EXISTS(SELECT 1 FROM horacerta.audit WHERE action='Cliente excluído' AND before_value->>'id'=unused_client::text),'Client deletion audited';
+ BEGIN
+   PERFORM horacerta.order_action(admin,'delete_client',jsonb_build_object('id',cid,'confirmation','Indústria São José'));
+   RAISE EXCEPTION 'Historical client deletion unexpectedly allowed';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'Este cliente tem OS%' THEN RAISE; END IF; END;
+ PERFORM horacerta.order_action(admin,'archive_client',jsonb_build_object('id',cid,'confirmation','Indústria São José'));
+ ASSERT (SELECT NOT active FROM horacerta.clients WHERE id=cid),'Archive client';
+ PERFORM horacerta.order_action(admin,'save_order',p||jsonb_build_object('id',other_order,'version',1,'client_id',cid,'starts_at',now()+interval '6 hours','ends_at',now()+interval '7 hours'));
+ ASSERT (SELECT client_id=cid FROM horacerta.orders WHERE id=other_order),'Existing archived link may be retained when editing';
+ BEGIN
+   PERFORM horacerta.order_action(admin,'save_order',p||jsonb_build_object('client_id',cid,'starts_at',now()+interval '8 hours','ends_at',now()+interval '9 hours'));
+   RAISE EXCEPTION 'New order with archived client unexpectedly allowed';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'Cliente indisponível%' THEN RAISE; END IF; END;
+ PERFORM horacerta.order_action(admin,'restore_client',jsonb_build_object('id',cid,'confirmation','Indústria São José'));
+ ASSERT (SELECT active FROM horacerta.clients WHERE id=cid),'Restore client';
+ UPDATE horacerta.orders SET client_id=NULL WHERE id=fresh_id;
+ ASSERT horacerta.client_has_history(legacy_client),'Legacy free-text OS protects same-name client';
  RAISE EXCEPTION 'QA_ORDER_WORKFLOW_OK_ROLLBACK';
 END $$`);
 try {
@@ -133,7 +163,7 @@ try {
  throw new Error('Expected rollback');
 } catch(error) {
  if(error.message!=='QA_ORDER_WORKFLOW_OK_ROLLBACK')throw error;
- console.log('Isolated SQL workflow passed: clients, sequence, equipment, deletion protection, cancellation in transit, permissions, stale version, reason, duplicate actions, return odometer, timer closure, checklist completion/reopen and pending cleanup.');
+ console.log('Isolated SQL workflow passed: clients, sequence, equipment, deletion protection, cancellation in transit, permissions, stale version, reason, duplicate actions, return odometer, timer closure, checklist completion/reopen, pending cleanup, client delete/archive/restore, legacy history protection and retention of archived links.');
 }
 assert.equal((await sql`SELECT schema_name FROM information_schema.schemata WHERE schema_name=${schema}`).length,0);
 console.log('Test schema rolled back; no production numbers consumed.');
