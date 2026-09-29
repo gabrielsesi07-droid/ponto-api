@@ -281,6 +281,91 @@ try {
     200,
     "Address lookup has graceful fallback",
   );
+  const beforeClients =
+    await sql`SELECT count(*)::int n FROM horacerta.clients`;
+  const freeData = {
+    ...payload(),
+    client_id: null,
+    client_name: "QA avulso " + fixture,
+    address: "",
+    vehicle_id: null,
+  };
+  check(
+    (await action("save_order", { ...freeData, client_name: "  " })).status,
+    400,
+    "Blank client name rejected without registration",
+  );
+  const free = await action("save_order", freeData);
+  check(
+    free.status,
+    200,
+    "OS created with just client name, without client registration or address",
+  );
+  orders.push(free.data.id);
+  const [freeRow] =
+    await sql`SELECT client_id,client_name,address FROM horacerta.orders WHERE id=${free.data.id}`;
+  check(
+    freeRow,
+    { client_id: null, client_name: freeData.client_name, address: "" },
+    "Unregistered client snapshot preserved",
+  );
+  const afterClients = await sql`SELECT count(*)::int n FROM horacerta.clients`;
+  check(
+    afterClients[0].n,
+    beforeClients[0].n,
+    "No client record silently created",
+  );
+  const renamed = freeData.client_name + " alterado";
+  check(
+    (
+      await action("save_order", {
+        ...freeData,
+        id: free.data.id,
+        version: 1,
+        client_name: renamed,
+      })
+    ).status,
+    200,
+    "Unregistered client name can be edited",
+  );
+  const currentStart = new Date()
+    .toLocaleString("sv-SE", { timeZone: "America/Sao_Paulo" })
+    .slice(0, 16)
+    .replace(" ", "T");
+  check(
+    (
+      await call(
+        "/api/clock",
+        { ...clock, order_id: free.data.id, started_at: currentStart },
+        worker,
+      )
+    ).status,
+    200,
+    "Point starts for OS without registered client",
+  );
+  check(
+    (await call("/api/clock", { action: "stop" }, worker)).status,
+    200,
+    "Point ends for OS without registered client",
+  );
+  const [freeEntry] =
+    await sql`SELECT company FROM horacerta.entries WHERE order_id=${free.data.id} LIMIT 1`;
+  check(
+    freeEntry.company,
+    renamed,
+    "Typed client name reaches point/report data",
+  );
+  check(
+    (
+      await action(
+        "finish",
+        { id: free.data.id, notes: "Teste concluído" },
+        worker,
+      )
+    ).status,
+    200,
+    "OS without client registration completes",
+  );
   console.log(`${checks} checks passed.`);
 } finally {
   // Exact fixture IDs only, including sessions minted for the existing coordinator.

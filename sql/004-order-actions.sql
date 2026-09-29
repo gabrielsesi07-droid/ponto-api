@@ -42,8 +42,15 @@ BEGIN
    IF o.id IS NOT NULL AND (o.status<>'Agendada' OR EXISTS(SELECT 1 FROM horacerta.vehicle_trips WHERE order_id=target)) THEN RAISE EXCEPTION 'Só é possível editar uma OS antes do início do atendimento.'; END IF;
    SELECT array_agg(value::uuid) INTO team FROM jsonb_array_elements_text(p->'members');
    IF EXISTS(SELECT 1 FROM unnest(team) AS assigned(user_id) WHERE NOT EXISTS(SELECT 1 FROM horacerta.users x WHERE x.id=assigned.user_id AND x.active)) THEN RAISE EXCEPTION 'Selecione apenas colaboradores ativos.'; END IF;
-   SELECT name INTO client_label FROM horacerta.clients WHERE id=(p->>'client_id')::uuid AND active;
-   IF NOT FOUND THEN RAISE EXCEPTION 'Selecione um cliente ativo.'; END IF;
+   IF p->>'client_id' IS NOT NULL THEN
+     SELECT name INTO client_label FROM horacerta.clients WHERE id=(p->>'client_id')::uuid AND active;
+     IF NOT FOUND THEN RAISE EXCEPTION 'Cliente indisponível. Informe apenas o nome ou escolha outro cadastro.'; END IF;
+     -- Retain the recorded name when editing an existing linked OS.
+     client_label := coalesce(nullif(trim(p->>'client_name'),''),client_label);
+   ELSE
+     client_label := trim(coalesce(p->>'client_name',''));
+   END IF;
+   IF length(client_label)<2 OR length(client_label)>160 THEN RAISE EXCEPTION 'Informe o nome do cliente (2 a 160 caracteres).'; END IF;
    IF p->>'vehicle_id' IS NOT NULL AND NOT EXISTS(SELECT 1 FROM horacerta.vehicles WHERE id=(p->>'vehicle_id')::uuid AND active) THEN RAISE EXCEPTION 'Selecione um veículo ativo.'; END IF;
    IF EXISTS(SELECT 1 FROM horacerta.orders x WHERE x.id<>target AND x.status IN ('Agendada','Em andamento')
      AND x.starts_at<(p->>'ends_at')::timestamptz AND x.ends_at>(p->>'starts_at')::timestamptz

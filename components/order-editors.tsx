@@ -80,11 +80,9 @@ function AddressInput({
   }, [search, demo]);
   return (
     <div className="ops-field full">
-      <label htmlFor="os-address">Endereço do atendimento</label>
+      <label htmlFor="os-address">Endereço do atendimento (opcional)</label>
       <input
         id="os-address"
-        required
-        minLength={5}
         maxLength={500}
         autoComplete="off"
         value={value}
@@ -128,7 +126,7 @@ function AddressInput({
       )}
       <p role="status" className="text-xs muted">
         {message ||
-          "Escolha uma sugestão ou informe o endereço manualmente. Inclua número e complemento."}
+          "Preencha se quiser liberar o botão Ir no Google Maps. A OS pode ser salva sem endereço."}
       </p>
     </div>
   );
@@ -150,6 +148,7 @@ export function OrderEditor({
   const [form, setForm] = useState(() => ({
     title: order?.title || "",
     client_id: order?.client_id || "",
+    client_name: order?.client_name || "",
     address: order?.address || "",
     place_id: order?.place_id || "",
     contact: order?.contact || "",
@@ -169,6 +168,12 @@ export function OrderEditor({
   const [savedId, setSavedId] = useState<string | null>(null);
   const change = (key: string, value: string) =>
     setForm((f) => ({ ...f, [key]: value }));
+  const clientNames = [
+    ...new Set([
+      ...data.clients.filter((c) => c.active).map((c) => c.name),
+      ...data.orders.map((o) => o.client_name),
+    ]),
+  ].sort((a, b) => a.localeCompare(b, "pt-BR"));
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError("");
@@ -192,6 +197,7 @@ export function OrderEditor({
           action: "save_order",
           data: {
             ...form,
+            client_id: form.client_id || null,
             vehicle_id: form.vehicle_id || null,
             starts_at: new Date(form.starts_at + ":00-03:00").toISOString(),
             ends_at: new Date(form.ends_at + ":00-03:00").toISOString(),
@@ -242,32 +248,31 @@ export function OrderEditor({
               />
             </label>
             <label>
-              Cliente
-              <select
+              Nome do cliente
+              <input
                 required
-                value={form.client_id}
-                onChange={(e) => {
-                  const c = data.clients.find((c) => c.id === e.target.value);
+                minLength={2}
+                maxLength={160}
+                list="os-client-names"
+                value={form.client_name}
+                placeholder="Digite o nome da empresa ou pessoa"
+                onChange={(e) =>
                   setForm((f) => ({
                     ...f,
-                    client_id: e.target.value,
-                    address: c?.address || "",
-                    place_id: "",
-                    contact: c?.contact || "",
-                    phone: c?.phone || "",
-                  }));
-                }}
-              >
-                <option value="">Selecione um cliente</option>
-                {data.clients
-                  .filter((c) => c.active || c.id === form.client_id)
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                      {!c.active ? " (inativo)" : ""}
-                    </option>
-                  ))}
-              </select>
+                    client_name: e.target.value,
+                    client_id: "",
+                  }))
+                }
+              />
+              <datalist id="os-client-names">
+                {clientNames.map((name) => (
+                  <option key={name} value={name} />
+                ))}
+              </datalist>
+              <span className="text-xs muted">
+                Não precisa cadastrar. Você também pode escolher um nome já
+                utilizado.
+              </span>
             </label>
             <label>
               Prioridade
@@ -280,6 +285,44 @@ export function OrderEditor({
                 ))}
               </select>
             </label>
+            {!!data.clients.filter((c) => c.active).length && (
+              <details className="full rounded-xl border p-3">
+                <summary className="cursor-pointer text-sm font-medium">
+                  Usar dados de um cliente cadastrado (opcional)
+                </summary>
+                <label className="mt-3">
+                  Preencher a partir do cadastro
+                  <select
+                    value={form.client_id}
+                    onChange={(e) => {
+                      const c = data.clients.find(
+                        (c) => c.id === e.target.value,
+                      );
+                      if (c)
+                        setForm((f) => ({
+                          ...f,
+                          client_id: c.id,
+                          client_name: c.name,
+                          address: c.address,
+                          place_id: "",
+                          contact: c.contact,
+                          phone: c.phone,
+                        }));
+                      else setForm((f) => ({ ...f, client_id: "" }));
+                    }}
+                  >
+                    <option value="">Somente o nome informado acima</option>
+                    {data.clients
+                      .filter((c) => c.active)
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              </details>
+            )}
             <label>
               Início previsto
               <input
@@ -307,7 +350,7 @@ export function OrderEditor({
               demo={demo}
             />
             <label>
-              Contato no cliente
+              Contato no cliente (opcional)
               <input
                 maxLength={160}
                 value={form.contact}
@@ -315,7 +358,7 @@ export function OrderEditor({
               />
             </label>
             <label>
-              Telefone do contato
+              Telefone do contato (opcional)
               <input
                 type="tel"
                 maxLength={40}

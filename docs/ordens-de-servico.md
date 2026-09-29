@@ -2,10 +2,10 @@
 
 ## Fluxo
 
-1. Coordenador cadastra **Clientes** e **Veículos**. Informe a leitura inicial real do painel; após o cadastro, a quilometragem é atualizada por viagens.
-2. Em **Ordens de serviço → Gerar OS**, seleciona cliente, equipe, veículo opcional, período, endereço e equipamentos/materiais. Pode anexar um PDF de até 3 MB.
+1. O cadastro de **Clientes é opcional**. O coordenador pode informar só o nome na OS; nomes já usados aparecem como sugestões, sem criar novos cadastros automaticamente. Para utilizar carro da empresa, cadastre o **Veículo** com a leitura inicial real do painel; depois, a quilometragem é atualizada por viagens.
+2. Em **Ordens de serviço → Gerar OS**, informa o nome do cliente, serviço, equipe e período. Veículo, endereço, contato, equipamentos/materiais e PDF de até 3 MB são opcionais. O atalho de cliente cadastrado preenche os dados quando desejado.
 3. Cada integrante vê somente as próprias OS. No dia previsto, a ficha abre automaticamente ao acessar o sistema (novamente em uma nova sessão ou quando a OS muda). A confirmação de leitura é visível à equipe.
-4. **Ir · Google Maps** abre a navegação. Uma pessoa registra o km de saída e de retorno por viagem; não é preciso duplicar a leitura por colaborador. A frota mostra o último km informado e as viagens.
+4. **Ir · Google Maps** abre a navegação quando a OS possui endereço. Uma pessoa registra o km de saída e de retorno por viagem; não é preciso duplicar a leitura por colaborador. A frota mostra o último km informado e as viagens.
 5. Cada integrante pode **Iniciar meu ponto nesta OS**, vinculando cliente, serviço e OS ao próprio ponto. O ponto continua sendo pausado/encerrado em **Meu ponto**. Iniciar atendimento ou registrar saída do veículo não inicia o ponto de todos.
 6. A conclusão exige resultado do serviço e todos os pontos/viagens encerrados. O coordenador também pode cancelar com motivo. Só OS ainda não iniciadas podem ser reprogramadas.
 

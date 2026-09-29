@@ -353,7 +353,7 @@ export function ServiceOrders({
                 </p>
                 <p className="muted mt-2 flex gap-2 text-sm">
                   <MapPin size={17} className="shrink-0" />
-                  {o.address}
+                  {o.address || "Endereço não informado"}
                 </p>
                 <p className="muted mt-3 text-sm">
                   Equipe: {o.team.map((p) => p.name).join(", ")}
@@ -374,7 +374,7 @@ export function ServiceOrders({
               <h2>Nenhuma OS neste filtro</h2>
               <p className="muted mt-2">
                 {admin
-                  ? "Cadastre os clientes e veículos e use Gerar OS para programar um atendimento."
+                  ? "Use Gerar OS para programar um atendimento. Basta informar o nome do cliente, sem cadastro prévio."
                   : "As ordens designadas para você aparecerão aqui."}
               </p>
             </div>
@@ -531,7 +531,8 @@ export function ServiceOrders({
           </div>
           {!loading && !data.clients.length && (
             <p className="panel p-8 text-center muted">
-              Cadastre o primeiro cliente para começar a gerar OS.
+              Cadastro opcional. Você pode gerar uma OS informando apenas o nome
+              do cliente.
             </p>
           )}
         </>
@@ -696,16 +697,21 @@ function OrderDetail({
             </div>
             <div className="sm:col-span-2">
               <b className="text-xs uppercase muted">Endereço</b>
-              <p className="break-words">{o.address}</p>
+              <p className="break-words">
+                {o.address ||
+                  "Não informado. A navegação ficará disponível quando houver endereço."}
+              </p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button asChild>
-              <a href={mapsUrl(o)} target="_blank" rel="noopener noreferrer">
-                <Navigation />
-                Ir · Google Maps
-              </a>
-            </Button>
+            {o.address.trim() && (
+              <Button asChild>
+                <a href={mapsUrl(o)} target="_blank" rel="noopener noreferrer">
+                  <Navigation />
+                  Ir · Google Maps
+                </a>
+              </Button>
+            )}
             {o.pdf_name && (
               <Button asChild variant="outline">
                 <a href={`/api/operations/${o.id}/pdf`}>

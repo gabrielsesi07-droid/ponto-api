@@ -34,7 +34,7 @@ export type Order = {
   id: string;
   number: number;
   title: string;
-  client_id: string;
+  client_id: string | null;
   client_name: string;
   address: string;
   place_id: string;
@@ -75,8 +75,9 @@ export const orderSchema = z
     id: z.string().uuid().optional(),
     version: z.number().int().positive().optional(),
     title: short.min(2, "Descreva o serviço."),
-    client_id: z.string().uuid("Selecione um cliente."),
-    address: z.string().trim().min(5, "Informe o endereço completo.").max(500),
+    client_id: z.string().uuid().nullable().default(null),
+    client_name: short.default(""),
+    address: z.string().trim().max(500).default(""),
     place_id: z.string().max(300).default(""),
     contact: short.default(""),
     phone: z.string().max(40).default(""),
@@ -91,6 +92,10 @@ export const orderSchema = z
     equipment: z.string().trim().max(3000).default(""),
     instructions: z.string().trim().max(5000).default(""),
     priority: z.enum(["Normal", "Alta", "Urgente"]).default("Normal"),
+  })
+  .refine((p) => !!p.client_id || p.client_name.length >= 2, {
+    path: ["client_name"],
+    message: "Informe o nome do cliente.",
   })
   .refine((p) => new Date(p.ends_at) > new Date(p.starts_at), {
     message: "A previsão de término deve ser após o início.",

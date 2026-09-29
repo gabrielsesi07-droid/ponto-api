@@ -3,6 +3,7 @@ import { neon } from '@neondatabase/serverless';
 const sql = neon(process.env.DATABASE_URL);
 const source = await readFile(new URL('../sql/003-orders.sql', import.meta.url), 'utf8');
 const actions = await readFile(new URL('../sql/004-order-actions.sql', import.meta.url), 'utf8');
-await sql.transaction([...source.split(/\r?\n-- statement-break\r?\n/).filter(x => x.trim()).map(q => sql.query(q)), sql.query(actions)]);
+const flexibleClient = await readFile(new URL('../sql/005-flexible-client.sql', import.meta.url), 'utf8');
+await sql.transaction([...source.split(/\r?\n-- statement-break\r?\n/).filter(x => x.trim()).map(q => sql.query(q)), sql.query(flexibleClient), sql.query(actions)]);
 await sql.query(await readFile(new URL('../sql/002-clock-function.sql',import.meta.url),'utf8'));
 console.log('Ordens de serviço, clientes e frota preparados.');
