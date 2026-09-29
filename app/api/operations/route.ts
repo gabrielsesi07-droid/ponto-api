@@ -16,6 +16,7 @@ export async function GET() {
       admin = me.role === "coordinator";
     const [orders, vehicles, clients, people] = await Promise.all([
       sql`SELECT o.*,
+        coalesce((SELECT jsonb_agg(jsonb_build_object('id',m.id,'name',m.name,'family',m.family) ORDER BY m.name) FROM horacerta.equipment_models m WHERE m.id=ANY(o.model_ids)),'[]') equipment_models,
         (SELECT name FROM horacerta.order_pdfs WHERE order_id=o.id) pdf_name,
         coalesce((SELECT jsonb_agg(jsonb_build_object('id',u.id,'name',u.name,'access_code',u.access_code) ORDER BY u.name) FROM horacerta.users u WHERE u.id=ANY(o.members)),'[]') team,
         coalesce((SELECT jsonb_agg(to_jsonb(a)) FROM horacerta.order_acknowledgements a WHERE a.order_id=o.id),'[]') acknowledgements,

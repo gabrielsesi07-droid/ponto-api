@@ -59,7 +59,7 @@ As listas importadas só usam tabelas de itens reconhecidas e um documento de ch
 
 ## Verificação e publicação
 
-`npm.cmd test` inclui horas e regras de checklist. `tests/checklists-smoke.mjs`, com servidor local em 5174 e banco migrado, cria fixtures identificadas e remove exclusivamente seus próprios registros/sessões. Cobre autorização, impressão, vínculo automático, personalização, versões, concorrência, conclusão e histórico. Também executar testes de operações/biblioteca, build, typecheck e lint. Não executar testes legados que exigem base vazia na produção.
+`npm.cmd test` inclui horas e regras de checklist. `npm run test:order-workflow` valida o fluxo SQL em schema isolado revertido ao final, sem consumir números reais. `tests/checklists-smoke.mjs` exige `TEST_DATABASE_URL` de um banco de testes separado e servidor local em 5174 conectado a ele; cria fixtures identificadas e remove exclusivamente seus próprios registros/sessões. Cobre autorização, impressão, vínculo automático, personalização, versões, concorrência, conclusão e histórico. Nunca apontar os testes HTTP mutantes para produção. Complementar com build, typecheck e lint.
 
 Verificar visualmente no celular: caixas acessíveis, campos legíveis, lista sem rolagem horizontal e botões quebrando linha. Na impressão, verificar identificação e tabela; somente dados salvos entram no documento.
 

@@ -272,7 +272,7 @@ export function ServiceOrders({
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <p className="muted text-sm">
               {admin
-                ? "Planeje os atendimentos e acompanhe a equipe."
+                ? "Planeje os atendimentos e acompanhe a equipe. Cada nova OS recebe um número sequencial, que não muda ao editar."
                 : "Seus atendimentos, equipe, trajetos e instruções."}
             </p>
             <div className="flex gap-2">
@@ -806,8 +806,11 @@ function OrderDetail({
               <Wrench size={18} />
               Equipamentos e instruções
             </h3>
+            {!!o.equipment_models?.length && <ul className="mt-3 grid gap-2 sm:grid-cols-2" aria-label="Equipamentos selecionados nesta OS">
+              {o.equipment_models.map(model => <li key={model.id} className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm"><b className="block text-blue-950">{model.name}</b>{model.family && <span className="text-blue-800">{model.family}</span>}</li>)}
+            </ul>}
             <p className="mt-3 whitespace-pre-wrap break-words text-sm">
-              {o.equipment || "Nenhum equipamento especificado."}
+              {o.equipment || (o.model_ids?.length ? 'Nenhum material adicional informado.' : 'Nenhum equipamento especificado.')}
             </p>
             <p className="muted mt-3 whitespace-pre-wrap break-words text-sm">
               {o.instructions || "Sem orientações adicionais."}

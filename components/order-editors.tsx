@@ -20,6 +20,7 @@ import {
 import { today } from "@/lib/domain";
 import { ModelPicker } from "./technical-library";
 import { ChecklistPreview, type ChecklistDraft } from './checklist-preview';
+import { clientNameKey, searchClients, type ClientSuggestion } from '@/lib/client-search';
 
 export async function uploadOrderPdf(id: string, file: File) {
   if (file.size > 3 * 1024 * 1024)
@@ -170,14 +171,17 @@ export function OrderEditor({
   // Retain a created OS if only attachment upload fails, so retry cannot create a duplicate.
   const [savedId, setSavedId] = useState<string | null>(null);
   const [checklistDrafts, setChecklistDrafts] = useState<ChecklistDraft[]>([]);
+  const [showClients, setShowClients] = useState(false);
   const change = (key: string, value: string) =>
     setForm((f) => ({ ...f, [key]: value }));
-  const clientNames = [
-    ...new Set([
-      ...data.clients.filter((c) => c.active).map((c) => c.name),
-      ...data.orders.map((o) => o.client_name),
-    ]),
-  ].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const activeClients = data.clients.filter(c => c.active);
+  const knownNames = new Set(activeClients.map(c => clientNameKey(c.name)));
+  const clientOptions: ClientSuggestion[] = activeClients.map(c => ({ id: c.id, name: c.name, detail: c.address || c.contact || 'Cliente cadastrado' }));
+  for (const previous of data.orders) {
+    const key = clientNameKey(previous.client_name);
+    if (!knownNames.has(key)) { knownNames.add(key); clientOptions.push({ id: null, name: previous.client_name, detail: 'Usado em OS anterior · cadastrar ao salvar' }); }
+  }
+  const clientSuggestions = searchClients(clientOptions, form.client_name);
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError("");
@@ -252,33 +256,36 @@ export function OrderEditor({
                 placeholder="Ex.: manutenção preventiva dos painéis"
               />
             </label>
-            <label>
-              Nome do cliente
+            <div className="ops-field">
+              <label htmlFor="os-client-name">Nome do cliente</label>
               <input
+                id="os-client-name"
                 required
                 minLength={2}
                 maxLength={160}
-                list="os-client-names"
+                autoComplete="off"
+                onFocus={() => setShowClients(true)}
+                onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); setShowClients(false); } }}
                 value={form.client_name}
                 placeholder="Digite o nome da empresa ou pessoa"
-                onChange={(e) =>
+                onChange={(e) => {
+                  setShowClients(true);
                   setForm((f) => ({
                     ...f,
                     client_name: e.target.value,
                     client_id: "",
-                  }))
-                }
+                  }));
+                }}
               />
-              <datalist id="os-client-names">
-                {clientNames.map((name) => (
-                  <option key={name} value={name} />
-                ))}
-              </datalist>
-              <span className="text-xs muted">
-                Não precisa cadastrar. Você também pode escolher um nome já
-                utilizado.
-              </span>
-            </label>
+              {showClients && clientSuggestions.length > 0 && <div className="max-h-52 overflow-y-auto rounded-xl border bg-white p-1 shadow-sm" aria-label="Clientes encontrados">
+                {clientSuggestions.map(option => <button key={option.id || option.name} type="button" className="block w-full rounded-lg p-3 text-left text-sm hover:bg-blue-50 focus-visible:bg-blue-50" onClick={() => {
+                  const client = activeClients.find(c => c.id === option.id);
+                  setForm(f => ({ ...f, client_name: option.name, client_id: option.id || '', address: f.address || client?.address || '', contact: f.contact || client?.contact || '', phone: f.phone || client?.phone || '' }));
+                  setShowClients(false);
+                }}><b className="block">{option.name}</b><span className="block text-xs text-slate-500">{option.detail}</span></button>)}
+              </div>}
+              <p className="text-xs muted" role="status">{form.client_id ? 'Cliente selecionado. Confira o endereço deste atendimento.' : 'Busque pelo nome, mesmo sem acentos. Se ainda não existir, o cliente será cadastrado automaticamente ao salvar a OS.'}</p>
+            </div>
             <label>
               Prioridade
               <select

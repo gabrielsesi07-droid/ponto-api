@@ -48,6 +48,7 @@ export type Order = {
   vehicle_id: string | null;
   equipment: string;
   model_ids?: string[];
+  equipment_models?: { id: string; name: string; family: string }[];
   instructions: string;
   priority: string;
   status: "Agendada" | "Em andamento" | "Concluída" | "Cancelada";

@@ -7,7 +7,8 @@ import { neon } from "@neondatabase/serverless";
 const base = process.env.TEST_BASE_URL || "http://localhost:5174";
 if (!["localhost", "127.0.0.1"].includes(new URL(base).hostname))
   throw new Error("Use a local test server.");
-const sql = neon(process.env.DATABASE_URL);
+if (!process.env.TEST_DATABASE_URL) throw new Error('Use TEST_DATABASE_URL and a local server on that isolated database; never run mutation smoke tests against production.');
+const sql = neon(process.env.TEST_DATABASE_URL);
 const [admin] =
   await sql`SELECT id FROM horacerta.users WHERE role='coordinator' AND active LIMIT 1`;
 assert.ok(admin, "Existing coordinator required");
@@ -281,8 +282,6 @@ try {
     200,
     "Address lookup has graceful fallback",
   );
-  const beforeClients =
-    await sql`SELECT count(*)::int n FROM horacerta.clients`;
   const freeData = {
     ...payload(),
     client_id: null,
@@ -306,14 +305,15 @@ try {
     await sql`SELECT client_id,client_name,address FROM horacerta.orders WHERE id=${free.data.id}`;
   check(
     freeRow,
-    { client_id: null, client_name: freeData.client_name, address: "" },
-    "Unregistered client snapshot preserved",
+    { client_id: freeRow.client_id, client_name: freeData.client_name, address: "" },
+    "Auto-registered client snapshot preserved",
   );
-  const afterClients = await sql`SELECT count(*)::int n FROM horacerta.clients`;
+  check(typeof freeRow.client_id, 'string', 'Client linked automatically');
+  const afterClients = await sql`SELECT count(*)::int n FROM horacerta.clients WHERE name=${freeData.client_name}`;
   check(
     afterClients[0].n,
-    beforeClients[0].n,
-    "No client record silently created",
+    1,
+    "New client registered automatically",
   );
   const renamed = freeData.client_name + " alterado";
   check(
@@ -422,6 +422,7 @@ try {
     sql`DELETE FROM horacerta.orders WHERE id=ANY(${orders}::uuid[])`,
     sql`DELETE FROM horacerta.vehicles WHERE id=${resources.vehicle}::uuid`,
     sql`DELETE FROM horacerta.clients WHERE id=${resources.client}::uuid`,
+    sql`DELETE FROM horacerta.clients WHERE name IN (${'QA avulso ' + fixture},${'QA avulso ' + fixture + ' alterado'})`,
     sql`DELETE FROM horacerta.sessions WHERE token_hash=ANY(${hashes}::text[])`,
     sql`DELETE FROM horacerta.users WHERE id IN (${worker}::uuid,${other}::uuid)`,
   ]);

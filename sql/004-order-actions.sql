@@ -11,6 +11,8 @@ DECLARE
  checklist_draft jsonb;
  checklist_copy horacerta.order_checklists%ROWTYPE;
  client_label text;
+ selected_client uuid;
+ client_matches integer;
  km integer;
  detail_value text := '';
  result jsonb;
@@ -73,6 +75,7 @@ BEGIN
    IF EXISTS(SELECT 1 FROM unnest(selected_models) AS selected(model_id) WHERE NOT EXISTS(SELECT 1 FROM horacerta.equipment_models m WHERE m.id=selected.model_id AND (m.status IN ('pending','published') OR m.id=ANY(coalesce(o.model_ids,'{}'::uuid[]))))) THEN RAISE EXCEPTION 'Equipamento indisponível ou arquivado. Atualize a seleção do catálogo.'; END IF;
    IF EXISTS(SELECT 1 FROM unnest(team) AS assigned(user_id) WHERE NOT EXISTS(SELECT 1 FROM horacerta.users x WHERE x.id=assigned.user_id AND x.active)) THEN RAISE EXCEPTION 'Selecione apenas colaboradores ativos.'; END IF;
    IF p->>'client_id' IS NOT NULL THEN
+     selected_client := (p->>'client_id')::uuid;
      SELECT name INTO client_label FROM horacerta.clients WHERE id=(p->>'client_id')::uuid AND active;
      IF NOT FOUND THEN RAISE EXCEPTION 'Cliente indisponível. Informe apenas o nome ou escolha outro cadastro.'; END IF;
      -- Retain the recorded name when editing an existing linked OS.
@@ -81,15 +84,30 @@ BEGIN
      client_label := trim(coalesce(p->>'client_name',''));
    END IF;
    IF length(client_label)<2 OR length(client_label)>160 THEN RAISE EXCEPTION 'Informe o nome do cliente (2 a 160 caracteres).'; END IF;
+   IF selected_client IS NULL THEN
+     SELECT count(*) INTO client_matches FROM horacerta.clients c WHERE c.active AND horacerta.client_name_key(c.name)=horacerta.client_name_key(client_label);
+     IF client_matches>1 THEN RAISE EXCEPTION 'Há mais de um cliente com esse nome. Escolha o cadastro nas sugestões.'; END IF;
+     SELECT c.id INTO selected_client FROM horacerta.clients c WHERE c.active AND horacerta.client_name_key(c.name)=horacerta.client_name_key(client_label) LIMIT 1;
+     IF selected_client IS NULL THEN
+       IF EXISTS(SELECT 1 FROM horacerta.clients c WHERE NOT c.active AND horacerta.client_name_key(c.name)=horacerta.client_name_key(client_label)) THEN RAISE EXCEPTION 'Este cliente está inativo. Reative o cadastro na área Clientes antes de gerar a OS.'; END IF;
+       INSERT INTO horacerta.clients(name,address,contact,phone) VALUES(client_label,coalesce(p->>'address',''),coalesce(p->>'contact',''),coalesce(p->>'phone','')) RETURNING id INTO selected_client;
+     END IF;
+   END IF;
    IF p->>'vehicle_id' IS NOT NULL AND NOT EXISTS(SELECT 1 FROM horacerta.vehicles WHERE id=(p->>'vehicle_id')::uuid AND active) THEN RAISE EXCEPTION 'Selecione um veículo ativo.'; END IF;
    IF EXISTS(SELECT 1 FROM horacerta.orders x WHERE x.id<>target AND x.status IN ('Agendada','Em andamento')
      AND x.starts_at<(p->>'ends_at')::timestamptz AND x.ends_at>(p->>'starts_at')::timestamptz
      AND (x.members && team OR x.vehicle_id=(p->>'vehicle_id')::uuid)) THEN
      RAISE EXCEPTION 'Um colaborador ou veículo já está reservado nesse horário.';
    END IF;
-   INSERT INTO horacerta.orders(id,title,client_id,client_name,address,place_id,contact,phone,starts_at,ends_at,members,vehicle_id,equipment,instructions,priority,created_by)
-   VALUES(target,p->>'title',(p->>'client_id')::uuid,client_label,p->>'address',p->>'place_id',p->>'contact',p->>'phone',(p->>'starts_at')::timestamptz,(p->>'ends_at')::timestamptz,team,(p->>'vehicle_id')::uuid,p->>'equipment',p->>'instructions',p->>'priority',actor)
-   ON CONFLICT(id) DO UPDATE SET title=excluded.title,client_id=excluded.client_id,client_name=excluded.client_name,address=excluded.address,place_id=excluded.place_id,contact=excluded.contact,phone=excluded.phone,starts_at=excluded.starts_at,ends_at=excluded.ends_at,members=excluded.members,vehicle_id=excluded.vehicle_id,equipment=excluded.equipment,instructions=excluded.instructions,priority=excluded.priority,version=horacerta.orders.version+1;
+   IF o.id IS NULL THEN
+     INSERT INTO horacerta.orders(id,title,client_id,client_name,address,place_id,contact,phone,starts_at,ends_at,members,vehicle_id,equipment,instructions,priority,created_by)
+     VALUES(target,p->>'title',selected_client,client_label,p->>'address',p->>'place_id',p->>'contact',p->>'phone',(p->>'starts_at')::timestamptz,(p->>'ends_at')::timestamptz,team,(p->>'vehicle_id')::uuid,p->>'equipment',p->>'instructions',p->>'priority',actor);
+   ELSE
+     -- UPDATE must not consume the identity sequence as INSERT ON CONFLICT does.
+     UPDATE horacerta.orders SET title=p->>'title',client_id=selected_client,client_name=client_label,address=p->>'address',place_id=p->>'place_id',
+       contact=p->>'contact',phone=p->>'phone',starts_at=(p->>'starts_at')::timestamptz,ends_at=(p->>'ends_at')::timestamptz,members=team,
+       vehicle_id=(p->>'vehicle_id')::uuid,equipment=p->>'equipment',instructions=p->>'instructions',priority=p->>'priority',version=version+1 WHERE id=target;
+   END IF;
    INSERT INTO horacerta.order_events(order_id,actor_id,action,detail) VALUES(target,actor,CASE WHEN o.id IS NULL THEN 'OS criada' ELSE 'OS reprogramada' END,p->>'title');
    UPDATE horacerta.orders SET model_ids=selected_models WHERE id=target;
    PERFORM horacerta.attach_order_checklists(target,actor);
@@ -102,7 +120,7 @@ BEGIN
      INSERT INTO horacerta.checklist_history(checklist_id,actor_id,action,snapshot) VALUES(checklist_copy.id,actor,'Checklist configurado na criação da OS',to_jsonb(checklist_copy));
     END LOOP;
    END IF;
-   RETURN jsonb_build_object('ok',true,'id',target);
+   RETURN jsonb_build_object('ok',true,'id',target,'number',(SELECT number FROM horacerta.orders WHERE id=target));
  END IF;
  IF o.id IS NULL THEN RAISE EXCEPTION 'OS não encontrada.'; END IF;
  IF u.role<>'coordinator' AND NOT actor=ANY(o.members) THEN RAISE EXCEPTION 'Você não está designado para esta OS.'; END IF;

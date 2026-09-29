@@ -3,7 +3,8 @@ import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
 const base = process.env.TEST_BASE_URL || 'http://localhost:5174';
 if (!['localhost', '127.0.0.1'].includes(new URL(base).hostname)) throw new Error('Use a local server.');
-const sql = neon(process.env.DATABASE_URL);
+if (!process.env.TEST_DATABASE_URL) throw new Error('Use TEST_DATABASE_URL and a local server on that isolated database; never run mutation smoke tests against production.');
+const sql = neon(process.env.TEST_DATABASE_URL);
 const [admin] = await sql`SELECT id FROM horacerta.users WHERE role='coordinator' AND active LIMIT 1`;
 assert.ok(admin);
 const worker = randomUUID(), other = randomUUID(), doc = randomUUID(), obsolete = randomUUID(), model = randomUUID();
@@ -43,7 +44,7 @@ try {
   check(listing.cache, 'private, no-store', 'Private cache policy');
   check(listing.data.models.some(m => m.id === model && m.status === 'pending'), true, 'Coordinator catalogue contains pending equipment');
   const pendingOrder = await call('/api/operations', { action: 'save_order', data: {
-    title: query, client_name: 'QA pending model', starts_at: new Date(Date.now() + 172800000).toISOString(),
+    title: query, client_name: query, starts_at: new Date(Date.now() + 172800000).toISOString(),
     ends_at: new Date(Date.now() + 176400000).toISOString(), members: [worker], vehicle_id: null, model_ids: [model],
   } });
   check(pendingOrder.status, 200, 'Pending catalogue equipment can be selected without leaving OS');
@@ -68,7 +69,7 @@ try {
   check((await call('/api/library?q=' + encodeURIComponent('acentuação'), null, worker)).data.documents.some(d => d.id === doc), true, 'Accent-insensitive content search');
   check((await call('/api/library', { kind: 'model', id: model, version: 1, status: 'published' }, worker)).status, 403, 'Employee cannot validate models');
   check((await call('/api/library', { kind: 'model', id: model, version: 1, status: 'published' })).status, 200, 'Coordinator validates equipment model');
-  const orderData = { title: query, client_name: 'QA', starts_at: new Date(Date.now() + 3600000).toISOString(),
+  const orderData = { title: query, client_name: query, starts_at: new Date(Date.now() + 3600000).toISOString(),
     ends_at: new Date(Date.now() + 7200000).toISOString(), members: [worker], vehicle_id: null, model_ids: [model] };
   const saved = await call('/api/operations', { action: 'save_order', data: orderData });
   check(saved.status, 200, 'Reviewed equipment model can be linked to OS');
@@ -88,6 +89,7 @@ try {
   }
   await sql`DELETE FROM horacerta.library_documents WHERE id=ANY(${[doc, obsolete]}::uuid[])`;
   await sql`DELETE FROM horacerta.equipment_models WHERE id=${model}`;
+  await sql`DELETE FROM horacerta.clients WHERE name=${query}`;
   await sql`DELETE FROM horacerta.sessions WHERE token_hash=ANY(${tokens}::text[])`;
   await sql`DELETE FROM horacerta.users WHERE id=ANY(${[worker, other]}::uuid[])`;
   console.log('Disposable fixtures and sessions removed.');

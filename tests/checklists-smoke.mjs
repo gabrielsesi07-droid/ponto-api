@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { randomUUID,randomBytes,createHash } from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
 import { writeFile } from 'node:fs/promises';
-const sql=neon(process.env.DATABASE_URL),base=process.env.TEST_BASE_URL||'http://127.0.0.1:5174';
+if(!process.env.TEST_DATABASE_URL)throw new Error('Use TEST_DATABASE_URL and a local server on that isolated database; never run mutation smoke tests against production.');
+const sql=neon(process.env.TEST_DATABASE_URL),base=process.env.TEST_BASE_URL||'http://127.0.0.1:5174';
 if(!['localhost','127.0.0.1'].includes(new URL(base).hostname))throw new Error('Local test server required');
 const [admin]=await sql`SELECT id FROM horacerta.users WHERE role='coordinator' AND active LIMIT 1`;
 const worker=randomUUID(),other=randomUUID(),model=randomUUID(),sourceDoc=randomUUID(),tag='QA-checklist-'+randomUUID(),tokens=[],cookies=new Map(),orders=[];
@@ -11,7 +12,7 @@ const check=(a,b,label)=>{assert.deepEqual(a,b,label);checks++;console.log('OK '
 async function call(path,body,who=admin.id){const res=await fetch(base+path,{method:body?'POST':'GET',headers:{...(who?{cookie:cookies.get(who)}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,redirect:'manual'});return{status:res.status,data:res.headers.get('content-type')?.includes('json')?await res.json():await res.text()};}
 const item=()=>({id:randomUUID(),label:'Cabo de teste',planned:2,outgoing:false,incoming:false,outgoing_qty:null,incoming_qty:null,na:false,notes:''});
 const action=(action,data,who)=>call('/api/checklists',{action,...data},who);
-const os=(day=0)=>({title:tag,client_name:'Cliente de teste',starts_at:new Date(Date.now()-3600000+day*86400000).toISOString(),ends_at:new Date(Date.now()+3600000+day*86400000).toISOString(),members:[worker],vehicle_id:null,model_ids:[model]});
+const os=(day=0)=>({title:tag,client_name:'Cliente de teste '+tag,starts_at:new Date(Date.now()-3600000+day*86400000).toISOString(),ends_at:new Date(Date.now()+3600000+day*86400000).toISOString(),members:[worker],vehicle_id:null,model_ids:[model]});
 try{
  await sql`INSERT INTO horacerta.users(id,name,email,role,hourly_rate) VALUES(${worker},'QA checklist colaborador',${worker+'@example.invalid'},'employee',0),(${other},'QA checklist outro',${other+'@example.invalid'},'employee',0)`;
  await sql`INSERT INTO horacerta.equipment_models(id,name,family) VALUES(${model},${tag},'Teste descartável')`;
@@ -116,6 +117,7 @@ try{
   sql`DELETE FROM horacerta.order_checklists WHERE order_id=ANY(${orders}::uuid[])`,
   sql`DELETE FROM horacerta.order_events WHERE order_id=ANY(${orders}::uuid[])`,
   sql`DELETE FROM horacerta.orders WHERE id=ANY(${orders}::uuid[])`,
+  sql`DELETE FROM horacerta.clients WHERE name=${'Cliente de teste '+tag}`,
   sql`DELETE FROM horacerta.checklist_templates WHERE model_id=${model}`,
   sql`DELETE FROM horacerta.library_documents WHERE id=${sourceDoc}`,
   sql`DELETE FROM horacerta.equipment_models WHERE id=${model}`,
