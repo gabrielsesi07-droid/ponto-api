@@ -98,6 +98,11 @@ try{
  const obsoleteOS=await call('/api/operations',{action:'save_order',data:os(4)});orders.push(obsoleteOS.data.id);
  check((await call('/api/checklists?order='+obsoleteOS.data.id)).data.checklists.length,0,'Obsolete source never auto-links');
  await sql`UPDATE horacerta.library_documents SET obsolete=false WHERE id=${sourceDoc}`;
+ const deletionFor=async id=>{const [o]=await sql`SELECT number,version FROM horacerta.orders WHERE id=${id}`;return {id,version:o.version,confirmation:'OS-'+String(o.number).padStart(6,'0')};};
+ check((await call('/api/operations',{action:'delete_order',data:await deletionFor(orders[1])})).status,409,'Saved employee checklist protects OS from deletion');
+ check((await call('/api/operations',{action:'delete_order',data:await deletionFor(legacyOS.data.id)})).status,200,'Unfilled repaired checklist does not prevent deleting mistaken OS');
+ check((await sql`SELECT id FROM horacerta.order_checklists WHERE order_id=${legacyOS.data.id}`).length,0,'Deleting OS removes only its unfilled checklist copy');
+ check((await sql`SELECT id FROM horacerta.checklist_templates WHERE model_id=${model}`).length,1,'Deleting OS preserves catalogue checklist standard');
  console.log(`${checks} checklist checks passed.`);
  if(process.env.UI_TEST_HOLD==='1'){
   await writeFile(new URL('../work/library/test-checklist-context.json',import.meta.url),JSON.stringify({order_id:importedOS.data.id,employee_id:worker}));
@@ -106,6 +111,7 @@ try{
  }
 }finally{
  await sql.transaction([
+  sql`DELETE FROM horacerta.audit WHERE action='OS excluída' AND before_value->>'order_id'=ANY(${orders}::text[])`,
   sql`DELETE FROM horacerta.checklist_history WHERE template_id IN (SELECT id FROM horacerta.checklist_templates WHERE model_id=${model}) OR checklist_id IN (SELECT id FROM horacerta.order_checklists WHERE order_id=ANY(${orders}::uuid[]))`,
   sql`DELETE FROM horacerta.order_checklists WHERE order_id=ANY(${orders}::uuid[])`,
   sql`DELETE FROM horacerta.order_events WHERE order_id=ANY(${orders}::uuid[])`,

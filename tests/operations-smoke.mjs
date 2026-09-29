@@ -366,10 +366,45 @@ try {
     200,
     "OS without client registration completes",
   );
+  const deleteData = async id => {
+    const [o] = await sql`SELECT number,version FROM horacerta.orders WHERE id=${id}`;
+    return { id, version:o.version, confirmation:'OS-'+String(o.number).padStart(6,'0') };
+  };
+  check((await action('delete_order', await deleteData(free.data.id))).status,409,'Executed OS cannot be deleted');
+  const removable = await action('save_order', {...payload(), vehicle_id:null});
+  check(removable.status,200,'Disposable unstarted OS created for deletion');
+  orders.push(removable.data.id);
+  let deletion = await deleteData(removable.data.id);
+  check((await action('delete_order',deletion,null)).status,401,'Anonymous deletion blocked');
+  check((await action('delete_order',deletion,worker)).status,403,'Employee deletion blocked');
+  let sqlBlocked=false;
+  try {await sql`SELECT horacerta.order_action(${worker}::uuid,'delete_order',${JSON.stringify(deletion)}::jsonb)`;} catch(e){sqlBlocked=e.code==='P0001';}
+  check(sqlBlocked,true,'SQL enforces coordinator-only deletion');
+  check((await action('delete_order',{...deletion,confirmation:'OS-000000'})).status,409,'Wrong OS confirmation blocked');
+  check((await action('delete_order',{id:deletion.id})).status,400,'Missing confirmation/version blocked');
+  await action('save_order',{...payload(),vehicle_id:null,id:deletion.id,version:deletion.version});
+  check((await action('delete_order',deletion)).status,409,'Stale deletion blocked');
+  deletion=await deleteData(deletion.id);
+  await action('ack',{id:deletion.id},worker);
+  await sql`INSERT INTO horacerta.order_pdfs(order_id,name,content,size) VALUES(${deletion.id},'QA.pdf','JVBERi0=',5)`;
+  const simultaneous=await Promise.all([action('delete_order',deletion),action('delete_order',deletion)]);
+  check(simultaneous.map(r=>r.status).sort(),[200,409],'Concurrent deletion succeeds once');
+  check((await sql`SELECT id FROM horacerta.orders WHERE id=${deletion.id}`).length,0,'Deleted OS removed');
+  check((await sql`SELECT order_id FROM horacerta.order_pdfs WHERE order_id=${deletion.id}`).length,0,'Deleted OS PDF removed');
+  check((await sql`SELECT id FROM horacerta.audit WHERE action='OS excluída' AND before_value->>'order_id'=${deletion.id}`).length,1,'Deletion keeps actor audit');
+  check((await call('/api/operations',null,worker)).data.orders.some(o=>o.id===deletion.id),false,'Deleted OS disappears for employee');
+  const cancelled=await action('save_order',{...payload(),vehicle_id:null}); orders.push(cancelled.data.id);
+  await action('cancel',{id:cancelled.data.id,notes:'Criada por engano'});
+  check((await action('delete_order',await deleteData(cancelled.data.id))).status,200,'Cancelled unstarted OS can be deleted');
+  const started=await action('save_order',{...payload(),vehicle_id:null}); orders.push(started.data.id);
+  await action('begin',{id:started.data.id},worker);
+  await action('cancel',{id:started.data.id,notes:'Atendimento suspenso'});
+  check((await action('delete_order',await deleteData(started.data.id))).status,409,'Cancelling does not bypass execution protection');
   console.log(`${checks} checks passed.`);
 } finally {
   // Exact fixture IDs only, including sessions minted for the existing coordinator.
   await sql.transaction([
+    sql`DELETE FROM horacerta.audit WHERE action='OS excluída' AND before_value->>'order_id'=ANY(${orders}::text[])`,
     sql`DELETE FROM horacerta.audit WHERE actor_id IN (${worker}::uuid,${other}::uuid)`,
     sql`DELETE FROM horacerta.entries WHERE user_id IN (${worker}::uuid,${other}::uuid)`,
     sql`DELETE FROM horacerta.timers WHERE user_id IN (${worker}::uuid,${other}::uuid)`,

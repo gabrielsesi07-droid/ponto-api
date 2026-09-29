@@ -53,14 +53,18 @@ export async function POST(req: Request) {
           "begin",
           "finish",
           "cancel",
+          "delete_order",
         ])
         .parse(body.action);
     let data;
-    if (action.startsWith("save_") || action === "cancel") coordinator(me);
+    if (action.startsWith("save_") || action === "cancel" || action === "delete_order") coordinator(me);
     if (action === "save_order") data = orderSchema.parse(body.data);
     else if (action === "save_client")
       data = serviceClientSchema.parse(body.data);
     else if (action === "save_vehicle") data = vehicleSchema.parse(body.data);
+    else if (action === "delete_order")
+      data = z.object({ id: z.string().uuid(), version: z.number().int().positive(),
+        confirmation: z.string().trim().regex(/^OS-\d+$/, "Digite o número completo da OS para confirmar.") }).parse(body.data);
     else
       data = z
         .object({

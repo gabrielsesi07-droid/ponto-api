@@ -26,9 +26,11 @@ import {
   CalendarDays,
   Gauge,
   Building2,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction, AlertDialogTrigger } from './ui/alert-dialog';
 import {
   Dialog,
   DialogContent,
@@ -601,6 +603,7 @@ function OrderDetail({
     [error, setError] = useState(""),
     [km, setKm] = useState(""),
     [notes, setNotes] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false), [confirmation, setConfirmation] = useState(''), [deleteError, setDeleteError] = useState('');
   const open = ["Agendada", "Em andamento"].includes(o.status),
     admin = me.role === "coordinator",
     assigned = o.members.includes(me.id),
@@ -608,6 +611,18 @@ function OrderDetail({
   const acknowledged = o.acknowledgements.some(
     (a) => a.user_id === me.id && a.version === o.version,
   );
+  async function deleteOrder() {
+    if (demo) { setDeleteError('Entre com seu login de coordenador para excluir uma OS.'); return; }
+    setBusy(true); setDeleteError('');
+    try {
+      await api('/api/operations', { action: 'delete_order', data: { id: o.id, version: o.version, confirmation } });
+      setConfirmDelete(false);
+      onClose();
+      toast.success(`${orderNumber(o.number)} excluída. O registro da exclusão foi mantido na auditoria.`);
+      await onChanged();
+    } catch (e) { setDeleteError((e as Error).message); }
+    finally { setBusy(false); }
+  }
   async function action(action: string, data: Record<string, unknown> = {}) {
     if (demo) {
       setError(
@@ -736,6 +751,25 @@ function OrderDetail({
                 Editar OS
               </Button>
             )}
+            {admin && <AlertDialog open={confirmDelete} onOpenChange={value => { if (!busy) { setConfirmDelete(value); setConfirmation(''); setDeleteError(''); } }}>
+              <AlertDialogTrigger asChild><Button variant="destructive" disabled={busy}><Trash2 />Excluir OS</Button></AlertDialogTrigger>
+              <AlertDialogContent className="max-h-[90dvh] overflow-y-auto bg-white">
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Excluir {orderNumber(o.number)}?</AlertDialogTitle>
+                  <AlertDialogDescription>Cliente: {o.client_name}. Esta ação remove a OS, seu PDF e as listas ainda não conferidas e não pode ser desfeita. Equipamentos do catálogo, veículos e clientes não serão apagados. OS com execução, pontos, viagens ou conferências não podem ser excluídas; use Cancelar OS se ainda estiverem abertas.</AlertDialogDescription>
+                </AlertDialogHeader>
+                <label className="block text-sm font-medium">Digite {orderNumber(o.number)} para confirmar
+                  <input className="mt-2 w-full rounded-lg border p-3" autoComplete="off" value={confirmation} onChange={e => setConfirmation(e.target.value)} disabled={busy} />
+                </label>
+                {deleteError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{deleteError}</p>}
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={busy}>Voltar sem excluir</AlertDialogCancel>
+                  <AlertDialogAction variant="destructive" disabled={busy || confirmation.trim() !== orderNumber(o.number)} onClick={e => { e.preventDefault(); void deleteOrder(); }}>
+                    {busy ? <LoaderCircle className="animate-spin" /> : <Trash2 />}Excluir definitivamente
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>}
           </div>
           <section>
             <h3 className="font-semibold">Equipe designada</h3>
