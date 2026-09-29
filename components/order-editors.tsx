@@ -19,6 +19,7 @@ import {
 } from "@/lib/orders";
 import { today } from "@/lib/domain";
 import { ModelPicker } from "./technical-library";
+import { ChecklistPreview, type ChecklistDraft } from './checklist-preview';
 
 export async function uploadOrderPdf(id: string, file: File) {
   if (file.size > 3 * 1024 * 1024)
@@ -168,6 +169,7 @@ export function OrderEditor({
     [file, setFile] = useState<File | null>(null);
   // Retain a created OS if only attachment upload fails, so retry cannot create a duplicate.
   const [savedId, setSavedId] = useState<string | null>(null);
+  const [checklistDrafts, setChecklistDrafts] = useState<ChecklistDraft[]>([]);
   const change = (key: string, value: string) =>
     setForm((f) => ({ ...f, [key]: value }));
   const clientNames = [
@@ -199,6 +201,7 @@ export function OrderEditor({
           action: "save_order",
           data: {
             ...form,
+            checklist_drafts: order ? [] : checklistDrafts.filter(d => form.model_ids.includes(d.model_id)),
             client_id: form.client_id || null,
             vehicle_id: form.vehicle_id || null,
             starts_at: new Date(form.starts_at + ":00-03:00").toISOString(),
@@ -420,7 +423,8 @@ export function OrderEditor({
                   ))}
               </select>
             </label>
-            <ModelPicker value={form.model_ids} onChange={ids => setForm(f => ({ ...f, model_ids: ids }))} demo={demo} />
+            <ModelPicker value={form.model_ids} onChange={ids => { setForm(f => ({ ...f, model_ids: ids })); setChecklistDrafts(drafts => drafts.filter(d => ids.includes(d.model_id))); }} demo={demo} />
+            <ChecklistPreview modelIds={form.model_ids} drafts={checklistDrafts} onChange={setChecklistDrafts} existing={!!order} demo={demo} />
             <label className="full">
               Equipamentos e materiais
               <textarea

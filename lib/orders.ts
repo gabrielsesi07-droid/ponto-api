@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { checklistItemsSchema } from './checklists';
 
 export type ServiceClient = {
   id: string;
@@ -92,6 +93,9 @@ export const orderSchema = z
     vehicle_id: z.string().uuid().nullable(),
     equipment: z.string().trim().max(3000).default(""),
     model_ids: z.array(z.string().uuid()).max(30).transform(ids => [...new Set(ids)]).default([]),
+    checklist_drafts: z.array(z.object({ model_id: z.string().uuid(), template_version: z.number().int().positive(),
+      title: z.string().trim().min(2).max(180), items: checklistItemsSchema,
+    })).max(30).default([]),
     instructions: z.string().trim().max(5000).default(""),
     priority: z.enum(["Normal", "Alta", "Urgente"]).default("Normal"),
   })

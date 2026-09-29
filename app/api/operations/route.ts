@@ -3,11 +3,11 @@ import {
   db,
   member,
   coordinator,
-  payload,
   failure,
   ApiError,
 } from "@/lib/server";
 import { orderSchema, vehicleSchema, serviceClientSchema } from "@/lib/orders";
+import { checklistPayload } from '@/lib/checklist-server';
 export const dynamic = "force-dynamic";
 export async function GET() {
   try {
@@ -41,7 +41,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const me = await member(),
-      body = await payload(req),
+      body = await checklistPayload(req),
       action = z
         .enum([
           "save_order",

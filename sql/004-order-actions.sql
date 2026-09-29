@@ -8,6 +8,8 @@ DECLARE
  target uuid := coalesce((p->>'id')::uuid,gen_random_uuid());
  team uuid[];
  selected_models uuid[];
+ checklist_draft jsonb;
+ checklist_copy horacerta.order_checklists%ROWTYPE;
  client_label text;
  km integer;
  detail_value text := '';
@@ -65,6 +67,15 @@ BEGIN
    ON CONFLICT(id) DO UPDATE SET title=excluded.title,client_id=excluded.client_id,client_name=excluded.client_name,address=excluded.address,place_id=excluded.place_id,contact=excluded.contact,phone=excluded.phone,starts_at=excluded.starts_at,ends_at=excluded.ends_at,members=excluded.members,vehicle_id=excluded.vehicle_id,equipment=excluded.equipment,instructions=excluded.instructions,priority=excluded.priority,version=horacerta.orders.version+1;
    INSERT INTO horacerta.order_events(order_id,actor_id,action,detail) VALUES(target,actor,CASE WHEN o.id IS NULL THEN 'OS criada' ELSE 'OS reprogramada' END,p->>'title');
    UPDATE horacerta.orders SET model_ids=selected_models WHERE id=target;
+   PERFORM horacerta.attach_order_checklists(target,actor);
+   IF o.id IS NULL THEN
+    FOR checklist_draft IN SELECT value FROM jsonb_array_elements(coalesce(p->'checklist_drafts','[]'::jsonb)) LOOP
+     SELECT * INTO checklist_copy FROM horacerta.order_checklists WHERE order_id=target AND model_id=(checklist_draft->>'model_id')::uuid;
+     IF NOT FOUND OR checklist_copy.template_version<>(checklist_draft->>'template_version')::int THEN RAISE EXCEPTION 'O checklist padrão mudou ou não está ativo. Atualize a seleção de equipamentos.'; END IF;
+     UPDATE horacerta.order_checklists SET title=checklist_draft->>'title',items=checklist_draft->'items' WHERE id=checklist_copy.id RETURNING * INTO checklist_copy;
+     INSERT INTO horacerta.checklist_history(checklist_id,actor_id,action,snapshot) VALUES(checklist_copy.id,actor,'Checklist configurado na criação da OS',to_jsonb(checklist_copy));
+    END LOOP;
+   END IF;
    RETURN jsonb_build_object('ok',true,'id',target);
  END IF;
  IF o.id IS NULL THEN RAISE EXCEPTION 'OS não encontrada.'; END IF;
@@ -110,6 +121,7 @@ BEGIN
    IF EXISTS(SELECT 1 FROM horacerta.vehicle_trips WHERE order_id=target AND return_km IS NULL) THEN RAISE EXCEPTION 'Registre o km de retorno antes de encerrar a OS.'; END IF;
    IF EXISTS(SELECT 1 FROM horacerta.timers WHERE order_id=target) THEN RAISE EXCEPTION 'Há pontos em andamento nesta OS. Cada pessoa precisa encerrar seu ponto.'; END IF;
    IF action='finish' AND o.status<>'Em andamento' THEN RAISE EXCEPTION 'Inicie o atendimento antes de concluir.'; END IF;
+   IF action='finish' AND EXISTS(SELECT 1 FROM horacerta.order_checklists WHERE order_id=target AND model_id=ANY(o.model_ids) AND status='open') THEN RAISE EXCEPTION 'Conclua a conferência de ida e volta dos checklists dos equipamentos antes de encerrar a OS.'; END IF;
    IF length(trim(coalesce(p->>'notes','')))<3 THEN RAISE EXCEPTION 'Descreva o resultado ou motivo do encerramento.'; END IF;
    UPDATE horacerta.orders SET status=CASE WHEN action='finish' THEN 'Concluída' ELSE 'Cancelada' END,completion=p->>'notes' WHERE id=target;
    detail_value := p->>'notes';

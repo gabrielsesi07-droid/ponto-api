@@ -28,6 +28,7 @@ import {
   ClipboardList,
   Car,
   BookOpen,
+  Wrench,
 } from "lucide-react";
 import {
   Sidebar,
@@ -70,6 +71,7 @@ import { demoState } from "@/lib/demo";
 import { ServiceOrders } from "./service-orders";
 import { TechnicalLibrary } from "./technical-library";
 import "@/app/operations.css";
+import "@/app/checklists.css";
 import {
   calculate,
   totals,
@@ -92,6 +94,7 @@ const nav = [
   { key: "register", label: "Meu ponto", icon: Timer },
   { key: "orders", label: "Ordens de serviço", icon: ClipboardList },
   { key: "library", label: "Biblioteca técnica", icon: BookOpen },
+  { key: "equipment", label: "Equipamentos", icon: Wrench, admin: true },
   { key: "vehicles", label: "Veículos", icon: Car, admin: true },
   { key: "clients", label: "Clientes", icon: Building2, admin: true },
   { key: "insights", label: "Meu resumo", icon: FileBarChart2 },
@@ -613,7 +616,7 @@ export function Workspace() {
                   <p className="muted mt-1 text-[15px]">
                     {view === "dashboard"
                       ? "Cada hora conta. Acompanhe o que importa."
-                      : view === "library"
+                      : ["library", "equipment"].includes(view)
                         ? "Encontre os materiais técnicos que apoiam cada serviço."
                       : view === "insights"
                         ? "Suas horas extras, suas datas e sua evolução mês a mês."
@@ -668,7 +671,7 @@ export function Workspace() {
                     </Button>
                   ) : (
                     view !== "settings" &&
-                    !["orders", "clients", "vehicles", "library"].includes(view) &&
+                    !["orders", "clients", "vehicles", "library", "equipment"].includes(view) &&
                     view !== "register" && (
                       <Button onClick={() => go("register")} className="action">
                         <Plus />
@@ -686,7 +689,7 @@ export function Workspace() {
                   {error}
                 </div>
               )}
-              {view === "library" && <TechnicalLibrary admin={admin} demo={demo} />}
+              {["library", "equipment"].includes(view) && <TechnicalLibrary key={view} admin={admin} demo={demo} initialTab={view === 'equipment' ? 'models' : 'documents'} />}
               <ServiceOrders
                 key={data.me.id + String(demo)}
                 me={data.me}

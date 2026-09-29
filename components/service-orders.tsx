@@ -1,5 +1,6 @@
 "use client";
 import { TechnicalLibrary } from "./technical-library";
+import { OrderChecklists } from './checklist-editor';
 import {
   useCallback,
   useEffect,
@@ -782,6 +783,7 @@ function OrderDetail({
               <div className="mt-4"><TechnicalLibrary orderId={o.id} admin={admin} demo={demo} /></div>
             </details>}
           </section>
+          <OrderChecklists orderId={o.id} admin={admin} closed={!open} demo={demo} />
           {vehicle && (
             <section className="rounded-xl border p-4">
               <h3 className="flex items-center gap-2 font-semibold">

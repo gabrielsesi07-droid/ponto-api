@@ -5,6 +5,7 @@ import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { api } from './editors';
 import { toast } from 'sonner';
+import { ChecklistTemplateEditor } from './checklist-editor';
 import { documentCategories, reviewLabels, type EquipmentModel, type LibraryDocument } from '@/lib/library';
 
 type Section = { position: number; locator: string; content: string };
@@ -111,11 +112,12 @@ function DocumentReader({ doc, models, admin, close, refreshed }: {
   </Dialog>;
 }
 
-export function TechnicalLibrary({ admin, demo = false, orderId }: { admin: boolean; demo?: boolean; orderId?: string }) {
+export function TechnicalLibrary({ admin, demo = false, orderId, initialTab = 'documents' }: { admin: boolean; demo?: boolean; orderId?: string; initialTab?: 'documents' | 'models' }) {
   const [data, setData] = useState<LibraryData | null>(null), [error, setError] = useState('');
   const [loading, setLoading] = useState(false), [q, setQ] = useState(''), [category, setCategory] = useState('');
   const [status, setStatus] = useState(''), [model, setModel] = useState(''), [page, setPage] = useState(1);
-  const [tab, setTab] = useState<'documents' | 'models'>('documents');
+  const [tab, setTab] = useState<'documents' | 'models'>(initialTab);
+  const [checklistModel, setChecklistModel] = useState('');
   const [selected, setSelected] = useState<LibraryDocument | null>(null), [revision, setRevision] = useState(0);
   const [busyModel, setBusyModel] = useState('');
   const refresh = useCallback(() => setRevision(v => v + 1), []);
@@ -148,7 +150,7 @@ export function TechnicalLibrary({ admin, demo = false, orderId }: { admin: bool
   return <section className="min-w-0 space-y-5" aria-label="Biblioteca técnica">
     {!orderId && <header className="rounded-2xl border bg-white p-5 sm:p-7">
       <span className="flex items-center gap-2 text-sm font-semibold text-blue-700"><BookOpen size={20} />CONHECIMENTO DA EQUIPE</span>
-      <h2 className="mt-3 text-2xl font-bold">Biblioteca técnica</h2>
+      <h2 className="mt-3 text-2xl font-bold">{initialTab === 'models' ? 'Catálogo e checklists padrão' : 'Biblioteca técnica'}</h2>
       <p className="mt-2 text-sm text-slate-600">Checklists, catálogos e manuais em um só lugar. Modelos de equipamento, sem controle de estoque físico.</p>
       {admin && data?.recent && <p className="mt-3 text-xs text-slate-600">Última importação: {new Date(data.recent.created_at).toLocaleString('pt-BR')}{data.recent.finished_at ? ` · ${data.recent.summary.documents || 0} documentos · ${data.recent.summary.obsolete || 0} obsoletos · ${data.recent.summary.no_text || 0} sem texto` : ' · Importação incompleta; contate o responsável'}. Atualizações das pastas exigem nova importação local.</p>}
     </header>}
@@ -185,11 +187,13 @@ export function TechnicalLibrary({ admin, demo = false, orderId }: { admin: bool
         <Wrench className="text-blue-600" size={22} /><h3 className="mt-3 font-bold">{m.name}</h3><p className="mt-1 text-sm text-slate-500">{m.family}</p>
         <p className="mt-3 text-xs">{m.document_count} documento(s) · {reviewLabels[m.status]}</p>
         <div className="mt-4 flex flex-wrap gap-2"><Button variant="outline" onClick={() => { setModel(m.id); setQ(''); setCategory(''); setStatus(''); setPage(1); setTab('documents'); }}>Ver documentos</Button>
+          {admin && <Button onClick={() => setChecklistModel(m.id)}>Configurar checklist</Button>}
           {admin && <Button disabled={!!busyModel} variant={m.status === 'published' ? 'outline' : 'default'} onClick={() => void reviewModel(m, m.status === 'published' ? 'archived' : 'published')}>{m.status === 'published' ? 'Arquivar modelo' : 'Validar modelo'}</Button>}
         </div>
       </article>)}
     </div>}
     {selected && <DocumentReader key={selected.id} doc={selected} admin={admin} models={data?.models || []} close={() => setSelected(null)} refreshed={refresh} />}
+    {checklistModel && <ChecklistTemplateEditor modelId={checklistModel} onClose={() => setChecklistModel('')} onSaved={refresh} />}
   </section>;
 }
 

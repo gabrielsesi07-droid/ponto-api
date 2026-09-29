@@ -1,0 +1,4 @@
+.check-input{display:block;width:100%;min-width:0;min-height:44px;margin-top:5px;padding:10px 12px;border:1px solid #d8e0eb;border-radius:8px;background:white;color:#182d45;font:inherit;font-weight:400}
+.check-input:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+.check-input:disabled{background:#f1f5f9;color:#475569}
+fieldset:disabled .check-input{background:#f1f5f9}
