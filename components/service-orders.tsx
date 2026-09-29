@@ -1,4 +1,5 @@
 "use client";
+import { TechnicalLibrary } from "./technical-library";
 import {
   useCallback,
   useEffect,
@@ -776,6 +777,10 @@ function OrderDetail({
             <p className="muted mt-3 whitespace-pre-wrap break-words text-sm">
               {o.instructions || "Sem orientações adicionais."}
             </p>
+            {!!o.model_ids?.length && <details className="mt-4 border-t pt-3">
+              <summary className="cursor-pointer rounded-lg border bg-blue-50 p-3 text-sm font-semibold text-blue-800">Consultar documentos dos modelos desta OS</summary>
+              <div className="mt-4"><TechnicalLibrary orderId={o.id} admin={admin} demo={demo} /></div>
+            </details>}
           </section>
           {vehicle && (
             <section className="rounded-xl border p-4">

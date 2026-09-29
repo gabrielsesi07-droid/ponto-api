@@ -18,6 +18,7 @@ import {
   type Vehicle,
 } from "@/lib/orders";
 import { today } from "@/lib/domain";
+import { ModelPicker } from "./technical-library";
 
 export async function uploadOrderPdf(id: string, file: File) {
   if (file.size > 3 * 1024 * 1024)
@@ -158,6 +159,7 @@ export function OrderEditor({
     members: order?.members || [],
     vehicle_id: order?.vehicle_id || "",
     equipment: order?.equipment || "",
+    model_ids: order?.model_ids || [],
     instructions: order?.instructions || "",
     priority: order?.priority || "Normal",
   }));
@@ -418,6 +420,7 @@ export function OrderEditor({
                   ))}
               </select>
             </label>
+            <ModelPicker value={form.model_ids} onChange={ids => setForm(f => ({ ...f, model_ids: ids }))} demo={demo} />
             <label className="full">
               Equipamentos e materiais
               <textarea

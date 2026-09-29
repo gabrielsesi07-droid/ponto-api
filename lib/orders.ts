@@ -46,6 +46,7 @@ export type Order = {
   team: { id: string; name: string; access_code?: string }[];
   vehicle_id: string | null;
   equipment: string;
+  model_ids?: string[];
   instructions: string;
   priority: string;
   status: "Agendada" | "Em andamento" | "Concluída" | "Cancelada";
@@ -90,6 +91,7 @@ export const orderSchema = z
       .transform((x) => [...new Set(x)]),
     vehicle_id: z.string().uuid().nullable(),
     equipment: z.string().trim().max(3000).default(""),
+    model_ids: z.array(z.string().uuid()).max(30).transform(ids => [...new Set(ids)]).default([]),
     instructions: z.string().trim().max(5000).default(""),
     priority: z.enum(["Normal", "Alta", "Urgente"]).default("Normal"),
   })

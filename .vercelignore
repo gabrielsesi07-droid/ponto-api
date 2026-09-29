@@ -1,0 +1,8 @@
+work
+outputs
+.env*
+*.pdf
+*.docx
+*.xlsx
+*.zip
+*.exe
