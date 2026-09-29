@@ -378,14 +378,26 @@ export function QuickClock({
         </span>
         <ArrowRight className="shrink-0 text-blue-600" size={22} />
       </button>
-      <div className="mt-6 flex flex-wrap justify-between gap-3">
-        <Button className="action muted" variant="ghost" onClick={onManual}>
-          <Pencil size={16} />
-          Esqueci de bater o ponto
+      <div className="mt-6 grid gap-3 sm:grid-cols-2">
+        <Button
+          className="action min-h-14 w-full justify-start rounded-xl border-slate-300 bg-white px-5 font-semibold text-slate-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 hover:shadow-md"
+          variant="outline"
+          onClick={onManual}
+        >
+          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-700">
+            <Pencil size={17} />
+          </span>
+          <span>Esqueci de bater o ponto</span>
         </Button>
-        <Button className="action muted" variant="ghost" onClick={onProfile}>
-          <Wallet size={16} />
-          Configurar minha hora
+        <Button
+          className="action min-h-14 w-full justify-start rounded-xl border-slate-300 bg-white px-5 font-semibold text-slate-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 hover:shadow-md"
+          variant="outline"
+          onClick={onProfile}
+        >
+          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-700">
+            <Wallet size={17} />
+          </span>
+          <span>Configurar minha hora</span>
         </Button>
       </div>
       <p className="text-sm muted text-center mt-7 leading-relaxed">
