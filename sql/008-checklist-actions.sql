@@ -44,8 +44,9 @@ BEGIN
  ELSIF action='custom' THEN
   SELECT * INTO m FROM horacerta.equipment_models WHERE id=(p->>'model_id')::uuid AND id=ANY(o.model_ids);
   IF NOT FOUND THEN RAISE EXCEPTION 'Selecione um equipamento desta OS.'; END IF;
-  INSERT INTO horacerta.order_checklists(order_id,model_id,model_name,title,updated_by)
-  VALUES(o.id,m.id,m.name,'Checklist — '||m.name,actor) ON CONFLICT(order_id,model_id) DO NOTHING RETURNING * INTO c;
+  IF coalesce(jsonb_array_length(p->'items'),0)=0 THEN RAISE EXCEPTION 'Cadastre os itens antes de criar o checklist.'; END IF;
+  INSERT INTO horacerta.order_checklists(order_id,model_id,model_name,title,items,updated_by)
+  VALUES(o.id,m.id,m.name,p->>'title',p->'items',actor) ON CONFLICT(order_id,model_id) DO NOTHING RETURNING * INTO c;
   IF c.id IS NULL THEN RAISE EXCEPTION 'Já existe checklist para este equipamento nesta OS.'; END IF;
   event := 'Checklist personalizado criado';
  ELSE
@@ -59,6 +60,7 @@ BEGIN
   ELSIF action IN ('save','complete') THEN
    IF u.role<>'employee' OR NOT actor=ANY(o.members) THEN RAISE EXCEPTION 'A conferência deve ser realizada por um colaborador designado para esta OS.'; END IF;
    IF c.status<>'open' THEN RAISE EXCEPTION 'Checklist concluído. Peça a reabertura ao coordenador.'; END IF;
+   IF coalesce(jsonb_array_length(p->'items'),0)=0 THEN RAISE EXCEPTION 'Mantenha ao menos um item no checklist.'; END IF;
    UPDATE horacerta.order_checklists SET title=p->>'title',items=p->'items',notes=p->>'notes',identification=p->>'identification',
     status=CASE WHEN action='complete' THEN 'completed' ELSE 'open' END,version=version+1,updated_at=now(),updated_by=actor,
     completed_at=CASE WHEN action='complete' THEN now() ELSE NULL END,completed_by=CASE WHEN action='complete' THEN actor ELSE NULL END

@@ -70,6 +70,7 @@ BEGIN
    PERFORM horacerta.attach_order_checklists(target,actor);
    IF o.id IS NULL THEN
     FOR checklist_draft IN SELECT value FROM jsonb_array_elements(coalesce(p->'checklist_drafts','[]'::jsonb)) LOOP
+     IF coalesce(jsonb_array_length(checklist_draft->'items'),0)=0 THEN RAISE EXCEPTION 'Mantenha ao menos um item no checklist.'; END IF;
      SELECT * INTO checklist_copy FROM horacerta.order_checklists WHERE order_id=target AND model_id=(checklist_draft->>'model_id')::uuid;
      IF NOT FOUND OR checklist_copy.template_version<>(checklist_draft->>'template_version')::int THEN RAISE EXCEPTION 'O checklist padrão mudou ou não está ativo. Atualize a seleção de equipamentos.'; END IF;
      UPDATE horacerta.order_checklists SET title=checklist_draft->>'title',items=(SELECT coalesce(jsonb_agg(item || jsonb_build_object('outgoing',false,'incoming',false,'outgoing_qty',NULL,'incoming_qty',NULL,'na',false,'notes','')),'[]'::jsonb) FROM jsonb_array_elements(checklist_draft->'items') AS x(item)) WHERE id=checklist_copy.id RETURNING * INTO checklist_copy;

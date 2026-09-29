@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { member, coordinator, db, failure, ApiError } from '@/lib/server';
-import { checklistItemsSchema, checklistProblems } from '@/lib/checklists';
+import { checklistItemsSchema, checklistProblems, plannedChecklistItems } from '@/lib/checklists';
 import { checklistPayload, orderForChecklist } from '@/lib/checklist-server';
 import { libraryHeaders } from '@/lib/library-server';
 export const dynamic = 'force-dynamic';
@@ -14,8 +14,9 @@ export async function GET(req: Request) {
         coalesce(d.obsolete,false) source_obsolete FROM horacerta.order_checklists c
         JOIN horacerta.users u ON u.id=c.updated_by LEFT JOIN horacerta.users fin ON fin.id=c.completed_by
         LEFT JOIN horacerta.library_documents d ON d.id=c.source_document_id WHERE c.order_id=${id}::uuid ORDER BY c.model_name`,
-      sql`SELECT m.id,m.name,CASE WHEN m.status='published' AND NOT coalesce(d.obsolete,false) THEN t.title END template_title FROM horacerta.equipment_models m
-        LEFT JOIN horacerta.checklist_templates t ON t.model_id=m.id AND t.status='active'
+      sql`SELECT m.id,m.name,CASE WHEN m.status<>'archived' AND NOT coalesce(d.obsolete,false) AND jsonb_array_length(t.items)>0
+        AND (t.source_document_id IS NULL OR d.ready) AND (t.status<>'imported' OR t.source_document_id IS NOT NULL) THEN t.title END template_title FROM horacerta.equipment_models m
+        LEFT JOIN horacerta.checklist_templates t ON t.model_id=m.id AND t.status IN ('active','imported')
         LEFT JOIN horacerta.library_documents d ON d.id=t.source_document_id
         WHERE m.id=ANY(${order.model_ids}::uuid[]) ORDER BY m.name`,
       sql`SELECT h.id,h.checklist_id,h.action,h.created_at,u.name FROM horacerta.checklist_history h
@@ -31,10 +32,14 @@ export async function POST(req: Request) {
     const raw = await checklistPayload(req);
     const action = z.enum(['save','complete','reopen','sync','custom']).parse(raw.action);
     let data;
-    if (action === 'sync' || action === 'custom') {
+    if (action === 'sync') {
       coordinator(me);
-      data = z.object({ order_id: z.string().uuid(), model_id: z.string().uuid().optional() }).parse(raw);
-      if (action === 'custom' && !data.model_id) throw new ApiError(400, 'Informe o equipamento.');
+      data = z.object({ order_id: z.string().uuid() }).parse(raw);
+    } else if (action === 'custom') {
+      coordinator(me);
+      data = z.object({ order_id: z.string().uuid(), model_id: z.string().uuid(), title: z.string().trim().min(2).max(180),
+        items: checklistItemsSchema.refine(items => items.length > 0, 'Cadastre os itens antes de criar o checklist.').transform(plannedChecklistItems),
+      }).parse(raw);
     } else if (action === 'reopen') {
       coordinator(me);
       data = z.object({ id: z.string().uuid(), version: z.number().int().positive(), reason: z.string().trim().min(3).max(500) }).parse(raw);
@@ -43,6 +48,7 @@ export async function POST(req: Request) {
       data = z.object({ id: z.string().uuid(), version: z.number().int().positive(), title: z.string().trim().min(2).max(180),
         identification: z.string().trim().max(160).default(''), notes: z.string().trim().max(3000).default(''), items: checklistItemsSchema,
       }).parse(raw);
+      if (!data.items.length) throw new ApiError(400, 'Mantenha ao menos um item no checklist.');
       if (action === 'complete') { const problems = checklistProblems(data.items); if (problems.length) throw new ApiError(400, problems[0]); }
     }
     const [out] = await db()`SELECT horacerta.checklist_action(${me.id}::uuid,${action},${JSON.stringify(data)}::jsonb) result`;

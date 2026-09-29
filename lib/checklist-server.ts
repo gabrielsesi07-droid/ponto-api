@@ -19,7 +19,8 @@ export async function orderForChecklist(id: string, me: Person) {
   z.string().uuid().parse(id);
   const [o] = await db()`SELECT o.id,o.number,o.title,o.client_name,o.address,o.starts_at,o.ends_at,o.status,o.model_ids,
     coalesce((SELECT string_agg(name,', ' ORDER BY name) FROM horacerta.users WHERE id=ANY(o.members)),'') team_names,
-    (SELECT plate||' · '||model FROM horacerta.vehicles WHERE id=o.vehicle_id) vehicle
+    (SELECT plate||' · '||model FROM horacerta.vehicles WHERE id=o.vehicle_id) vehicle,
+    (SELECT count(*)::int FROM horacerta.users WHERE id=ANY(o.members) AND active AND role='employee') checker_count
     FROM horacerta.orders o WHERE o.id=${id}::uuid AND (${me.role === 'coordinator'} OR ${me.id}::uuid=ANY(o.members))`;
   if (!o) throw new ApiError(404, 'OS não encontrada.');
   return o;

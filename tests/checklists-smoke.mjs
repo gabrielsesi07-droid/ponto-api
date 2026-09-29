@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { randomUUID,randomBytes,createHash } from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
+import { writeFile } from 'node:fs/promises';
 const sql=neon(process.env.DATABASE_URL),base=process.env.TEST_BASE_URL||'http://127.0.0.1:5174';
 if(!['localhost','127.0.0.1'].includes(new URL(base).hostname))throw new Error('Local test server required');
 const [admin]=await sql`SELECT id FROM horacerta.users WHERE role='coordinator' AND active LIMIT 1`;
-const worker=randomUUID(),other=randomUUID(),model=randomUUID(),tag='QA-checklist-'+randomUUID(),tokens=[],cookies=new Map(),orders=[];
+const worker=randomUUID(),other=randomUUID(),model=randomUUID(),sourceDoc=randomUUID(),tag='QA-checklist-'+randomUUID(),tokens=[],cookies=new Map(),orders=[];
 let checks=0;
 const check=(a,b,label)=>{assert.deepEqual(a,b,label);checks++;console.log('OK '+label);};
 async function call(path,body,who=admin.id){const res=await fetch(base+path,{method:body?'POST':'GET',headers:{...(who?{cookie:cookies.get(who)}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,redirect:'manual'});return{status:res.status,data:res.headers.get('content-type')?.includes('json')?await res.json():await res.text()};}
@@ -73,10 +74,35 @@ try{
  c=(await call('/api/checklists?order='+orders[0])).data.checklists[0];
  check((await action('reopen',{id:c.id,version:c.version,reason:'Tentativa após encerramento'})).status,409,'Closed OS preserves immutable conference');
  check((await call('/api/checklists?order='+orders[0])).data.history.length>=5,true,'Audit trail records changes');
+ // Imported source lists are usable references, without publishing their original.
+ await sql`INSERT INTO horacerta.library_documents(id,sha256,name,extension,size,category,ready) VALUES(${sourceDoc},${createHash('sha256').update(tag).digest('hex')},'QA checklist source.txt','.txt',1,'checklist',true)`;
+ await sql`UPDATE horacerta.checklist_templates SET status='imported',source_document_id=${sourceDoc},source_name='QA checklist source.txt',items=${JSON.stringify([item()])}::jsonb WHERE model_id=${model}`;
+ await sql`UPDATE horacerta.equipment_models SET status='pending' WHERE id=${model}`;
+ check((await call('/api/checklists/preview?models='+model)).data.models[0].items.length,1,'Imported list visible in coordinator preview');
+ const importedOS=await call('/api/operations',{action:'save_order',data:os(2)});check(importedOS.status,200,'Imported checklist auto-links without model approval');orders.push(importedOS.data.id);
+ const imported=(await call('/api/checklists?order='+importedOS.data.id,null,worker)).data.checklists[0];
+ check(imported.items.length,1,'Employee receives actual imported items');
+ check(imported.source_review_pending,true,'Imported reference is not represented as technically approved');
+ check((await call('/api/library/'+sourceDoc,null,worker)).status,404,'Original draft document remains private');
+ const legacyOS=await call('/api/operations',{action:'save_order',data:{...os(3),model_ids:[]}});orders.push(legacyOS.data.id);
+ await sql`UPDATE horacerta.orders SET model_ids=ARRAY[${model}::uuid] WHERE id=${legacyOS.data.id}`;
+ await sql`INSERT INTO horacerta.order_checklists(order_id,model_id,model_name,title,updated_by) VALUES(${legacyOS.data.id},${model},${tag},'Legacy empty list',${admin.id})`;
+ check((await action('sync',{order_id:legacyOS.data.id})).data.added,1,'Untouched legacy empty list recovers source items');
+ const repaired=(await call('/api/checklists?order='+legacyOS.data.id,null,worker)).data.checklists[0];
+ check([repaired.items.length,repaired.version],[1,2],'Recovered checklist has items and audited new revision');
+ check((await action('sync',{order_id:legacyOS.data.id})).data.added,0,'Repair is idempotent');
+ check((await action('sync',{order_id:orders[1]})).data.added,0,'Existing nonempty checklist is never overwritten');
+ check((await action('custom',{order_id:legacyOS.data.id,model_id:model,title:'Empty',items:[]})).status,400,'Cannot create a new empty custom list');
+ check((await action('save',{id:repaired.id,version:repaired.version,title:repaired.title,items:[],notes:'',identification:''},worker)).status,400,'Employee cannot erase all checklist items');
+ await sql`UPDATE horacerta.library_documents SET obsolete=true WHERE id=${sourceDoc}`;
+ const obsoleteOS=await call('/api/operations',{action:'save_order',data:os(4)});orders.push(obsoleteOS.data.id);
+ check((await call('/api/checklists?order='+obsoleteOS.data.id)).data.checklists.length,0,'Obsolete source never auto-links');
+ await sql`UPDATE horacerta.library_documents SET obsolete=false WHERE id=${sourceDoc}`;
  console.log(`${checks} checklist checks passed.`);
  if(process.env.UI_TEST_HOLD==='1'){
-  console.log('Disposable fixtures available for UI verification for up to 10 minutes. Send Enter to clean up.');
-  await new Promise(resolve=>{const timer=setTimeout(resolve,600000);process.stdin.once('data',()=>{clearTimeout(timer);resolve();});});
+  await writeFile(new URL('../work/library/test-checklist-context.json',import.meta.url),JSON.stringify({order_id:importedOS.data.id,employee_id:worker}));
+  console.log('Disposable fixtures available for temporary UI verification. Send Enter to clean up.');
+  await new Promise(resolve=>{const timer=setTimeout(resolve,Number(process.env.UI_TEST_HOLD_MS)||600000);process.stdin.once('data',()=>{clearTimeout(timer);resolve();});});
  }
 }finally{
  await sql.transaction([
@@ -85,8 +111,10 @@ try{
   sql`DELETE FROM horacerta.order_events WHERE order_id=ANY(${orders}::uuid[])`,
   sql`DELETE FROM horacerta.orders WHERE id=ANY(${orders}::uuid[])`,
   sql`DELETE FROM horacerta.checklist_templates WHERE model_id=${model}`,
+  sql`DELETE FROM horacerta.library_documents WHERE id=${sourceDoc}`,
   sql`DELETE FROM horacerta.equipment_models WHERE id=${model}`,
   sql`DELETE FROM horacerta.sessions WHERE token_hash=ANY(${tokens}::text[])`,
+  sql`DELETE FROM horacerta.sessions WHERE user_id=ANY(${[worker,other]}::uuid[])`,
   sql`DELETE FROM horacerta.users WHERE id=ANY(${[worker,other]}::uuid[])`,
  ]);console.log('All disposable checklist fixtures and sessions removed.');
 }

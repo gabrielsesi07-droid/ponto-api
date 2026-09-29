@@ -14,9 +14,9 @@ export function plannedChecklistItems(items: ChecklistItem[]): ChecklistItem[] {
   return items.map(item => ({ ...item, outgoing: false, incoming: false, outgoing_qty: null, incoming_qty: null, na: false, notes: '' }));
 }
 export type ChecklistTemplate = { id: string; model_id: string; title: string; items: ChecklistItem[]; source_document_id: string | null;
-  source_name: string; source_hash: string; status: 'draft' | 'active' | 'archived'; version: number };
+  source_name: string; source_hash: string; status: 'draft' | 'imported' | 'active' | 'archived'; version: number };
 export type OrderChecklist = { id: string; order_id: string; model_id: string; model_name: string; template_version: number | null;
-  title: string; source_name: string; source_hash: string; source_obsolete?: boolean; items: ChecklistItem[];
+  title: string; source_name: string; source_hash: string; source_obsolete?: boolean; source_review_pending?: boolean; items: ChecklistItem[];
   notes: string; identification: string; version: number; status: 'open' | 'completed';
   updated_at: string; updated_by_name: string; completed_at: string | null; completed_by_name: string | null; detached: boolean };
 export const newChecklistItem = (): ChecklistItem => ({ id: crypto.randomUUID(), label: '', planned: null,

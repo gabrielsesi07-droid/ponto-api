@@ -94,7 +94,7 @@ export const orderSchema = z
     equipment: z.string().trim().max(3000).default(""),
     model_ids: z.array(z.string().uuid()).max(30).transform(ids => [...new Set(ids)]).default([]),
     checklist_drafts: z.array(z.object({ model_id: z.string().uuid(), template_version: z.number().int().positive(),
-      title: z.string().trim().min(2).max(180), items: checklistItemsSchema.transform(plannedChecklistItems),
+      title: z.string().trim().min(2).max(180), items: checklistItemsSchema.refine(items => items.length > 0, 'Mantenha ao menos um item no checklist.').transform(plannedChecklistItems),
     })).max(30).default([]),
     instructions: z.string().trim().max(5000).default(""),
     priority: z.enum(["Normal", "Alta", "Urgente"]).default("Normal"),

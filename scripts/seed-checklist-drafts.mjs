@@ -1,5 +1,5 @@
-// Derive private drafts from already-imported, explicitly linked FPO documents.
-// Does not publish documents/models or overwrite any existing template.
+// Derive imported reference lists from explicitly linked FPO documents.
+// Does not technically approve or publish original documents/models, or overwrite templates.
 import { randomUUID } from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
 import { suggestChecklistItems } from '../lib/checklists.ts';
@@ -13,8 +13,8 @@ for (const m of models) {
   const d = docs[0], sections = await sql`SELECT content FROM horacerta.library_sections WHERE document_id=${d.id} ORDER BY position`;
   const items = suggestChecklistItems(sections, randomUUID);
   if (!items.length) continue;
-  const rows = await sql`INSERT INTO horacerta.checklist_templates(model_id,title,items,source_document_id,source_name,source_hash)
-    VALUES(${m.id},${'Checklist — ' + m.name},${JSON.stringify(items)}::jsonb,${d.id},${d.name},${d.sha256}) ON CONFLICT(model_id) DO NOTHING RETURNING id`;
+  const rows = await sql`INSERT INTO horacerta.checklist_templates(model_id,title,items,source_document_id,source_name,source_hash,status)
+    VALUES(${m.id},${'Checklist — ' + m.name},${JSON.stringify(items)}::jsonb,${d.id},${d.name},${d.sha256},'imported') ON CONFLICT(model_id) DO NOTHING RETURNING id`;
   created += rows.length;
 }
-console.log('Rascunhos criados para revisão:', created, '(nenhuma ativação automática)');
+console.log('Listas importadas criadas:', created, '(referência para conferência; sem aprovação técnica automática)');
