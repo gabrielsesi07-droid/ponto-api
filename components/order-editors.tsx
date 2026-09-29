@@ -426,12 +426,12 @@ export function OrderEditor({
             <ModelPicker value={form.model_ids} onChange={ids => { setForm(f => ({ ...f, model_ids: ids })); setChecklistDrafts(drafts => drafts.filter(d => ids.includes(d.model_id))); }} demo={demo} />
             <ChecklistPreview modelIds={form.model_ids} drafts={checklistDrafts} onChange={setChecklistDrafts} existing={!!order} demo={demo} />
             <label className="full">
-              Equipamentos e materiais
+              Outros equipamentos e materiais (opcional)
               <textarea
                 maxLength={3000}
                 value={form.equipment}
                 onChange={(e) => change("equipment", e.target.value)}
-                placeholder="Liste equipamentos, ferramentas, quantidades e identificação de patrimônio, se houver."
+                placeholder="Adicione ferramentas ou materiais que não estão na seleção do catálogo."
               />
             </label>
             <label className="full">

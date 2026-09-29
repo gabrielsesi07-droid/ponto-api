@@ -23,7 +23,7 @@ export function ChecklistPreview({ modelIds, drafts, onChange, existing, demo }:
   if (!key || demo) return null;
   return <div className="full space-y-3 rounded-xl border border-blue-200 bg-blue-50/40 p-3">
     <h3 className="font-semibold">Checklists automáticos</h3>
-    <p className="text-xs text-slate-600">{existing ? 'Novos equipamentos recebem seu checklist ao salvar. Conferências existentes são preservadas; edite-as na tela da OS.' : 'Confira e ajuste abaixo. Ao salvar a OS, os checklists serão criados como cópias independentes. Nada é salvo antes da OS.'}</p>
+    <p className="text-xs text-slate-600">{existing ? 'Novos equipamentos recebem seu checklist ativo ao salvar. Conferências existentes são preservadas; edite-as na tela da OS.' : 'Ao salvar a OS, os checklists ativos serão copiados para ela. Equipamentos sem padrão ativo também podem ser usados; revise o padrão aqui ou crie uma lista depois.'}</p>
     {error && <p role="alert" className="text-sm text-red-700">{error}<button type="button" className="ml-2 underline" onClick={() => setRevision(n => n + 1)}>Tentar novamente</button></p>}
     {modelIds.some(id => !models.some(m => m.model_id === id)) && !error && <p role="status" className="text-sm">Buscando checklists dos equipamentos…</p>}
     {models.filter(m => modelIds.includes(m.model_id)).map(m => {

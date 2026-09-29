@@ -41,6 +41,15 @@ try {
   const listing = await call('/api/library?q=' + query);
   check(listing.data.total, 2, 'Coordinator can review private and obsolete documents');
   check(listing.cache, 'private, no-store', 'Private cache policy');
+  check(listing.data.models.some(m => m.id === model && m.status === 'pending'), true, 'Coordinator catalogue contains pending equipment');
+  const pendingOrder = await call('/api/operations', { action: 'save_order', data: {
+    title: query, client_name: 'QA pending model', starts_at: new Date(Date.now() + 172800000).toISOString(),
+    ends_at: new Date(Date.now() + 176400000).toISOString(), members: [worker], vehicle_id: null, model_ids: [model],
+  } });
+  check(pendingOrder.status, 200, 'Pending catalogue equipment can be selected without leaving OS');
+  orders.push(pendingOrder.data.id);
+  check((await sql`SELECT status FROM horacerta.equipment_models WHERE id=${model}`)[0].status, 'pending', 'OS selection does not automatically approve model');
+  check((await call('/api/checklists?order=' + pendingOrder.data.id)).data.checklists.length, 0, 'No unapproved checklist copied into OS');
   check((await call('/api/library?q=' + query, null, worker)).data.total, 0, 'Pending and obsolete hidden from employees');
   check((await call('/api/library/' + doc, null, worker)).status, 404, 'Pending detail protected by ID');
   check((await call(`/api/library/${doc}/file`, null, worker)).status, 404, 'Pending original protected by ID');

@@ -6,7 +6,7 @@ O menu **Biblioteca técnica** reúne documentos e modelos, sem inventário fís
 
 O coordenador acessa todo o material importado. Em **Modelos de equipamento**, confere os documentos de origem e valida os modelos. Em **Documentos**, abre o original, verifica revisão, informações pessoais/clientes e os vínculos sugeridos, e então libera o conteúdo para a equipe. Documentos liberados ficam acessíveis a todos os colaboradores ativos autenticados; não há segregação por cliente nesta versão. Arquivar revoga imediatamente novas consultas/downloads, mas não recolhe cópias já baixadas.
 
-Uma OS pode selecionar modelos validados e continuar usando o campo livre de materiais. A equipe designada consulta os documentos liberados desses modelos dentro da OS. A biblioteca geral também permite busca no texto extraído, nome, tipo e modelo. Os documentos originais de checklist continuam como referência. A função de [checklists digitais por equipamento](checklists-equipamentos.md) acrescenta rascunhos para revisão do coordenador e cópias preenchíveis por OS, sem aprovação técnica automática.
+Uma OS pode selecionar modelos não arquivados, inclusive os ainda em revisão, e continuar usando o campo livre de materiais. Selecionar o modelo não libera seus documentos nem ativa checklists automaticamente. A equipe designada consulta somente os documentos liberados desses modelos dentro da OS. A biblioteca geral também permite busca no texto extraído, nome, tipo e modelo. Os documentos originais de checklist continuam como referência. A função de [checklists digitais por equipamento](checklists-equipamentos.md) acrescenta rascunhos para revisão do coordenador e cópias preenchíveis por OS, sem aprovação técnica automática.
 
 ## Importação e proveniência
 

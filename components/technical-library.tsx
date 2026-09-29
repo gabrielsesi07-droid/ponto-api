@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { api } from './editors';
 import { toast } from 'sonner';
 import { ChecklistTemplateEditor } from './checklist-editor';
-import { documentCategories, reviewLabels, type EquipmentModel, type LibraryDocument } from '@/lib/library';
+import { documentCategories, reviewLabels, normalizeSearch, selectableModels, type EquipmentModel, type LibraryDocument } from '@/lib/library';
 
 type Section = { position: number; locator: string; content: string };
 type LibraryData = { documents: LibraryDocument[]; models: EquipmentModel[]; total: number;
@@ -198,23 +198,34 @@ export function TechnicalLibrary({ admin, demo = false, orderId, initialTab = 'd
 }
 
 export function ModelPicker({ value, onChange, demo }: { value: string[]; onChange: (ids: string[]) => void; demo: boolean }) {
-  const [models, setModels] = useState<EquipmentModel[]>([]), [message, setMessage] = useState(demo ? 'Catálogo privado indisponível na demonstração.' : 'Carregando modelos…');
-  const [initialIds] = useState(value);
+  const [models, setModels] = useState<EquipmentModel[]>([]), [error, setError] = useState('');
+  const [loading, setLoading] = useState(!demo), [query, setQuery] = useState(''), [revision, setRevision] = useState(0);
   useEffect(() => {
     if (demo) return;
     const controller = new AbortController();
-    fetch('/api/library?status=published', { signal: controller.signal }).then(async res => {
+    fetch('/api/library?status=published', { signal: controller.signal, cache: 'no-store' }).then(async res => {
       const out = await res.json() as { models: EquipmentModel[]; error?: string };
-      if (!res.ok) throw new Error(out.error);
+      if (!res.ok) throw new Error(out.error || 'Não foi possível carregar os equipamentos.');
       if (!controller.signal.aborted) {
-        setModels(out.models.filter((m: EquipmentModel) => m.status === 'published' || initialIds.includes(m.id)));
-        setMessage('Valide modelos na Biblioteca para disponibilizá-los aqui. Não representa reserva de estoque.');
+        setModels(out.models); setError('');
       }
-    }).catch(() => { if (!controller.signal.aborted) setMessage('Catálogo indisponível. Você pode descrever o equipamento no campo abaixo.'); });
+    }).catch(e => { if (!controller.signal.aborted) setError((e as Error).message); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [demo, initialIds]);
-  return <fieldset className="full rounded-xl border p-3"><legend className="px-1 text-sm font-semibold">Modelos e documentos técnicos (opcional)</legend>
-    <p className="mb-2 text-xs text-slate-600">{message}</p>
-    <div className="max-h-44 overflow-y-auto">{models.map(m => <label key={m.id} className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" checked={value.includes(m.id)} onChange={e => onChange(e.target.checked ? [...value, m.id] : value.filter(id => id !== m.id))} />{m.name}{m.status !== 'published' ? ' (arquivado)' : ''}</label>)}</div>
+  }, [demo, revision]);
+  const available = selectableModels(models, value);
+  const shown = available.filter(m => normalizeSearch(m.name + ' ' + m.family).includes(normalizeSearch(query.trim())));
+  return <fieldset className="full min-w-0 rounded-xl border border-blue-200 bg-blue-50/30 p-3 sm:p-4"><legend className="px-1 text-sm font-semibold">Equipamentos do catálogo</legend>
+    {demo ? <p className="text-sm">Catálogo privado indisponível na demonstração.</p> : <>
+      <p className="mb-3 text-sm text-slate-600">Selecione os equipamentos desta OS. Você pode revisar e ativar o checklist logo abaixo, sem sair do formulário. Não representa reserva de estoque.</p>
+      <label className="block text-sm font-medium">Buscar equipamento<input className="mt-1 min-h-11 w-full min-w-0 rounded-lg border bg-white px-3" type="search" value={query} maxLength={120} placeholder="Nome ou família do equipamento…" onChange={e => setQuery(e.target.value)} /></label>
+      {loading && <p className="mt-3 text-sm" role="status">Carregando equipamentos…</p>}
+      {error && <div role="alert" className="mt-3 text-sm text-red-800">{error}<Button type="button" variant="outline" className="ml-2" onClick={() => { setLoading(true); setError(''); setRevision(n => n + 1); }}>Tentar novamente</Button></div>}
+      {!loading && !error && <>
+        <p className="my-3 text-xs text-slate-600" role="status">{available.length} equipamentos no catálogo · {value.length} selecionado(s)</p>
+        {!shown.length && <p className="py-3 text-sm">{available.length ? 'Nenhum equipamento encontrado. Tente outro nome.' : 'Nenhum equipamento disponível no catálogo. Você ainda pode informar materiais adicionais abaixo.'}</p>}
+        <div className="max-h-64 space-y-2 overflow-y-auto pr-1">{shown.map(m => <label key={m.id} className={`model-option flex min-h-14 cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm ${value.includes(m.id) ? 'border-blue-500 bg-blue-50' : 'bg-white'}`}><input className="size-5 shrink-0 accent-blue-600" type="checkbox" checked={value.includes(m.id)} disabled={!value.includes(m.id) && value.length >= 30} onChange={e => onChange(e.target.checked ? [...value, m.id] : value.filter(id => id !== m.id))} /><span className="min-w-0 break-words"><strong className="block">{m.name}</strong><span className="text-xs text-slate-500">{m.family}{m.status === 'archived' ? ' · Arquivado — mantido nesta OS' : ''}</span></span></label>)}</div>
+      </>}
+    </>}
   </fieldset>;
 }

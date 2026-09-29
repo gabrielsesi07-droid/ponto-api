@@ -45,7 +45,7 @@ BEGIN
    IF o.id IS NOT NULL AND (o.status<>'Agendada' OR EXISTS(SELECT 1 FROM horacerta.vehicle_trips WHERE order_id=target)) THEN RAISE EXCEPTION 'Só é possível editar uma OS antes do início do atendimento.'; END IF;
    SELECT array_agg(value::uuid) INTO team FROM jsonb_array_elements_text(p->'members');
    SELECT coalesce(array_agg(DISTINCT value::uuid),'{}'::uuid[]) INTO selected_models FROM jsonb_array_elements_text(coalesce(p->'model_ids','[]'::jsonb));
-   IF EXISTS(SELECT 1 FROM unnest(selected_models) AS selected(model_id) WHERE NOT EXISTS(SELECT 1 FROM horacerta.equipment_models m WHERE m.id=selected.model_id AND (m.status='published' OR m.id=ANY(coalesce(o.model_ids,'{}'::uuid[]))))) THEN RAISE EXCEPTION 'Valide os modelos na Biblioteca antes de vinculá-los à OS.'; END IF;
+   IF EXISTS(SELECT 1 FROM unnest(selected_models) AS selected(model_id) WHERE NOT EXISTS(SELECT 1 FROM horacerta.equipment_models m WHERE m.id=selected.model_id AND (m.status IN ('pending','published') OR m.id=ANY(coalesce(o.model_ids,'{}'::uuid[]))))) THEN RAISE EXCEPTION 'Equipamento indisponível ou arquivado. Atualize a seleção do catálogo.'; END IF;
    IF EXISTS(SELECT 1 FROM unnest(team) AS assigned(user_id) WHERE NOT EXISTS(SELECT 1 FROM horacerta.users x WHERE x.id=assigned.user_id AND x.active)) THEN RAISE EXCEPTION 'Selecione apenas colaboradores ativos.'; END IF;
    IF p->>'client_id' IS NOT NULL THEN
      SELECT name INTO client_label FROM horacerta.clients WHERE id=(p->>'client_id')::uuid AND active;

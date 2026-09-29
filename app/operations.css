@@ -33,6 +33,18 @@
   min-height: 16px;
   accent-color: #2563eb;
 }
+.ops-form .model-option {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.75rem;
+  text-align: left;
+}
+.ops-form .model-option input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  flex-shrink: 0;
+}
 .ops-form input:focus,
 .ops-form select:focus,
 .ops-form textarea:focus,

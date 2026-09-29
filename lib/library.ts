@@ -11,6 +11,10 @@ export type LibraryDocument = {
 };
 export const documentCategories = { checklist: 'Checklists e formulários', catalog: 'Catálogos', manual: 'Manuais e procedimentos' };
 export const reviewLabels = { pending: 'Revisão pendente', published: 'Liberado para equipe', archived: 'Arquivado' };
+// Selecting a catalogue model is not approval of its documents or checklist.
+export function selectableModels(models: EquipmentModel[], selected: string[]) {
+  return models.filter(model => model.status !== 'archived' || selected.includes(model.id));
+}
 export function normalizeSearch(value: string) {
   return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
