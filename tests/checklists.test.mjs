@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { suggestChecklistItems, checklistProblems, checklistItemsSchema } from '../lib/checklists.ts';
+import { suggestChecklistItems, checklistProblems, checklistItemsSchema, plannedChecklistItems } from '../lib/checklists.ts';
 test('FPO extraction preserves item quantities but strips personal filled fields', () => {
  const items=suggestChecklistItems([{content:'Data: | 01/01/2020'},{content:'ITENS | QTD Entrega | QTD Devolução | Comentários'},
   {content:'Scanner SN ASW-123 | 2 | 1 | Cliente antigo'},{content:'Cabo serial RS232 |  |  | '},{content:'Assinatura do responsável | X | X'}],randomUUID);
@@ -17,4 +17,10 @@ test('Completion requires conferences, quantities and justified discrepancies',(
 });
 test('Repeated item IDs are rejected',()=>{
  const i={id:randomUUID(),label:'Cabo',planned:1};assert.equal(checklistItemsSchema.safeParse([i,i]).success,false);
+});
+test('Coordinator planning never pre-confirms an employee conference',()=>{
+ const item={id:randomUUID(),label:'Cabo',planned:2,outgoing:true,incoming:true,outgoing_qty:2,incoming_qty:2,na:true,notes:'Preenchido antes'};
+ const [planned]=plannedChecklistItems([item]);
+ assert.deepEqual(planned,{...item,outgoing:false,incoming:false,outgoing_qty:null,incoming_qty:null,na:false,notes:''});
+ assert.equal(item.outgoing,true);
 });

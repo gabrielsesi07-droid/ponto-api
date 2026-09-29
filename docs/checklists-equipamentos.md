@@ -4,9 +4,9 @@
 
 O catálogo representa **modelos**, não estoque físico. Em **Equipamentos → Configurar checklist**, o coordenador revisa a sugestão extraída do documento, ajusta descrições/quantidades e ativa o padrão. A ativação também valida o modelo para seleção na OS; não publica o documento original na biblioteca.
 
-Ao gerar uma OS, o seletor pesquisável mostra todos os modelos não arquivados ao coordenador, inclusive os importados ainda em revisão. Selecionar um modelo não o publica nem libera documentos/checklists. Escolher um modelo com padrão ativo carrega sua prévia. É possível marcar caixas, alterar quantidades, remover/reordenar itens e acrescentar outros antes de salvar. A criação da OS e dos checklists é uma única transação. Sem padrão ativo, a OS pode ser criada normalmente; o coordenador configura o padrão dentro do próprio formulário ou cria uma lista exclusiva depois. Modelos arquivados já vinculados a uma OS continuam visíveis para preservar seu histórico.
+Ao gerar uma OS, o seletor pesquisável mostra todos os modelos não arquivados ao coordenador, inclusive os importados ainda em revisão. Selecionar um modelo não o publica nem libera documentos/checklists. Escolher um modelo com padrão ativo carrega sua prévia. O coordenador pode preparar descrições, quantidades previstas e itens extras, mas não marcar conferências. A API e a transação de criação limpam marcações, quantidades reais e observações de conferência enviadas no planejamento. A criação da OS e dos checklists é uma única transação. Sem padrão ativo, a OS pode ser criada normalmente; o coordenador configura o padrão dentro do próprio formulário ou cria uma lista exclusiva depois. Modelos arquivados já vinculados a uma OS continuam visíveis para preservar seu histórico.
 
-Dentro da OS, a equipe designada registra ida/entrega, volta/devolução, quantidades, identificação opcional da unidade e observações. Divergências de quantidade e “não se aplica” exigem justificativa para concluir. Checklists vinculados pendentes impedem o encerramento da OS; serviços antigos sem checklist não são bloqueados. A impressão A4 dos dados salvos inclui cliente, serviço, equipe, veículo, datas, itens e campos de assinatura. O navegador permite salvar como PDF.
+Dentro da OS, um colaborador designado registra ida/entrega, volta/devolução, quantidades, identificação opcional da unidade e observações pelo próprio login. Havendo apenas um colaborador, ele já tem acesso; havendo vários, a equipe decide quem fará a conferência, sem atribuição obrigatória pelo coordenador nem bloqueio exclusivo para uma pessoa. O histórico identifica quem salvou cada revisão e quem concluiu. O coordenador acompanha e imprime, mas não pode salvar/concluir conferências, inclusive pela API e função SQL. Pode reabrir para que a equipe corrija. Divergências de quantidade e “não se aplica” exigem justificativa para concluir. Checklists vinculados pendentes impedem o encerramento da OS; serviços antigos sem checklist não são bloqueados. A impressão A4 dos dados salvos inclui cliente, serviço, equipe, veículo, datas, itens, autor da conclusão e campos de assinatura. O navegador permite salvar como PDF.
 
 ## Arquitetura
 
@@ -37,7 +37,7 @@ Atualizar o padrão nunca reescreve OS anteriores. Remover um modelo da OS mant�
 | `GET/POST /api/checklists/templates` | Coordenador | Revisar origem e salvar/ativar padrão |
 | `GET /api/checklists/preview` | Coordenador | Prévia dos modelos selecionados |
 | `GET /api/checklists?order=…` | Coordenador ou equipe designada | Conferências e histórico da OS |
-| `POST /api/checklists` | Conforme a ação | Salvar/concluir; coordenador também vincula/cria/reabre |
+| `POST /api/checklists` | Conforme a ação | Colaborador designado salva/conclui; coordenador vincula/cria/reabre |
 | `/checklists/[id]/print` | Coordenador ou equipe designada | Documento de impressão privado |
 
 Validação de tipos e limites no servidor, checagem de origem, corpo limitado a 150 KB e respostas privadas sem cache. Cada lista aceita até 80 itens; uma OS aceita até 30 modelos. O limite total do corpo pode ser atingido antes ao personalizar muitas listas extensas.
@@ -61,6 +61,6 @@ Os rascunhos iniciais só usam tabelas de itens reconhecidas em documentos expli
 
 Verificar visualmente no celular: caixas acessíveis, campos legíveis, lista sem rolagem horizontal e botões quebrando linha. Na impressão, verificar identificação e tabela; somente dados salvos entram no documento.
 
-Publicação pelo Git integrado à Vercel, depois da migração aditiva. Conferir autenticação, ponto, OS, consultas de padrões e logs após publicar. Não presumir revisão independente ou aprovação de CI que não ocorreu.
+Publicação pelo Git integrado à Vercel, depois da migração aditiva. Conferir autenticação, ponto, OS, consultas de padrões e logs após publicar. Não presumir revisão independente ou aprovação de CI que não ocorreu. A separação de papéis também altera a função `008`: em rollback completo, avaliar essa definição junto da `004`. Conferências históricas, inclusive realizadas anteriormente por coordenadores, não são apagadas ou reatribuídas.
 
 Se surgir falha de autorização, login/ponto ou erro persistente de OS, reverter o aplicativo ao deployment anterior validado. Preservar tabelas e histórico. Como o encerramento da OS ganhou uma regra SQL, um rollback completo exige restaurar a definição anterior de `order_action` (revisão anterior de `004`), sem apagar dados. Não basta reverter somente a interface. Não foi configurado monitoramento contínuo; a verificação pós-publicação é pontual.

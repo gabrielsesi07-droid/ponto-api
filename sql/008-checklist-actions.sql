@@ -57,6 +57,7 @@ BEGIN
    UPDATE horacerta.order_checklists SET status='open',completed_at=NULL,completed_by=NULL,version=version+1,updated_at=now(),updated_by=actor WHERE id=c.id RETURNING * INTO c;
    event := 'Checklist reaberto: '||(p->>'reason');
   ELSIF action IN ('save','complete') THEN
+   IF u.role<>'employee' OR NOT actor=ANY(o.members) THEN RAISE EXCEPTION 'A conferência deve ser realizada por um colaborador designado para esta OS.'; END IF;
    IF c.status<>'open' THEN RAISE EXCEPTION 'Checklist concluído. Peça a reabertura ao coordenador.'; END IF;
    UPDATE horacerta.order_checklists SET title=p->>'title',items=p->'items',notes=p->>'notes',identification=p->>'identification',
     status=CASE WHEN action='complete' THEN 'completed' ELSE 'open' END,version=version+1,updated_at=now(),updated_by=actor,

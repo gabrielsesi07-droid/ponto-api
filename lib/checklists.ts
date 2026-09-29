@@ -10,6 +10,9 @@ export const checklistItemSchema = z.object({
 });
 export const checklistItemsSchema = z.array(checklistItemSchema).max(80).refine(items => new Set(items.map(i => i.id)).size === items.length, 'Há identificadores de item repetidos.');
 export type ChecklistItem = z.infer<typeof checklistItemSchema>;
+export function plannedChecklistItems(items: ChecklistItem[]): ChecklistItem[] {
+  return items.map(item => ({ ...item, outgoing: false, incoming: false, outgoing_qty: null, incoming_qty: null, na: false, notes: '' }));
+}
 export type ChecklistTemplate = { id: string; model_id: string; title: string; items: ChecklistItem[]; source_document_id: string | null;
   source_name: string; source_hash: string; status: 'draft' | 'active' | 'archived'; version: number };
 export type OrderChecklist = { id: string; order_id: string; model_id: string; model_name: string; template_version: number | null;

@@ -23,11 +23,12 @@ try{
  check((await sql`SELECT status FROM horacerta.equipment_models WHERE id=${model}`)[0].status,'published','Activation also validates catalogue model');
  check((await call('/api/checklists/templates',templateBody)).status,409,'Stale template version blocked');
  const preview=await call('/api/checklists/preview?models='+model);check(preview.data.models[0].items.length,1,'Instant preview contains editable template items');
- const customItem={...templateBody.items[0],label:'Cabo personalizado na OS'};
+ const customItem={...templateBody.items[0],label:'Cabo personalizado na OS',outgoing:true,incoming:true,outgoing_qty:2,incoming_qty:2,na:true,notes:'Marcação indevida no planejamento'};
  const created=await call('/api/operations',{action:'save_order',data:{...os(),checklist_drafts:[{model_id:model,template_version:1,title:'Checklist desta OS',items:[customItem]}]}});
  check(created.status,200,'OS created with customized checklist atomically');orders.push(created.data.id);
  let payload=await call('/api/checklists?order='+orders[0],null,worker);let c=payload.data.checklists[0];
  check(c.items[0].label,customItem.label,'Draft customization persisted only on OS');
+ check([c.items[0].outgoing,c.items[0].incoming,c.items[0].outgoing_qty,c.items[0].incoming_qty,c.items[0].na,c.items[0].notes],[false,false,null,null,false,''],'Coordinator planning cannot pre-fill employee conference');
  check((await call('/api/checklists?order='+orders[0],null,other)).status,404,'Unassigned user blocked');
  check((await call('/api/checklists?order='+orders[0],null,null)).status,401,'Anonymous list blocked');
  check((await call(`/checklists/${c.id}/print`,null,other)).status,404,'Unassigned print blocked');
@@ -39,9 +40,17 @@ try{
  check((await call('/api/checklists?order='+orders[0])).data.checklists[0].items[0].label,customItem.label,'Old OS snapshot survives template change');
  const staleOS=await call('/api/operations',{action:'save_order',data:{...os(1),checklist_drafts:[{model_id:model,template_version:1,title:'Versão antiga',items:[customItem]}]}});
  check(staleOS.status,409,'Stale draft cannot create an OS with a changed template');
- const nextOS=await call('/api/operations',{action:'save_order',data:os(1)});check(nextOS.status,200,'Next OS uses current standard');orders.push(nextOS.data.id);
+ const nextOS=await call('/api/operations',{action:'save_order',data:{...os(1),members:[worker,other]}});check(nextOS.status,200,'Next OS uses current standard');orders.push(nextOS.data.id);
  check((await call('/api/checklists?order='+orders[1])).data.checklists[0].items[0].label,'Modelo revisado','Next OS receives updated items');
+ const shared=(await call('/api/checklists?order='+orders[1],null,other)).data.checklists[0];
+ check((await action('save',{id:shared.id,version:shared.version,title:shared.title,items:shared.items,notes:'A equipe decidiu que eu farei esta conferência.',identification:''},other)).status,200,'Any assigned employee can confer when team has multiple people');
+ check((await call('/api/checklists?order='+orders[1])).data.checklists[0].updated_by,other,'Shared team conference records actual author');
  const baseData={id:c.id,version:c.version,title:c.title,items:c.items,notes:'',identification:''};
+ check((await action('save',baseData)).status,403,'Coordinator cannot fill employee conference');
+ check((await action('complete',baseData)).status,403,'Coordinator cannot complete employee conference');
+ let sqlCoordinatorBlocked=false;
+ try { await sql`SELECT horacerta.checklist_action(${admin.id}::uuid,'save',${JSON.stringify(baseData)}::jsonb)`; } catch(e) { sqlCoordinatorBlocked=e.code==='P0001'; }
+ check(sqlCoordinatorBlocked,true,'Database also enforces employee-only conference');
  check((await action('save',baseData,other)).status,409,'Unassigned write blocked');
  check((await action('complete',baseData,worker)).status,400,'Unconfirmed checklist cannot complete');
  await call('/api/operations',{action:'begin',data:{id:orders[0]}},worker);
@@ -54,6 +63,7 @@ try{
  finishedItems[0].notes='Uma unidade voltou avariada e foi separada.';
  check((await action('complete',{...baseData,version:c.version,items:finishedItems},worker)).status,200,'Justified return can complete');
  c=(await call('/api/checklists?order='+orders[0])).data.checklists[0];
+ check(c.completed_by,worker,'Conference attributed to the logged-in employee');
  check((await action('save',{...baseData,version:c.version},worker)).status,409,'Completed checklist locked');
  check((await action('reopen',{id:c.id,version:c.version,reason:'Correção'},worker)).status,403,'Only coordinator reopens');
  check((await action('reopen',{id:c.id,version:c.version,reason:'Correção de conferência'})).status,200,'Coordinator reopens with reason');

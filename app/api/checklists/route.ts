@@ -39,6 +39,7 @@ export async function POST(req: Request) {
       coordinator(me);
       data = z.object({ id: z.string().uuid(), version: z.number().int().positive(), reason: z.string().trim().min(3).max(500) }).parse(raw);
     } else {
+      if (me.role === 'coordinator') throw new ApiError(403, 'A conferência deve ser realizada pelo login de um colaborador designado para esta OS.');
       data = z.object({ id: z.string().uuid(), version: z.number().int().positive(), title: z.string().trim().min(2).max(180),
         identification: z.string().trim().max(160).default(''), notes: z.string().trim().max(3000).default(''), items: checklistItemsSchema,
       }).parse(raw);

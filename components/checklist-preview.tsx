@@ -22,7 +22,8 @@ export function ChecklistPreview({ modelIds, drafts, onChange, existing, demo }:
   }, [key, demo, revision]);
   if (!key || demo) return null;
   return <div className="full space-y-3 rounded-xl border border-blue-200 bg-blue-50/40 p-3">
-    <h3 className="font-semibold">Checklists automáticos</h3>
+    <h3 className="font-semibold">Checklists para a equipe</h3>
+    <p className="text-sm text-blue-900">Você escolhe os equipamentos e prepara os itens. Um colaborador designado fará a conferência de saída e retorno pelo próprio login.</p>
     <p className="text-xs text-slate-600">{existing ? 'Novos equipamentos recebem seu checklist ativo ao salvar. Conferências existentes são preservadas; edite-as na tela da OS.' : 'Ao salvar a OS, os checklists ativos serão copiados para ela. Equipamentos sem padrão ativo também podem ser usados; revise o padrão aqui ou crie uma lista depois.'}</p>
     {error && <p role="alert" className="text-sm text-red-700">{error}<button type="button" className="ml-2 underline" onClick={() => setRevision(n => n + 1)}>Tentar novamente</button></p>}
     {modelIds.some(id => !models.some(m => m.model_id === id)) && !error && <p role="status" className="text-sm">Buscando checklists dos equipamentos…</p>}
@@ -32,7 +33,7 @@ export function ChecklistPreview({ modelIds, drafts, onChange, existing, demo }:
         <b className="text-sm">{m.name}</b>
         {active ? <>
           <p className="mt-1 text-xs text-blue-800">{m.title} · padrão v{m.template_version} · {draft?.items.length ?? m.items.length} itens</p>
-          {!existing && <details className="mt-2"><summary className="cursor-pointer rounded-lg border bg-slate-50 p-3 text-sm font-medium">Marcar ou personalizar o checklist desta OS</summary><div className="mt-3"><ChecklistItems items={draft?.items || m.items} onChange={items => onChange([...drafts.filter(d => d.model_id !== m.model_id), { model_id: m.model_id, template_version: draft?.template_version || m.template_version, title: draft?.title || m.title, items }])} /></div></details>}
+          {!existing && <details className="mt-2"><summary className="cursor-pointer rounded-lg border bg-slate-50 p-3 text-sm font-medium">Preparar itens e quantidades para a equipe</summary><div className="mt-3"><ChecklistItems template items={draft?.items || m.items} onChange={items => onChange([...drafts.filter(d => d.model_id !== m.model_id), { model_id: m.model_id, template_version: draft?.template_version || m.template_version, title: draft?.title || m.title, items }])} /></div></details>}
           {draft && draft.template_version !== m.template_version && <p className="mt-2 text-sm text-red-700">O padrão mudou. Refaça a seleção deste equipamento antes de salvar.</p>}
         </> : <><p className="mt-1 text-xs text-amber-900">{m.source_obsolete ? 'A origem está obsoleta. Configure um padrão válido.' : 'Sem checklist ativo. Você pode configurar agora ou criar uma lista personalizada depois de salvar a OS.'}</p><Button type="button" variant="outline" className="mt-2" onClick={() => setEditor(m.model_id)}>Configurar checklist padrão</Button></>}
       </div>;
