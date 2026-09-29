@@ -16,6 +16,10 @@ export async function GET() {
       admin = me.role === "coordinator";
     const [orders, vehicles, clients, people] = await Promise.all([
       sql`SELECT o.*,
+        horacerta.order_can_delete(o.id) can_delete,
+        horacerta.order_pending_checklists(o.id) pending_checklists,
+        (SELECT count(*)::int FROM horacerta.timers t WHERE t.order_id=o.id) active_points,
+        EXISTS(SELECT 1 FROM horacerta.timers t WHERE t.order_id=o.id AND t.user_id=${me.id}::uuid) my_point_active,
         coalesce((SELECT jsonb_agg(jsonb_build_object('id',m.id,'name',m.name,'family',m.family) ORDER BY m.name) FROM horacerta.equipment_models m WHERE m.id=ANY(o.model_ids)),'[]') equipment_models,
         (SELECT name FROM horacerta.order_pdfs WHERE order_id=o.id) pdf_name,
         coalesce((SELECT jsonb_agg(jsonb_build_object('id',u.id,'name',u.name,'access_code',u.access_code) ORDER BY u.name) FROM horacerta.users u WHERE u.id=ANY(o.members)),'[]') team,
@@ -72,6 +76,7 @@ export async function POST(req: Request) {
           id: z.string().uuid(),
           km: z.number().int().min(0).max(9999999).optional(),
           notes: z.string().trim().max(5000).default(""),
+          version: z.number().int().positive().optional(),
         })
         .parse(body.data);
     if (

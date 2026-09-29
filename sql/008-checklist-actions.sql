@@ -37,7 +37,7 @@ BEGIN
  END IF;
  IF o.id IS NULL THEN RAISE EXCEPTION 'OS não encontrada.'; END IF;
  IF u.role<>'coordinator' AND NOT actor=ANY(o.members) THEN RAISE EXCEPTION 'Você não está designado para esta OS.'; END IF;
- IF o.status NOT IN ('Agendada','Em andamento') THEN RAISE EXCEPTION 'OS encerrada: checklists disponíveis somente para consulta e impressão.'; END IF;
+ IF o.status='Concluída' OR (o.status='Cancelada' AND action NOT IN ('save','complete','reopen')) THEN RAISE EXCEPTION 'OS encerrada: não é possível vincular novos itens. Em OS cancelada, confira a devolução na lista existente.'; END IF;
  IF action='sync' THEN
   added := horacerta.attach_order_checklists(o.id,actor);
   RETURN jsonb_build_object('ok',true,'added',added);

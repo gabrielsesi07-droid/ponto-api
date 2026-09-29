@@ -134,7 +134,7 @@ export function OrderChecklistEditor({ checklist, admin, closed, onClose, onSave
 
 type OrderData = { order: { checker_count: number }; checklists: OrderChecklist[]; models: { id: string; name: string; template_title: string | null }[];
   history: { id: number; action: string; name: string; created_at: string }[] };
-export function OrderChecklists({ orderId, admin, closed, demo }: { orderId: string; admin: boolean; closed: boolean; demo: boolean }) {
+export function OrderChecklists({ orderId, admin, closed, cancelled = false, demo, onChanged }: { orderId: string; admin: boolean; closed: boolean; cancelled?: boolean; demo: boolean; onChanged?: () => Promise<void> }) {
   const [data, setData] = useState<OrderData | null>(null), [error, setError] = useState(''), [selected, setSelected] = useState<OrderChecklist | null>(null);
   const [revision, setRevision] = useState(0), [busy, setBusy] = useState(false);
   const [templateModel, setTemplateModel] = useState('');
@@ -157,8 +157,8 @@ export function OrderChecklists({ orderId, admin, closed, demo }: { orderId: str
   return <section className="space-y-3 rounded-xl border p-4">
     <h3 className="flex items-center gap-2 font-semibold"><ClipboardList size={18} />Checklists dos equipamentos</h3>
     <p className="text-sm text-slate-600">{admin ? 'Acompanhe a conferência feita pelos colaboradores designados. Você pode consultar, imprimir e reabrir para correção.' : 'Um colaborador da equipe confere os equipamentos na saída e no retorno. O sistema registra quem salvou e quem concluiu.'}</p>
-    {admin && !closed && data?.order.checker_count === 0 && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Esta OS não tem colaborador designado para conferir. Use “Editar OS” e inclua alguém com perfil de colaborador na equipe. O acesso de coordenador é somente para acompanhamento.</p>}
-    {!closed && data?.checklists.some(c => !c.detached && c.status === 'open') && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Conclua os checklists vinculados antes de encerrar a OS. Diferenças de quantidade precisam de observação.</p>}
+    {admin && !closed && !cancelled && data?.order.checker_count === 0 && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Esta OS não tem colaborador designado para conferir. Use “Editar OS” e inclua alguém com perfil de colaborador na equipe. O acesso de coordenador é somente para acompanhamento.</p>}
+    {!closed && data?.checklists.some(c => !c.detached && c.status === 'open') && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{cancelled ? 'Confira a devolução do que saiu. Para itens não utilizados, marque “Não se aplica” e justifique. Listas nunca iniciadas não geram pendência no cancelamento.' : 'Conclua os checklists vinculados antes de encerrar a OS. Diferenças de quantidade precisam de observação.'}</p>}
     {error && <p role="alert" className="text-sm text-red-700">{error}<button className="ml-2 underline" onClick={() => setRevision(n => n + 1)}>Tentar novamente</button></p>}
     {!data && !error && <p role="status" className="text-sm">Carregando checklists…</p>}
     {data?.checklists.map(c => { const progress = checklistProgress(c.items); return <div key={c.id} className="rounded-lg border bg-slate-50 p-3">
@@ -167,12 +167,12 @@ export function OrderChecklists({ orderId, admin, closed, demo }: { orderId: str
       <p className="mt-1 text-xs text-slate-500">Última alteração: {c.updated_by_name} · {new Date(c.updated_at).toLocaleString('pt-BR')}</p>
       {c.completed_by_name && <p className="mt-2 text-sm font-medium text-emerald-800">Conferido por {c.completed_by_name}</p>}
       <Button className="mt-3" variant="outline" onClick={() => setSelected(c)}>{admin || closed || c.detached || c.status === 'completed' ? 'Consultar e imprimir' : 'Conferir equipamentos'}</Button>
-      {admin && !closed && !c.detached && !c.items.length && <Button disabled={busy} className="ml-2 mt-3" onClick={() => data.models.find(m => m.id === c.model_id)?.template_title ? void attach() : setTemplateModel(c.model_id)}>Preparar e vincular itens</Button>}
+      {admin && !closed && !cancelled && !c.detached && !c.items.length && <Button disabled={busy} className="ml-2 mt-3" onClick={() => data.models.find(m => m.id === c.model_id)?.template_title ? void attach() : setTemplateModel(c.model_id)}>Preparar e vincular itens</Button>}
     </div>; })}
-    {data?.models.filter(m => !data.checklists.some(c => c.model_id === m.id)).map(m => <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm" key={m.id}><b>{m.name}</b><p className="mt-1">{m.template_title ? 'Existe uma lista de itens do equipamento disponível para vincular.' : 'Sem lista de itens disponível. O coordenador precisa preparar o checklist para a equipe.'}</p>{admin && !closed && <Button disabled={busy} className="mt-2" variant="outline" onClick={() => m.template_title ? void attach() : setTemplateModel(m.id)}>{m.template_title ? 'Vincular itens do equipamento' : 'Preparar lista de itens'}</Button>}</div>)}
+    {data?.models.filter(m => !data.checklists.some(c => c.model_id === m.id)).map(m => <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm" key={m.id}><b>{m.name}</b><p className="mt-1">{cancelled ? 'Nenhum checklist foi vinculado antes do cancelamento.' : m.template_title ? 'Existe uma lista de itens do equipamento disponível para vincular.' : 'Sem lista de itens disponível. O coordenador precisa preparar o checklist para a equipe.'}</p>{admin && !closed && !cancelled && <Button disabled={busy} className="mt-2" variant="outline" onClick={() => m.template_title ? void attach() : setTemplateModel(m.id)}>{m.template_title ? 'Vincular itens do equipamento' : 'Preparar lista de itens'}</Button>}</div>)}
     {data && !data.models.length && !data.checklists.length && <p className="text-sm text-slate-500">Selecione um modelo do catálogo ao cadastrar ou editar a OS para vincular seu checklist.</p>}
     {!!data?.history.length && <details className="border-t pt-2 text-xs"><summary className="cursor-pointer py-2 font-semibold">Histórico de conferências</summary>{data.history.map(h => <p className="mb-2" key={h.id}>{h.action} · {h.name} · {new Date(h.created_at).toLocaleString('pt-BR')}</p>)}</details>}
-    {selected && <OrderChecklistEditor checklist={selected} admin={admin} closed={closed} onClose={() => setSelected(null)} onSaved={() => setRevision(n => n + 1)} />}
+    {selected && <OrderChecklistEditor checklist={selected} admin={admin} closed={closed} onClose={() => setSelected(null)} onSaved={() => { setRevision(n => n + 1); void onChanged?.(); }} />}
     {templateModel && <ChecklistTemplateEditor modelId={templateModel} onClose={() => setTemplateModel('')} onSaved={() => void attach()} />}
   </section>;
 }

@@ -27,6 +27,7 @@ import {
   Gauge,
   Building2,
   Trash2,
+  Ban,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
@@ -50,6 +51,7 @@ import {
   type ServiceClient,
 } from "@/lib/orders";
 import { today, type Person } from "@/lib/domain";
+import { hasCancelledPending, matchesOrderFilter } from '@/lib/order-lifecycle';
 
 const dateLabel = (v: string) =>
   new Intl.DateTimeFormat("pt-BR", {
@@ -184,20 +186,20 @@ export function ServiceOrders({
   const due = data.orders.filter(
     (o) =>
       o.members.includes(me.id) &&
-      ["Agendada", "Em andamento"].includes(o.status) &&
+      (hasCancelledPending(o) || (["Agendada", "Em andamento"].includes(o.status) &&
       localDateTime(o.starts_at).slice(0, 10) <= today() &&
       (localDateTime(o.ends_at).slice(0, 10) >= today() ||
-        o.status === "Em andamento"),
+        o.status === "Em andamento"))),
   );
   useEffect(() => {
-    if (blocked || selected || editOrder || resource || demo) return;
+    if (blocked || selected || editOrder || resource || demo || view === 'register') return;
     const next = data.orders.find(
       (o) =>
         o.members.includes(me.id) &&
-        ["Agendada", "Em andamento"].includes(o.status) &&
+        (hasCancelledPending(o) || (["Agendada", "Em andamento"].includes(o.status) &&
         localDateTime(o.starts_at).slice(0, 10) <= today() &&
         (localDateTime(o.ends_at).slice(0, 10) >= today() ||
-          o.status === "Em andamento") &&
+          o.status === "Em andamento"))) &&
         !dismissed.current.has(`${today()}:${o.id}:${o.version}`),
     );
     if (!next) return;
@@ -206,15 +208,12 @@ export function ServiceOrders({
       setSelected(next.id);
     }, 0);
     return () => clearTimeout(timer);
-  }, [data, me.id, blocked, selected, editOrder, resource, demo]);
+  }, [data, me.id, blocked, selected, editOrder, resource, demo, view]);
   const rows = useMemo(
     () =>
       data.orders.filter(
         (o) =>
-          (filter === "Todas" || filter === "Abertas"
-            ? ["Todas"].includes(filter) ||
-              ["Agendada", "Em andamento"].includes(o.status)
-            : o.status === filter) &&
+          matchesOrderFilter(o, filter) &&
           [orderNumber(o.number), o.client_name, o.title, o.address]
             .join(" ")
             .toLowerCase()
@@ -247,7 +246,7 @@ export function ServiceOrders({
             <div>
               <b className="flex items-center gap-2 text-blue-900">
                 <ClipboardList size={20} />
-                {due.length === 1 ? "Sua OS de hoje" : "Suas OS de hoje"}
+                {due.some(hasCancelledPending) ? 'OS e pendências da equipe' : due.length === 1 ? "Sua OS de hoje" : "Suas OS de hoje"}
               </b>
               <p className="mt-1 text-sm text-blue-800">
                 {due
@@ -329,6 +328,7 @@ export function ServiceOrders({
               >
                 {[
                   "Abertas",
+                  "Pendências",
                   "Todas",
                   "Agendada",
                   "Em andamento",
@@ -350,6 +350,7 @@ export function ServiceOrders({
                   </span>
                 </div>
                 <h2 className="mt-3 break-words">{o.title}</h2>
+                {hasCancelledPending(o) && <p className="mt-2 rounded-lg bg-amber-50 p-3 text-sm font-medium text-amber-900">Cancelada com pendências: confira ponto, retorno e equipamentos.</p>}
                 <p className="mt-1 font-medium">{o.client_name}</p>
                 <p className="muted mt-3 flex gap-2 text-sm">
                   <CalendarDays size={17} className="shrink-0" />
@@ -604,6 +605,7 @@ function OrderDetail({
     [km, setKm] = useState(""),
     [notes, setNotes] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false), [confirmation, setConfirmation] = useState(''), [deleteError, setDeleteError] = useState('');
+  const [confirmCancel, setConfirmCancel] = useState(false), [cancelReason, setCancelReason] = useState(''), [cancelError, setCancelError] = useState('');
   const open = ["Agendada", "Em andamento"].includes(o.status),
     admin = me.role === "coordinator",
     assigned = o.members.includes(me.id),
@@ -611,6 +613,17 @@ function OrderDetail({
   const acknowledged = o.acknowledgements.some(
     (a) => a.user_id === me.id && a.version === o.version,
   );
+  async function cancelOrder() {
+    if (demo) { setCancelError('Entre com seu login de coordenador para cancelar.'); return; }
+    setBusy(true); setCancelError('');
+    try {
+      await api('/api/operations', { action: 'cancel', data: { id: o.id, version: o.version, notes: cancelReason } });
+      setConfirmCancel(false); setCancelReason('');
+      await onChanged();
+      toast.success('Atendimento cancelado. Pontos, retorno e conferências existentes foram preservados.');
+    } catch (e) { setCancelError((e as Error).message); }
+    finally { setBusy(false); }
+  }
   async function deleteOrder() {
     if (demo) { setDeleteError('Entre com seu login de coordenador para excluir uma OS.'); return; }
     setBusy(true); setDeleteError('');
@@ -752,7 +765,7 @@ function OrderDetail({
               </Button>
             )}
             {admin && <AlertDialog open={confirmDelete} onOpenChange={value => { if (!busy) { setConfirmDelete(value); setConfirmation(''); setDeleteError(''); } }}>
-              <AlertDialogTrigger asChild><Button variant="destructive" disabled={busy}><Trash2 />Excluir OS</Button></AlertDialogTrigger>
+              <AlertDialogTrigger asChild><Button variant="destructive" disabled={busy || o.can_delete === false}><Trash2 />Excluir OS</Button></AlertDialogTrigger>
               <AlertDialogContent className="max-h-[90dvh] overflow-y-auto bg-white">
                 <AlertDialogHeader>
                   <AlertDialogTitle>Excluir {orderNumber(o.number)}?</AlertDialogTitle>
@@ -761,7 +774,7 @@ function OrderDetail({
                 <label className="block text-sm font-medium">Digite {orderNumber(o.number)} para confirmar
                   <input className="mt-2 w-full rounded-lg border p-3" autoComplete="off" value={confirmation} onChange={e => setConfirmation(e.target.value)} disabled={busy} />
                 </label>
-                {deleteError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{deleteError}</p>}
+                {deleteError && <div role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{deleteError}{open && <Button className="mt-2" variant="outline" onClick={() => { setConfirmDelete(false); setConfirmCancel(true); }}>Cancelar atendimento, preservando histórico</Button>}</div>}
                 <AlertDialogFooter>
                   <AlertDialogCancel disabled={busy}>Voltar sem excluir</AlertDialogCancel>
                   <AlertDialogAction variant="destructive" disabled={busy || confirmation.trim() !== orderNumber(o.number)} onClick={e => { e.preventDefault(); void deleteOrder(); }}>
@@ -770,7 +783,18 @@ function OrderDetail({
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>}
+            {admin && open && <AlertDialog open={confirmCancel} onOpenChange={value => { if (!busy) { setConfirmCancel(value); setCancelError(''); } }}>
+              <AlertDialogTrigger asChild><Button variant="outline" className="border-amber-300 bg-amber-50 text-amber-950" disabled={busy}><Ban />Cancelar OS</Button></AlertDialogTrigger>
+              <AlertDialogContent className="max-h-[90dvh] overflow-y-auto bg-white">
+                <AlertDialogHeader><AlertDialogTitle>Cancelar atendimento · {orderNumber(o.number)}</AlertDialogTitle><AlertDialogDescription>O cliente pode cancelar mesmo com a equipe a caminho. O histórico será mantido. O ponto de cada pessoa continua até ela encerrá-lo em Meu ponto; registre o km de retorno e confira a devolução dos equipamentos. Não serão permitidos novos pontos ou saídas nesta OS.</AlertDialogDescription></AlertDialogHeader>
+                <label className="block text-sm font-medium">Motivo do cancelamento<textarea className="mt-2 min-h-24 w-full rounded-lg border p-3" value={cancelReason} maxLength={5000} disabled={busy} onChange={e => setCancelReason(e.target.value)} placeholder="Ex.: cliente cancelou durante o deslocamento." /></label>
+                {cancelError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{cancelError}</p>}
+                <AlertDialogFooter><AlertDialogCancel disabled={busy}>Voltar</AlertDialogCancel><AlertDialogAction disabled={busy || cancelReason.trim().length < 3} onClick={e => { e.preventDefault(); void cancelOrder(); }}>{busy && <LoaderCircle className="animate-spin" />}Confirmar cancelamento</AlertDialogAction></AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>}
           </div>
+          {admin && o.can_delete === false && <p className="text-sm text-slate-600">Esta OS tem histórico de execução ou conferência e não pode ser apagada.{open ? ' Use Cancelar OS para interromper o atendimento sem perder os registros.' : ' Os registros permanecem disponíveis para consulta.'}</p>}
+          {o.status === 'Cancelada' && <section className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"><h3 className="font-semibold">Atendimento cancelado · histórico preservado</h3><p>{hasCancelledPending(o) ? 'Resolva as pendências abaixo. Cancelar não encerra automaticamente o ponto nem registra o retorno.' : 'Sem pendências de ponto, viagem ou conferência registrada.'}</p><p>Pontos em andamento: {o.active_points || 0} · Viagens sem retorno: {o.trips.filter(t => t.return_km === null).length} · Checklists pendentes: {o.pending_checklists || 0}</p>{o.my_point_active && <Button variant="outline" className="h-auto min-h-11 whitespace-normal" onClick={() => { onClose(); void onPoint(); }}>Ir ao Meu ponto para encerrar</Button>}</section>}
           <section>
             <h3 className="font-semibold">Equipe designada</h3>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -820,7 +844,7 @@ function OrderDetail({
               <div className="mt-4"><TechnicalLibrary orderId={o.id} admin={admin} demo={demo} /></div>
             </details>}
           </section>
-          <OrderChecklists orderId={o.id} admin={admin} closed={!open} demo={demo} />
+          <OrderChecklists orderId={o.id} admin={admin} closed={o.status === 'Concluída'} cancelled={o.status === 'Cancelada'} demo={demo} onChanged={onChanged} />
           {vehicle && (
             <section className="rounded-xl border p-4">
               <h3 className="flex items-center gap-2 font-semibold">
@@ -835,7 +859,7 @@ function OrderDetail({
                 A leitura é a do painel do carro. Uma pessoa registra por
                 viagem; toda a equipe acompanha.
               </p>
-              {open && (
+              {(open || (o.status === 'Cancelada' && trip)) && (
                 <form
                   className="ops-form mt-4"
                   onSubmit={(e: FormEvent) => {
@@ -899,7 +923,7 @@ function OrderDetail({
                 )}
               </div>
               <label className="ops-notes mt-4 block text-sm">
-                Resultado do serviço / motivo do cancelamento
+                Resultado do serviço
                 <textarea
                   value={notes}
                   maxLength={5000}
@@ -920,8 +944,8 @@ function OrderDetail({
                 {admin && (
                   <Button
                     variant="outline"
-                    disabled={busy || notes.trim().length < 3}
-                    onClick={() => void action("cancel", { notes })}
+                    disabled={busy}
+                    onClick={() => { setCancelReason(notes); setConfirmCancel(true); }}
                   >
                     Cancelar OS
                   </Button>

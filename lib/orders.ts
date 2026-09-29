@@ -55,6 +55,10 @@ export type Order = {
   completion: string;
   version: number;
   pdf_name: string | null;
+  can_delete?: boolean;
+  pending_checklists?: number;
+  active_points?: number;
+  my_point_active?: boolean;
   acknowledgements: { user_id: string; version: number }[];
   trips: Trip[];
   events: {

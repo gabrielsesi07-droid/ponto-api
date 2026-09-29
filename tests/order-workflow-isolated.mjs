@@ -9,9 +9,9 @@ const schema='qa_os_'+randomUUID().replaceAll('-','');
 const read=async name=>readFile(new URL('../sql/'+name,import.meta.url),'utf8');
 const statements=(await read('001-schema.sql')).split(';').filter(s=>s.trim());
 statements.push(`CREATE TABLE horacerta.timers(user_id uuid PRIMARY KEY REFERENCES horacerta.users(id),started_at timestamptz NOT NULL,paused_at timestamptz,pauses jsonb NOT NULL DEFAULT '[]',rate numeric(12,2) NOT NULL,rules jsonb NOT NULL,company text NOT NULL DEFAULT '',service text NOT NULL DEFAULT '',notes text NOT NULL DEFAULT '')`);
-for(const name of ['003-orders.sql','005-flexible-client.sql','006-library.sql','007-checklists.sql','009-imported-checklists.sql','010-client-search.sql','008-checklist-actions.sql','004-order-actions.sql','002-clock-start-function.sql','002-clock-function.sql']) statements.push(...(await read(name)).split(/\r?\n-- statement-break\r?\n/).filter(s=>s.trim()));
+for(const name of ['003-orders.sql','005-flexible-client.sql','006-library.sql','007-checklists.sql','009-imported-checklists.sql','010-client-search.sql','011-order-lifecycle.sql','008-checklist-actions.sql','004-order-actions.sql','002-clock-start-function.sql','002-clock-function.sql']) statements.push(...(await read(name)).split(/\r?\n-- statement-break\r?\n/).filter(s=>s.trim()));
 statements.push(`DO $$
-DECLARE admin uuid:=gen_random_uuid();worker uuid:=gen_random_uuid();model uuid:=gen_random_uuid();cid uuid;first_id uuid;second_id uuid;fresh_id uuid;result jsonb;p jsonb;first_num bigint;second_num bigint;seq_before bigint;count_before bigint;check_id uuid;item jsonb;
+DECLARE admin uuid:=gen_random_uuid();worker uuid:=gen_random_uuid();model uuid:=gen_random_uuid();vehicle uuid:=gen_random_uuid();cid uuid;first_id uuid;second_id uuid;fresh_id uuid;result jsonb;p jsonb;first_num bigint;second_num bigint;seq_before bigint;count_before bigint;check_id uuid;item jsonb;blocked_action text;
 BEGIN
  INSERT INTO horacerta.users(id,name,email,role,hourly_rate) VALUES(admin,'QA admin','admin@example.invalid','coordinator',0),(worker,'QA worker','worker@example.invalid','employee',0);
  INSERT INTO horacerta.equipment_models(id,name,family) VALUES(model,'Radian QA','Laser Tracker');
@@ -68,6 +68,64 @@ BEGIN
    RAISE EXCEPTION 'Expected checklist protection';
  EXCEPTION WHEN raise_exception THEN IF SQLERRM='Expected checklist protection' THEN RAISE; END IF; END;
  ASSERT EXISTS(SELECT 1 FROM horacerta.orders WHERE id=first_id),'Conferred OS preserved';
+ INSERT INTO horacerta.vehicles(id,plate,model,odometer) VALUES(vehicle,'QAQ1234','Carro QA',1000);
+ UPDATE horacerta.orders SET vehicle_id=vehicle WHERE id=first_id;
+ PERFORM horacerta.order_action(worker,'start_clock',jsonb_build_object('id',first_id,'started_at',now()-interval '10 minutes','notes',''));
+ PERFORM horacerta.order_action(worker,'depart',jsonb_build_object('id',first_id,'km',1000));
+ BEGIN
+   PERFORM horacerta.order_action(worker,'cancel',jsonb_build_object('id',first_id,'notes','Cliente cancelou'));
+   RAISE EXCEPTION 'Employee cancellation unexpectedly allowed';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'Somente o coordenador%' THEN RAISE; END IF; END;
+ BEGIN
+   PERFORM horacerta.order_action(admin,'cancel',jsonb_build_object('id',first_id,'version',1,'notes','Cliente cancelou'));
+   RAISE EXCEPTION 'Stale cancellation unexpectedly allowed';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'A OS foi atualizada%' THEN RAISE; END IF; END;
+ BEGIN
+   PERFORM horacerta.order_action(admin,'cancel',jsonb_build_object('id',first_id,'version',2,'notes',''));
+   RAISE EXCEPTION 'Missing reason unexpectedly allowed';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'Descreva o resultado%' THEN RAISE; END IF; END;
+ PERFORM horacerta.order_action(admin,'cancel',jsonb_build_object('id',first_id,'version',2,'notes','Cliente cancelou no caminho'));
+ ASSERT (SELECT status='Cancelada' AND version=3 AND completion='Cliente cancelou no caminho' FROM horacerta.orders WHERE id=first_id),'Cancellation with optimistic version';
+ ASSERT EXISTS(SELECT 1 FROM horacerta.timers WHERE order_id=first_id),'Cancellation preserves live timer';
+ ASSERT EXISTS(SELECT 1 FROM horacerta.vehicle_trips WHERE order_id=first_id AND return_km IS NULL),'Cancellation preserves pending return';
+ ASSERT NOT horacerta.order_can_delete(first_id),'Execution cannot be deleted';
+ ASSERT horacerta.order_pending_checklists(first_id)=1,'Started conference remains pending';
+ FOREACH blocked_action IN ARRAY ARRAY['depart','begin','start_clock','finish','cancel'] LOOP
+   BEGIN
+     PERFORM horacerta.order_action(admin,blocked_action,jsonb_build_object('id',first_id,'notes','Must not execute','km',1000));
+     RAISE EXCEPTION 'Closed operation unexpectedly allowed';
+   EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'Esta OS já está encerrada%' THEN RAISE; END IF; END;
+ END LOOP;
+ ASSERT (SELECT count(*)=1 FROM horacerta.order_events WHERE order_id=first_id AND action='OS cancelada'),'Cancellation event only once';
+ BEGIN
+   PERFORM horacerta.order_action(admin,'save_vehicle',jsonb_build_object('id',vehicle,'version',2,'odometer',1000,'active',false));
+   RAISE EXCEPTION 'Vehicle deactivation unexpectedly allowed';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'Há OS abertas ou viagem%' THEN RAISE; END IF; END;
+ BEGIN
+   PERFORM horacerta.order_action(worker,'return',jsonb_build_object('id',first_id,'km',999));
+   RAISE EXCEPTION 'Odometer rollback unexpectedly allowed';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'O km deve ser igual%' THEN RAISE; END IF; END;
+ PERFORM horacerta.order_action(worker,'return',jsonb_build_object('id',first_id,'km',1020));
+ ASSERT (SELECT odometer=1020 FROM horacerta.vehicles WHERE id=vehicle),'Return updates odometer on cancelled order';
+ ASSERT (SELECT status='Cancelada' FROM horacerta.orders WHERE id=first_id),'Return does not reopen order';
+ BEGIN
+   PERFORM horacerta.order_action(worker,'return',jsonb_build_object('id',first_id,'km',1020));
+   RAISE EXCEPTION 'Duplicate return unexpectedly allowed';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'Não há saída aberta%' THEN RAISE; END IF; END;
+ PERFORM horacerta.clock_action(worker,'stop');
+ ASSERT NOT EXISTS(SELECT 1 FROM horacerta.timers WHERE order_id=first_id),'Employee can stop cancelled order timer';
+ ASSERT EXISTS(SELECT 1 FROM horacerta.entries WHERE order_id=first_id AND user_id=worker),'Time entry retains order link';
+ PERFORM horacerta.checklist_action(worker,'complete',jsonb_build_object('id',check_id,'version',2,'title','Conferência','notes','','identification','','items',jsonb_build_array(item||jsonb_build_object('outgoing',true,'outgoing_qty',1,'incoming',true,'incoming_qty',1))));
+ ASSERT horacerta.order_pending_checklists(first_id)=0,'Return conference clears pending';
+ PERFORM horacerta.checklist_action(admin,'reopen',jsonb_build_object('id',check_id,'version',3,'reason','Corrigir observação'));
+ ASSERT horacerta.order_pending_checklists(first_id)=1,'Reopened conference is pending again';
+ PERFORM horacerta.order_action(admin,'cancel',jsonb_build_object('id',fresh_id,'version',1,'notes','Cliente cancelou antes da saída'));
+ ASSERT horacerta.order_pending_checklists(fresh_id)=0,'Untouched copied checklist is not pending after cancellation';
+ ASSERT horacerta.order_can_delete(fresh_id),'Unused cancelled order can be deleted';
+ BEGIN
+   PERFORM horacerta.checklist_action(admin,'sync',jsonb_build_object('order_id',fresh_id));
+   RAISE EXCEPTION 'Checklist attachment to cancelled order unexpectedly allowed';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'OS encerrada%' THEN RAISE; END IF; END;
  RAISE EXCEPTION 'QA_ORDER_WORKFLOW_OK_ROLLBACK';
 END $$`);
 try {
@@ -75,7 +133,7 @@ try {
  throw new Error('Expected rollback');
 } catch(error) {
  if(error.message!=='QA_ORDER_WORKFLOW_OK_ROLLBACK')throw error;
- console.log('Isolated SQL workflow passed: auto-client, normalization, ambiguity/inactive guards, rollback, sequential numbering, edit persistence, equipment/checklists and deletion protection.');
+ console.log('Isolated SQL workflow passed: clients, sequence, equipment, deletion protection, cancellation in transit, permissions, stale version, reason, duplicate actions, return odometer, timer closure, checklist completion/reopen and pending cleanup.');
 }
 assert.equal((await sql`SELECT schema_name FROM information_schema.schemata WHERE schema_name=${schema}`).length,0);
 console.log('Test schema rolled back; no production numbers consumed.');

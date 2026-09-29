@@ -15,7 +15,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --env-file=.env scripts/migrate.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/hours.test.mjs tests/checklists.test.mjs tests/catalogue.test.mjs tests/client-search.test.mjs",
+    "test": "node --test tests/hours.test.mjs tests/checklists.test.mjs tests/catalogue.test.mjs tests/client-search.test.mjs tests/order-lifecycle.test.mjs",
     "test:order-workflow": "node --env-file=.env tests/order-workflow-isolated.mjs",
     "test:api": "node --env-file=.env tests/api-smoke.mjs"
   },

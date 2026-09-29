@@ -35,7 +35,7 @@ BEGIN
    SELECT * INTO v FROM horacerta.vehicles WHERE id=target FOR UPDATE;
    IF p ? 'id' AND (v.id IS NULL OR v.version<>(p->>'version')::int) THEN RAISE EXCEPTION 'Veículo atualizado. Reabra o formulário.'; END IF;
    IF v.id IS NOT NULL AND (p->>'odometer')::int<>v.odometer THEN RAISE EXCEPTION 'O km de um veículo cadastrado é atualizado pelas viagens da OS.'; END IF;
-   IF NOT (p->>'active')::boolean AND EXISTS(SELECT 1 FROM horacerta.orders WHERE vehicle_id=target AND status IN ('Agendada','Em andamento')) THEN RAISE EXCEPTION 'Há OS abertas para este veículo. Reagende ou encerre antes de desativá-lo.'; END IF;
+   IF NOT (p->>'active')::boolean AND (EXISTS(SELECT 1 FROM horacerta.orders WHERE vehicle_id=target AND status IN ('Agendada','Em andamento')) OR EXISTS(SELECT 1 FROM horacerta.vehicle_trips WHERE vehicle_id=target AND return_km IS NULL)) THEN RAISE EXCEPTION 'Há OS abertas ou viagem sem retorno para este veículo. Resolva as pendências antes de desativá-lo.'; END IF;
    INSERT INTO horacerta.vehicles(id,plate,model,odometer,maintenance_km,active,notes)
    VALUES(target,p->>'plate',p->>'model',(p->>'odometer')::int,(p->>'maintenance_km')::int,(p->>'active')::boolean,p->>'notes')
    ON CONFLICT(id) DO UPDATE SET plate=excluded.plate,model=excluded.model,maintenance_km=excluded.maintenance_km,active=excluded.active,notes=excluded.notes,version=horacerta.vehicles.version+1;
@@ -46,17 +46,7 @@ BEGIN
    IF o.id IS NULL THEN RAISE EXCEPTION 'OS não encontrada ou já excluída.'; END IF;
    IF (p->>'version')::int IS DISTINCT FROM o.version THEN RAISE EXCEPTION 'A OS foi atualizada. Reabra antes de excluir.'; END IF;
    IF p->>'confirmation' IS DISTINCT FROM ('OS-'||lpad(o.number::text,greatest(6,length(o.number::text)),'0')) THEN RAISE EXCEPTION 'Digite o número completo da OS para confirmar a exclusão.'; END IF;
-   IF o.status NOT IN ('Agendada','Cancelada')
-     OR EXISTS(SELECT 1 FROM horacerta.timers WHERE order_id=target)
-     OR EXISTS(SELECT 1 FROM horacerta.entries WHERE order_id=target)
-     OR EXISTS(SELECT 1 FROM horacerta.vehicle_trips WHERE order_id=target)
-     OR EXISTS(SELECT 1 FROM horacerta.order_events e WHERE e.order_id=target AND e.action IN ('Atendimento iniciado','Ponto iniciado','OS concluída','Saída do veículo','Retorno do veículo'))
-     OR EXISTS(SELECT 1 FROM horacerta.order_checklists c WHERE c.order_id=target AND
-       (c.status='completed' OR c.notes<>'' OR c.identification<>'' OR EXISTS(
-         SELECT 1 FROM jsonb_array_elements(c.items) i WHERE coalesce((i->>'outgoing')::boolean,false) OR coalesce((i->>'incoming')::boolean,false)
-           OR coalesce((i->>'na')::boolean,false) OR i->>'outgoing_qty' IS NOT NULL OR i->>'incoming_qty' IS NOT NULL OR coalesce(i->>'notes','')<>'')))
-     OR EXISTS(SELECT 1 FROM horacerta.checklist_history h JOIN horacerta.order_checklists c ON c.id=h.checklist_id
-       WHERE c.order_id=target AND (h.action IN ('Checklist salvo','Checklist concluído') OR h.action LIKE 'Checklist reaberto:%'))
+   IF NOT horacerta.order_can_delete(target)
    THEN RAISE EXCEPTION 'Esta OS já possui execução, ponto, viagem ou conferência. O histórico não pode ser excluído. Cancele a OS, se ainda estiver aberta.'; END IF;
    INSERT INTO horacerta.audit(actor_id,action,before_value) VALUES(actor,'OS excluída',jsonb_build_object('order_id',target,'number',o.number,'title',o.title,'client_name',o.client_name));
    DELETE FROM horacerta.checklist_history WHERE checklist_id IN(SELECT id FROM horacerta.order_checklists WHERE order_id=target);
@@ -128,7 +118,7 @@ BEGIN
    INSERT INTO horacerta.order_acknowledgements VALUES(target,actor,o.version) ON CONFLICT(order_id,user_id) DO UPDATE SET version=excluded.version;
    RETURN jsonb_build_object('ok',true);
  END IF;
- IF o.status IN ('Concluída','Cancelada') THEN RAISE EXCEPTION 'Esta OS já está encerrada.'; END IF;
+ IF o.status='Concluída' OR (o.status='Cancelada' AND action<>'return') THEN RAISE EXCEPTION 'Esta OS já está encerrada. Em OS cancelada, somente o retorno e a conferência pendente podem continuar.'; END IF;
  IF action IN ('depart','begin','start_clock') AND (now() AT TIME ZONE 'America/Sao_Paulo')::date<(o.starts_at AT TIME ZONE 'America/Sao_Paulo')::date THEN
    RAISE EXCEPTION 'Esta OS só pode começar a partir do dia agendado.';
  END IF;
@@ -162,12 +152,13 @@ BEGIN
    UPDATE horacerta.orders SET status='Em andamento' WHERE id=target;
  ELSIF action IN ('finish','cancel') THEN
    IF action='cancel' AND u.role<>'coordinator' THEN RAISE EXCEPTION 'Somente o coordenador pode cancelar a OS.'; END IF;
-   IF EXISTS(SELECT 1 FROM horacerta.vehicle_trips WHERE order_id=target AND return_km IS NULL) THEN RAISE EXCEPTION 'Registre o km de retorno antes de encerrar a OS.'; END IF;
-   IF EXISTS(SELECT 1 FROM horacerta.timers WHERE order_id=target) THEN RAISE EXCEPTION 'Há pontos em andamento nesta OS. Cada pessoa precisa encerrar seu ponto.'; END IF;
+   IF action='finish' AND EXISTS(SELECT 1 FROM horacerta.vehicle_trips WHERE order_id=target AND return_km IS NULL) THEN RAISE EXCEPTION 'Registre o km de retorno antes de concluir a OS.'; END IF;
+   IF action='finish' AND EXISTS(SELECT 1 FROM horacerta.timers WHERE order_id=target) THEN RAISE EXCEPTION 'Há pontos em andamento nesta OS. Cada pessoa precisa encerrar seu ponto.'; END IF;
+   IF action='cancel' AND p ? 'version' AND (p->>'version')::int IS DISTINCT FROM o.version THEN RAISE EXCEPTION 'A OS foi atualizada. Reabra antes de cancelar.'; END IF;
    IF action='finish' AND o.status<>'Em andamento' THEN RAISE EXCEPTION 'Inicie o atendimento antes de concluir.'; END IF;
    IF action='finish' AND EXISTS(SELECT 1 FROM horacerta.order_checklists WHERE order_id=target AND model_id=ANY(o.model_ids) AND status='open') THEN RAISE EXCEPTION 'Conclua a conferência de ida e volta dos checklists dos equipamentos antes de encerrar a OS.'; END IF;
    IF length(trim(coalesce(p->>'notes','')))<3 THEN RAISE EXCEPTION 'Descreva o resultado ou motivo do encerramento.'; END IF;
-   UPDATE horacerta.orders SET status=CASE WHEN action='finish' THEN 'Concluída' ELSE 'Cancelada' END,completion=p->>'notes' WHERE id=target;
+   UPDATE horacerta.orders SET status=CASE WHEN action='finish' THEN 'Concluída' ELSE 'Cancelada' END,completion=p->>'notes',version=version+1 WHERE id=target;
    detail_value := p->>'notes';
  ELSE RAISE EXCEPTION 'Ação inválida.';
  END IF;
