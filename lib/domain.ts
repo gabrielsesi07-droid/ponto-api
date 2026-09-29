@@ -38,6 +38,8 @@ export type Entry = {
   id: string;
   user_id: string;
   client_id: string | null;
+  order_id?: string | null;
+  order_number?: number | null;
   date: string;
   start: string;
   end: string | null;
@@ -73,6 +75,8 @@ export type State = {
     paused_at: string | null;
   }[];
   timer?: {
+    order_id?: string | null;
+    order_number?: number | null;
     user_id: string;
     started_at: string;
     paused_at: string | null;

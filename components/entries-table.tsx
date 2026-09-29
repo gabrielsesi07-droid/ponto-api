@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Blank, Status } from "./controls";
+import { pointOrderNumber } from '@/lib/point-orders';
 import {
   duration,
   money,
@@ -125,6 +126,7 @@ export function EntriesTable({
               {time(e.start)} — {time(e.end)} · {e.break_minutes} min de pausa
             </p>
             <p className="mt-2 text-sm">
+              <span className="block text-xs font-semibold text-blue-800">{e.order_number ? pointOrderNumber(e.order_number) : 'Histórico anterior · sem OS'}</span>
               <b>{e.company || "Empresa não informada"}</b>
               <span className="muted"> · {e.service}</span>
             </p>
@@ -195,6 +197,7 @@ export function EntriesTable({
                     </span>
                   </TableCell>
                   <TableCell className="min-w-52">
+                    <span className="block text-xs font-semibold text-blue-800">{e.order_number ? pointOrderNumber(e.order_number) : 'Histórico anterior · sem OS'}</span>
                     <b className="block">{e.company || "Não informada"}</b>
                     <span className="muted block max-w-64 truncate text-xs">
                       {e.service}

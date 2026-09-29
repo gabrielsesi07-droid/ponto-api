@@ -26,6 +26,15 @@ try {
   for(const path of ['/api/session','/api/state'+date,'/api/operations','/api/library'])check((await call(path,role)).status===200,role+' reads '+path.split('?')[0]);
  }
  const own=(await call('/api/state'+date,'employee')).body;
+ const pointOrders=await call('/api/clock','employee');
+ check(pointOrders.status===200&&pointOrders.body.orders.every(o=>o.assigned===true),'Point selector only offers assigned OS');
+ check((await call('/api/clock')).status===401,'Anonymous point selector blocked');
+ check((await call('/api/clock?entry_id='+zero,'employee')).status===404,'Unrelated point metadata inaccessible');
+ const startedAt=new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date()).replace(' ','T');
+ check((await call('/api/clock','employee',{action:'start',started_at:startedAt,company:'Avulso',service:'Avulso'})).status===400,'Live point without OS rejected before mutation');
+ check((await call('/api/clock','employee',{action:'start',order_id:zero,started_at:startedAt})).status===409,'Nonexistent OS cannot start a point');
+ check((await call('/api/entries','employee',{user_id:actors.employee.id,date:startedAt.slice(0,10),start:'08:00',end:'09:00',break_minutes:0,company:'Avulso',service:'Avulso'})).status===400,'Manual point without OS rejected before mutation');
+ check(own.entries.every(e=>'order_id' in e&&'order_number' in e),'Time records expose OS identification');
  check(own.users.every(u=>u.id===actors.employee.id)&&own.entries.every(e=>e.user_id===actors.employee.id)&&own.teamTimers.length===0,'Employee sees only own people/time data');
  const ops=(await call('/api/operations','employee')).body;
  check(ops.orders.every(o=>o.members.includes(actors.employee.id))&&ops.clients.length===0&&ops.people.length===0,'Employee OS and master-data scope');

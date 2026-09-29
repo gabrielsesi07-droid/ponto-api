@@ -87,3 +87,21 @@ As skills de depuração, revisão de código, estratégia de testes e boas prá
 - [ ] Monitoramento contínuo de métricas: não configurado por esta auditoria.
 
 Critério de rollback: falha nova de autenticação, leitura das OS, permissões ou gravação válida após a publicação. A versão de referência anterior é `5584e1f`; restaurar seu deployment na Vercel, mantendo a migração aditiva e os registros. Não apagar clientes, pontos ou OS para tentar recuperar o funcionamento. Reversão da aplicação não desfaz ações de negócio já confirmadas pelo usuário.
+
+## Adendo — todo novo ponto pertence a uma OS
+
+A revisão anterior não cobriu corretamente a coerência entre o relógio avulso e o fluxo de OS. Embora o início dentro da OS já vinculasse a marcação, “Meu ponto” e o lançamento manual ainda permitiam registros independentes. A regra de negócio agora é explícita e testada nos caminhos abaixo.
+
+- Meu ponto exige selecionar uma OS atribuída ao usuário; mostra número, cliente e serviço. Cliente/serviço são somente leitura e não vêm mais da última empresa salva no navegador.
+- A API de início exige `order_id`; a função antiga de início avulso e `clock_action('start')` são bloqueadas. O início usa os dados oficiais da OS, não valores enviados pelo navegador.
+- Novo lançamento manual também exige OS. Uma OS concluída/cancelada pode receber um lançamento esquecido completo (entrada e saída), sem reabrir o atendimento. Início ao vivo só em OS agendada/em andamento e a partir do dia agendado.
+- O coordenador também só inicia ponto próprio se estiver na equipe designada. Ao ajustar uma marcação de outra pessoa, a seleção é referente àquela pessoa, e não ao coordenador conectado.
+- A validação da marcação manual ocorre na mesma transação e bloqueio do ciclo de vida da OS; o vínculo existente não pode ser removido/trocado. Empresa, serviço e valor histórico são preservados nas correções.
+- Registros antigos sem OS continuam identificados como históricos. Podem ser ajustados ou vinculados explicitamente à OS correta, sem atribuição automática. Relógios antigos ainda podem ser pausados/encerrados para não perder horas; nenhum novo relógio avulso pode começar.
+- O encerramento guarda OS e cliente. Histórico, busca e exportações incluem o número da OS.
+
+Evidências deste adendo: 32 testes Node aprovados; fluxo SQL isolado aprovado (bloqueios de ponto avulso, membro incorreto, data anterior à OS, OS encerrada ao vivo, marcação manual sem vínculo, remoção de vínculo, metadados oficiais, ponto esquecido em OS encerrada, fechamento de relógio legado); 58 verificações HTTP locais aprovadas. Interface verificada em desktop e 390 × 844: início desabilitado sem OS, seleção preenche cliente/serviço, marcação manual oferece também OS cancelada e não salva sem vínculo. Nenhum ponto real foi iniciado ou gravado nos testes de interface.
+
+Build e lint aprovados (permanecem apenas os três avisos antigos em dashboard). As suítes de mutação HTTP em homologação continuam pendentes de banco independente; não foram declaradas como executadas. A coluna OS das exportações foi revisada no código e compilada, sem nova conferência visual dos três arquivos finais nesta rodada.
+
+A migração `013-points-require-order.sql` foi testada isoladamente e aplicada junto às funções dependentes em uma transação, sem alterar registros de negócio. Uma reversão para `6ef850f` exige avaliar também essas funções: o formulário antigo de ponto avulso continuará bloqueado no banco. Não restaurar esse caminho sem OS como solução para uma falha; preservar dados e corrigir o fluxo vinculado. As skills de depuração/revisão motivaram o rastreamento dos três caminhos de registro, e a revisão React orientou o seletor compartilhado e o tratamento de carregamento/erro.

@@ -23,6 +23,8 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { api } from "./editors";
+import { PointOrderPicker } from './point-order-picker';
+import { pointOrderNumber } from '@/lib/point-orders';
 import {
   today,
   calculate,
@@ -33,6 +35,8 @@ import {
 } from "@/lib/domain";
 
 type StartForm = {
+  order_id: string;
+  order_number?: number;
   date: string;
   time: string;
   company: string;
@@ -40,8 +44,9 @@ type StartForm = {
   notes: string;
 };
 
-function startDefaults(company = ""): StartForm {
+function startDefaults(): StartForm {
   return {
+    order_id: '',
     date: today(),
     time: new Intl.DateTimeFormat("en-GB", {
       timeZone: "America/Sao_Paulo",
@@ -49,8 +54,8 @@ function startDefaults(company = ""): StartForm {
       minute: "2-digit",
       hourCycle: "h23",
     }).format(new Date()),
-    company,
-    service: "Serviço técnico",
+    company: '',
+    service: '',
     notes: "",
   };
 }
@@ -83,6 +88,7 @@ export function QuickClock({
     [busy, setBusy] = useState(false),
     [demoTimer, setDemoTimer] = useState<State["timer"]>(null),
     [startOpen, setStartOpen] = useState(false),
+    [startError, setStartError] = useState(''),
     [startForm, setStartForm] = useState<StartForm>(() => startDefaults());
   const timer = demo ? demoTimer : state.timer,
     paused = !!timer?.paused_at;
@@ -141,11 +147,8 @@ export function QuickClock({
       .map((n) => String(n).padStart(2, "0"))
       .join(":");
   function openStart() {
-    let company = "";
-    try {
-      company = localStorage.getItem("horacerta:last-company:v1") || "";
-    } catch {}
-    setStartForm(startDefaults(company));
+    setStartForm(startDefaults());
+    setStartError('');
     setStartOpen(true);
   }
   async function action(
@@ -160,6 +163,8 @@ export function QuickClock({
           : new Date().toISOString();
         if (action === "start")
           setDemoTimer({
+            order_id: details?.order_id,
+            order_number: details?.order_number,
             user_id: state.me.id,
             started_at: at,
             paused_at: null,
@@ -194,9 +199,8 @@ export function QuickClock({
           action === "start" && details
             ? {
                 action,
+                order_id: details.order_id,
                 started_at: `${details.date}T${details.time}`,
-                company: details.company,
-                service: details.service,
                 notes: details.notes,
               }
             : { action },
@@ -213,6 +217,7 @@ export function QuickClock({
       }
       return true;
     } catch (e) {
+      if (action === 'start') setStartError((e as Error).message);
       toast.error((e as Error).message);
       return false;
     } finally {
@@ -221,13 +226,9 @@ export function QuickClock({
   }
   async function submitStart(ev: FormEvent) {
     ev.preventDefault();
+    if (!startForm.order_id) { setStartError('Selecione a OS deste trabalho.'); return; }
+    setStartError('');
     if (!(await action("start", startForm))) return;
-    try {
-      localStorage.setItem(
-        "horacerta:last-company:v1",
-        startForm.company.trim(),
-      );
-    } catch {}
     setStartOpen(false);
   }
   return (
@@ -275,6 +276,7 @@ export function QuickClock({
         </p>
         {timer && (
           <div className="mx-auto mt-5 grid max-w-xl gap-2 rounded-xl border bg-slate-50 px-4 py-3 text-left text-sm sm:grid-cols-2">
+            <p className="sm:col-span-2 font-semibold text-blue-900">{timer.order_number ? `Ponto vinculado à ${pointOrderNumber(timer.order_number)}` : 'Serviço antigo sem OS · encerre normalmente para preservar suas horas.'}</p>
             <span className="flex items-center gap-2">
               <Building2 size={16} className="text-blue-600" />
               <span>
@@ -328,8 +330,8 @@ export function QuickClock({
           )}
         </div>
         <p className="muted text-xs mt-5">
-          A pessoa é identificada pelo login. Data e hora vêm preenchidas e
-          podem ser ajustadas antes de iniciar.
+          Todo ponto pertence a uma OS da sua equipe. Cliente e serviço vêm da OS;
+          data e hora podem ser ajustadas antes de iniciar.
         </p>
         {timer && !demo && (
           <p className="muted text-xs mt-3">
@@ -413,11 +415,13 @@ export function QuickClock({
           <DialogHeader>
             <DialogTitle>Iniciar serviço</DialogTitle>
             <DialogDescription>
-              Confira os dados do atendimento. A data e o horário de Brasília
-              já estão preenchidos; altere somente se precisar.
+              Selecione a OS do trabalho. Cliente e serviço serão preenchidos
+              automaticamente. Confira a data e o horário de Brasília.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={submitStart} className="form-grid mt-2">
+            <PointOrderPicker value={startForm.order_id} date={startForm.date} live demo={demo} enabled={startOpen} disabled={busy}
+              onChange={order => setStartForm(form => ({...form, order_id:order?.id || '', order_number:order?.number, company:order?.client_name || '', service:order?.title || ''}))} />
             <label>
               Data
               <input
@@ -427,7 +431,7 @@ export function QuickClock({
                 max={today()}
                 value={startForm.date}
                 onChange={(e) =>
-                  setStartForm((form) => ({ ...form, date: e.target.value }))
+                  setStartForm((form) => ({ ...form, date: e.target.value, order_id:'', order_number:undefined, company:'', service:'' }))
                 }
               />
             </label>
@@ -445,36 +449,20 @@ export function QuickClock({
             <label className="full">
               Empresa atendida
               <input
-                autoFocus
-                required
-                minLength={2}
-                maxLength={160}
-                placeholder="Ex.: Empresa Nova Era"
+                readOnly
+                placeholder="Preenchida pela OS selecionada"
                 value={startForm.company}
-                onChange={(e) =>
-                  setStartForm((form) => ({
-                    ...form,
-                    company: e.target.value,
-                  }))
-                }
               />
               <span className="muted mt-1 block text-xs">
-                Na próxima vez, a última empresa usada aparecerá preenchida.
+                Cliente registrado na OS. Não é necessário digitar novamente.
               </span>
             </label>
             <label className="full">
               Serviço a realizar
               <input
-                required
-                minLength={2}
-                maxLength={500}
+                readOnly
+                placeholder="Preenchido pela OS selecionada"
                 value={startForm.service}
-                onChange={(e) =>
-                  setStartForm((form) => ({
-                    ...form,
-                    service: e.target.value,
-                  }))
-                }
               />
             </label>
             <label className="full">
@@ -488,6 +476,7 @@ export function QuickClock({
                 }
               />
             </label>
+            {startError && <p role="alert" className="full rounded-lg bg-red-50 p-3 text-sm text-red-800">{startError}</p>}
             <div className="full flex justify-end gap-3 border-t pt-4">
               <Button
                 type="button"
@@ -497,7 +486,7 @@ export function QuickClock({
               >
                 Cancelar
               </Button>
-              <Button type="submit" disabled={busy}>
+              <Button type="submit" disabled={busy || !startForm.order_id}>
                 {busy ? <LoaderCircle className="animate-spin" /> : <Play />}
                 Iniciar agora
               </Button>

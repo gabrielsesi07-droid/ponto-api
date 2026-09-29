@@ -12,6 +12,7 @@ const sql = neon(process.env.TEST_DATABASE_URL),
   adminSeed = crypto.randomUUID(),
   worker = crypto.randomUUID(),
   other = crypto.randomUUID(),
+  pointOrder = crypto.randomUUID(),
   client = crypto.randomUUID();
 let admin = adminSeed;
 if (!['localhost','127.0.0.1'].includes(new URL(base).hostname)) throw new Error('Use a local test server connected to the isolated test database.');
@@ -219,7 +220,9 @@ try {
   check(relogin.status, 200, "novo PIN permite acesso");
   assert.equal(relogin.data.person?.access_code, accessCodes.get(worker));
   cookies.set(worker, relogin.cookie);
+  await sql`INSERT INTO horacerta.orders(id,title,client_id,client_name,address,starts_at,ends_at,members,created_by) VALUES(${pointOrder},'Inspeção dos equipamentos',${client},'Empresa de Teste','','2026-09-20T08:00:00-03:00',now()+interval '1 day',ARRAY[${worker}::uuid,${other}::uuid],${admin})`;
   const draft = {
+    order_id: pointOrder,
     user_id: worker,
     client_id: client,
     date: "2026-09-21",
@@ -419,9 +422,10 @@ try {
       .format(new Date())
       .replace(" ", "T"),
     clockStart = {
+      order_id: pointOrder,
       action: "start",
       started_at: startedAt,
-      company: "Cliente do relógio",
+      company: "Empresa de Teste",
       service: "Inspeção dos equipamentos",
       notes: "Formulário automático",
     };
@@ -546,9 +550,11 @@ try {
     sql`DELETE FROM horacerta.users WHERE username LIKE ${"qa_more_" + tag.slice(0, 8) + "%"}`,
     sql`DELETE FROM horacerta.audit WHERE actor_id IN (${admin},${worker},${other})`,
     sql`DELETE FROM horacerta.entries WHERE user_id IN (${admin},${worker},${other})`,
-    sql`DELETE FROM horacerta.clients WHERE id=${client}`,
     sql`DELETE FROM horacerta.sessions WHERE user_id IN (${admin},${worker},${other})`,
     sql`DELETE FROM horacerta.timers WHERE user_id IN (${admin},${worker},${other})`,
+    sql`DELETE FROM horacerta.order_events WHERE order_id=${pointOrder}`,
+    sql`DELETE FROM horacerta.orders WHERE id=${pointOrder}`,
+    sql`DELETE FROM horacerta.clients WHERE id=${client}`,
     sql`DELETE FROM horacerta.users WHERE id IN (${admin},${worker},${other})`,
     sql`DELETE FROM horacerta.users WHERE username=${adminUsername}`,
   ]);

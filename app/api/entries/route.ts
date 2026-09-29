@@ -12,6 +12,7 @@ const schema = z.object({
   id: z.string().uuid().optional(),
   version: z.number().int().optional(),
   user_id: z.string().uuid(),
+  order_id: z.string().uuid('Selecione uma OS válida.').nullable().optional(),
   client_id: z.string().uuid().nullable().default(null),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
@@ -20,7 +21,7 @@ const schema = z.object({
     .regex(/^(?:([01]\d|2[0-3]):[0-5]\d|24:00)$/)
     .nullable(),
   break_minutes: z.coerce.number().int().min(0).max(1439),
-  company: z.string().trim().min(2).max(160),
+  company: z.string().trim().max(160).default(''),
   service: z
     .string()
     .trim()
@@ -91,33 +92,34 @@ export async function POST(req: Request) {
       await sql`SELECT * FROM horacerta.users WHERE id=${p.user_id} AND active=true`
     )[0];
     if (!person) throw new ApiError(400, "Colaborador inativo ou inexistente.");
-    const client = p.client_id ? (
-      await sql`SELECT * FROM horacerta.clients WHERE id=${p.client_id} AND (active=true OR id=${old?.client_id || null}::uuid)`
-    )[0] : null;
-    if (p.client_id&&!client) throw new ApiError(400, "Cliente inativo ou inexistente.");
+    const orderId = p.order_id === undefined ? old?.order_id || null : p.order_id;
+    if (!old && !orderId) throw new ApiError(400, 'Selecione a OS deste trabalho. Não é possível criar uma marcação avulsa.');
+    if (old?.order_id && orderId !== old.order_id) throw new ApiError(400, 'O vínculo desta marcação com a OS não pode ser removido ou trocado.');
     const rate = old?.rate ?? person.hourly_rate,
       rules = old?.rules ?? settings,
       status = settings.approval_required || !p.end ? "Pendente" : "Aprovado",
       id = p.id || crypto.randomUUID();
-    const mutation = sql`WITH changed AS (
- INSERT INTO horacerta.entries AS current(id,user_id,client_id,date,start,"end",break_minutes,company,service,service_type,notes,holiday,status,rate,rules)
- SELECT ${id}::uuid,${p.user_id}::uuid,${p.client_id}::uuid,${p.date}::date,${p.start}::time,${p.end}::time,${p.break_minutes},${p.company},${p.service},${p.service_type},${p.notes},${p.holiday},${status},${rate},${JSON.stringify(rules)}::jsonb
+    const mutation = sql`WITH source AS MATERIALIZED (SELECT horacerta.point_entry_order(${p.user_id}::uuid,${orderId}::uuid,${p.date}::date,${p.end}::time,${old?.id || null}::uuid) data), changed AS (
+ INSERT INTO horacerta.entries AS current(id,user_id,client_id,order_id,date,start,"end",break_minutes,company,service,service_type,notes,holiday,status,rate,rules)
+ SELECT ${id}::uuid,${p.user_id}::uuid,(data->>'client_id')::uuid,(data->>'order_id')::uuid,${p.date}::date,${p.start}::time,${p.end}::time,${p.break_minutes},data->>'company',data->>'service',${p.service_type},${p.notes},${p.holiday},${status},${rate},${JSON.stringify(rules)}::jsonb FROM source
  WHERE NOT EXISTS(SELECT 1 FROM horacerta.entries e WHERE e.user_id=${p.user_id}::uuid AND e.date=${p.date}::date AND e.deleted_at IS NULL AND e.id<>${id}::uuid AND e.start<coalesce(${p.end}::time,'24:00'::time) AND coalesce(e."end",'24:00'::time)>${p.start}::time)
  AND NOT EXISTS(SELECT 1 FROM horacerta.timers t WHERE t.user_id=${p.user_id}::uuid AND (t.started_at AT TIME ZONE 'America/Sao_Paulo')<(${p.date}::date+coalesce(${p.end}::time,'24:00'::time)))
- ON CONFLICT(id) DO UPDATE SET client_id=excluded.client_id,date=excluded.date,start=excluded.start,"end"=excluded."end",break_minutes=excluded.break_minutes,company=excluded.company,service=excluded.service,service_type=excluded.service_type,notes=excluded.notes,holiday=excluded.holiday,status=excluded.status,version=current.version+1,updated_at=now()
+ ON CONFLICT(id) DO UPDATE SET client_id=excluded.client_id,order_id=excluded.order_id,date=excluded.date,start=excluded.start,"end"=excluded."end",break_minutes=excluded.break_minutes,company=excluded.company,service=excluded.service,service_type=excluded.service_type,notes=excluded.notes,holiday=excluded.holiday,status=excluded.status,version=current.version+1,updated_at=now()
  WHERE current.version=${p.version ?? 0} AND current.deleted_at IS NULL
  RETURNING * ) INSERT INTO horacerta.audit(actor_id,entry_id,action,before_value,after_value) SELECT ${me.id}::uuid,id,${old ? "edit" : "create"},${old ? JSON.stringify(old) : null}::jsonb,to_jsonb(changed) FROM changed RETURNING entry_id`;
     const result = await sql.transaction([
+      sql`SELECT pg_advisory_xact_lock(2849061701)`,
       sql`SELECT id FROM horacerta.users WHERE id=${p.user_id} FOR UPDATE`,
       mutation,
     ]);
-    if (!result[1].length)
+    if (!result[2].length)
       throw new ApiError(
         409,
         "Existe sobreposição de horários ou o registro foi atualizado por outra pessoa. Atualize a lista.",
       );
     return Response.json({ ok: true, id });
   } catch (e) {
+    if ((e as {code?:string}).code === 'P0001') return failure(new ApiError(409, (e as Error).message));
     return failure(e);
   }
 }

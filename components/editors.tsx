@@ -21,6 +21,7 @@ import {
 import { toast } from "sonner";
 import { LoaderCircle, Save, UserRound } from "lucide-react";
 import { DEFAULT_INITIAL_PIN } from "@/lib/pin";
+import { PointOrderPicker } from './point-order-picker';
 export type Editor =
   | { kind: "entry"; data?: Entry }
   | { kind: "user"; data?: Person }
@@ -63,6 +64,7 @@ export function EditDialog({
   >(() =>
     editor.kind === "entry"
       ? {
+          order_id: e?.order_id || '',
           date: e?.date || today(),
           start: e?.start.slice(0, 5) || "08:00",
           end: e?.end?.slice(0, 5) || "",
@@ -120,6 +122,7 @@ export function EditDialog({
       if (editor.kind === "entry")
         await api("/api/entries", {
           ...form,
+          order_id: form.order_id || null,
           user_id: e?.user_id || state.me.id,
           client_id: e?.client_id || null,
           service_type: e?.service_type || "",
@@ -169,7 +172,7 @@ export function EditDialog({
           </DialogTitle>
           <DialogDescription>
             {editor.kind === "entry"
-              ? "A pessoa é identificada automaticamente pelo login. Use esta tela apenas para correções ou marcações esquecidas."
+              ? "A marcação pertence à OS do trabalho. Use esta tela para correções ou marcações esquecidas; o histórico antigo é preservado."
               : editor.kind === "profile"
                 ? "Seu valor-hora vale para os próximos serviços. As marcações antigas mantêm o valor anterior."
                 : p
@@ -190,6 +193,9 @@ export function EditDialog({
                   }
                 </b>
               </div>
+              <PointOrderPicker value={String(form.order_id || '')} date={String(form.date)} demo={demo} disabled={busy} entryId={e?.id} existingOrderId={e?.order_id}
+                onChange={order => setForm(f => ({...f,order_id:order?.id || '',company:order?.client_name || e?.company || '',service:order?.title || e?.service || ''}))} />
+              {e && !e.order_id && <p className="full text-sm text-amber-900">Registro anterior à obrigatoriedade de OS. Você pode preservar o histórico ou vinculá-lo à OS correta; o sistema não escolherá uma por conta própria.</p>}
               {input("date", "Data", "date", true, { max: today() })}
               {input("break_minutes", "Pausa (minutos)", "number", true, {
                 min: 0,
@@ -203,6 +209,7 @@ export function EditDialog({
               })}
               <div className="full">
                 {input("company", "Empresa atendida", "text", true, {
+                  readOnly: true,
                   minLength: 2,
                   maxLength: 160,
                   placeholder: "Ex.: Empresa Nova Era",
@@ -210,6 +217,7 @@ export function EditDialog({
               </div>
               <div className="full">
                 {input("service", "Serviço realizado", "text", true, {
+                  readOnly: true,
                   minLength: 2,
                   maxLength: 500,
                 })}
@@ -322,7 +330,7 @@ export function EditDialog({
             >
               Cancelar
             </Button>
-            <Button type="submit" className="action" disabled={busy}>
+            <Button type="submit" className="action" disabled={busy || (editor.kind === 'entry' && !e && !form.order_id)}>
               {busy ? <LoaderCircle className="animate-spin" /> : <Save />}
               {busy ? "Salvando…" : "Salvar"}
             </Button>

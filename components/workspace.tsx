@@ -375,6 +375,7 @@ export function Workspace() {
                 e.date,
                 e.date.split("-").reverse().join("/"),
                 e.company,
+                e.order_number ? `OS-${String(e.order_number).padStart(6,'0')}` : '',
                 e.service,
                 e.notes,
               ]

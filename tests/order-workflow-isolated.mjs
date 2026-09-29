@@ -9,7 +9,7 @@ const schema='qa_os_'+randomUUID().replaceAll('-','');
 const read=async name=>readFile(new URL('../sql/'+name,import.meta.url),'utf8');
 const statements=(await read('001-schema.sql')).split(';').filter(s=>s.trim());
 statements.push(`CREATE TABLE horacerta.timers(user_id uuid PRIMARY KEY REFERENCES horacerta.users(id),started_at timestamptz NOT NULL,paused_at timestamptz,pauses jsonb NOT NULL DEFAULT '[]',rate numeric(12,2) NOT NULL,rules jsonb NOT NULL,company text NOT NULL DEFAULT '',service text NOT NULL DEFAULT '',notes text NOT NULL DEFAULT '')`);
-for(const name of ['003-orders.sql','005-flexible-client.sql','006-library.sql','007-checklists.sql','009-imported-checklists.sql','010-client-search.sql','011-order-lifecycle.sql','012-client-lifecycle.sql','008-checklist-actions.sql','004-order-actions.sql','002-clock-start-function.sql','002-clock-function.sql']) statements.push(...(await read(name)).split(/\r?\n-- statement-break\r?\n/).filter(s=>s.trim()));
+for(const name of ['003-orders.sql','005-flexible-client.sql','006-library.sql','007-checklists.sql','009-imported-checklists.sql','010-client-search.sql','011-order-lifecycle.sql','012-client-lifecycle.sql','008-checklist-actions.sql','004-order-actions.sql','002-clock-start-function.sql','002-clock-function.sql','013-points-require-order.sql']) statements.push(...(await read(name)).split(/\r?\n-- statement-break\r?\n/).filter(s=>s.trim()));
 statements.push(`DO $$
 DECLARE admin uuid:=gen_random_uuid();worker uuid:=gen_random_uuid();model uuid:=gen_random_uuid();vehicle uuid:=gen_random_uuid();unused_client uuid:=gen_random_uuid();legacy_client uuid:=gen_random_uuid();other_order uuid;cid uuid;first_id uuid;second_id uuid;fresh_id uuid;result jsonb;p jsonb;first_num bigint;second_num bigint;seq_before bigint;count_before bigint;check_id uuid;item jsonb;blocked_action text;
 BEGIN
@@ -22,6 +22,32 @@ BEGIN
  ASSERT first_num=1,'First OS number';
  SELECT client_id INTO cid FROM horacerta.orders WHERE id=first_id;
  ASSERT cid IS NOT NULL AND (SELECT count(*)=1 FROM horacerta.clients),'Client auto-created';
+ BEGIN
+   PERFORM horacerta.clock_start(worker,now(),'Cliente avulso','Serviço avulso','');
+   RAISE EXCEPTION 'Unlinked legacy start unexpectedly allowed';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'Selecione a OS%' THEN RAISE; END IF; END;
+ BEGIN
+   PERFORM horacerta.clock_action(worker,'start');
+   RAISE EXCEPTION 'Unlinked action start unexpectedly allowed';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'Selecione a OS%' THEN RAISE; END IF; END;
+ BEGIN
+   PERFORM horacerta.clock_start_for_order(admin,first_id,now(),'');
+   RAISE EXCEPTION 'Unassigned coordinator start unexpectedly allowed';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'Você não está designado%' THEN RAISE; END IF; END;
+ BEGIN
+   PERFORM horacerta.clock_start_for_order(worker,first_id,now()-interval '1 day','');
+   RAISE EXCEPTION 'Start before OS schedule unexpectedly allowed';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'O ponto não pode começar%' THEN RAISE; END IF; END;
+ BEGIN
+   PERFORM horacerta.point_entry_order(worker,NULL,current_date,'18:00',NULL);
+   RAISE EXCEPTION 'Unlinked manual entry unexpectedly allowed';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'Selecione a OS%' THEN RAISE; END IF; END;
+ BEGIN
+   PERFORM horacerta.point_entry_order(admin,first_id,current_date,'18:00',NULL);
+   RAISE EXCEPTION 'Unassigned manual entry unexpectedly allowed';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'O colaborador não está designado%' THEN RAISE; END IF; END;
+ result:=horacerta.point_entry_order(worker,first_id,(now() AT TIME ZONE 'America/Sao_Paulo')::date,'18:00',NULL);
+ ASSERT result->>'company'='Indústria São José' AND result->>'service'='Serviço QA' AND (result->>'order_id')::uuid=first_id,'Manual metadata derived from OS';
  ASSERT (SELECT model_ids=ARRAY[model] FROM horacerta.orders WHERE id=first_id),'Equipment persists';
  ASSERT (SELECT name='Radian QA' FROM horacerta.equipment_models WHERE id=ANY((SELECT model_ids FROM horacerta.orders WHERE id=first_id)::uuid[])),'Equipment name resolved';
  ASSERT (SELECT count(*)=1 FROM horacerta.order_checklists WHERE order_id=first_id),'Checklist linked';
@@ -115,6 +141,21 @@ BEGIN
  PERFORM horacerta.clock_action(worker,'stop');
  ASSERT NOT EXISTS(SELECT 1 FROM horacerta.timers WHERE order_id=first_id),'Employee can stop cancelled order timer';
  ASSERT EXISTS(SELECT 1 FROM horacerta.entries WHERE order_id=first_id AND user_id=worker),'Time entry retains order link';
+ ASSERT EXISTS(SELECT 1 FROM horacerta.entries WHERE order_id=first_id AND client_id=cid),'Timer closure retains client link';
+ BEGIN
+   PERFORM horacerta.clock_start_for_order(worker,first_id,now(),'');
+   RAISE EXCEPTION 'Closed OS live point unexpectedly allowed';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'Esta OS já está encerrada%' THEN RAISE; END IF; END;
+ BEGIN
+   PERFORM horacerta.point_entry_order(worker,first_id,(now() AT TIME ZONE 'America/Sao_Paulo')::date,NULL,NULL);
+   RAISE EXCEPTION 'Open manual point on closed OS unexpectedly allowed';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'Para uma OS encerrada%' THEN RAISE; END IF; END;
+ result:=horacerta.point_entry_order(worker,first_id,(now() AT TIME ZONE 'America/Sao_Paulo')::date,'18:00',NULL);
+ ASSERT (result->>'order_id')::uuid=first_id,'Forgotten complete point allowed on closed OS without reopening';
+ BEGIN
+   PERFORM horacerta.point_entry_order(worker,NULL,(now() AT TIME ZONE 'America/Sao_Paulo')::date,'18:00',(SELECT id FROM horacerta.entries WHERE order_id=first_id LIMIT 1));
+   RAISE EXCEPTION 'Existing OS point unlink unexpectedly allowed';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'O vínculo desta marcação%' THEN RAISE; END IF; END;
  PERFORM horacerta.checklist_action(worker,'complete',jsonb_build_object('id',check_id,'version',2,'title','Conferência','notes','','identification','','items',jsonb_build_array(item||jsonb_build_object('outgoing',true,'outgoing_qty',1,'incoming',true,'incoming_qty',1))));
  ASSERT horacerta.order_pending_checklists(first_id)=0,'Return conference clears pending';
  PERFORM horacerta.checklist_action(admin,'reopen',jsonb_build_object('id',check_id,'version',3,'reason','Corrigir observação'));
@@ -156,6 +197,11 @@ BEGIN
  ASSERT (SELECT active FROM horacerta.clients WHERE id=cid),'Restore client';
  UPDATE horacerta.orders SET client_id=NULL WHERE id=fresh_id;
  ASSERT horacerta.client_has_history(legacy_client),'Legacy free-text OS protects same-name client';
+ INSERT INTO horacerta.timers(user_id,started_at,company,service,rate,rules) SELECT admin,now()-interval '10 minutes','Cliente histórico','Serviço antigo',0,rules FROM horacerta.settings WHERE id=1;
+ PERFORM horacerta.clock_action(admin,'stop');
+ ASSERT EXISTS(SELECT 1 FROM horacerta.entries WHERE user_id=admin AND order_id IS NULL AND company='Cliente histórico'),'Legacy timer still closes without inventing an OS';
+ result:=horacerta.point_entry_order(admin,NULL,(now() AT TIME ZONE 'America/Sao_Paulo')::date,'18:00',(SELECT id FROM horacerta.entries WHERE user_id=admin LIMIT 1));
+ ASSERT result->>'company'='Cliente histórico','Legacy entry adjustment preserves history';
  RAISE EXCEPTION 'QA_ORDER_WORKFLOW_OK_ROLLBACK';
 END $$`);
 try {

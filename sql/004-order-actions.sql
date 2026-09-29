@@ -141,8 +141,7 @@ BEGIN
  END IF;
  IF action='start_clock' THEN
    IF NOT actor=ANY(o.members) THEN RAISE EXCEPTION 'O ponto só pode ser iniciado por uma pessoa designada.'; END IF;
-   result := horacerta.clock_start(actor,(p->>'started_at')::timestamptz,o.client_name,o.title,p->>'notes');
-   UPDATE horacerta.timers SET order_id=target WHERE user_id=actor;
+   result := horacerta.clock_start_for_order(actor,target,(p->>'started_at')::timestamptz,p->>'notes');
    UPDATE horacerta.orders SET status='Em andamento' WHERE id=target;
    INSERT INTO horacerta.order_events(order_id,actor_id,action) VALUES(target,actor,'Ponto iniciado');
    RETURN result;

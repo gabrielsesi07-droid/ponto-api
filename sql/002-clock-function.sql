@@ -17,7 +17,7 @@ DECLARE
  total_records integer := 0;
 BEGIN
  IF p_action='start' THEN
-   RETURN horacerta.clock_start(p_user,current_time_value,'Empresa não informada','Serviço técnico','');
+   RAISE EXCEPTION 'Selecione a OS deste trabalho. Não é possível iniciar um ponto avulso.';
  END IF;
  SELECT * INTO u FROM horacerta.users WHERE id=p_user AND active=true FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'Conta indisponível.'; END IF;
@@ -56,7 +56,7 @@ BEGIN
      RAISE EXCEPTION 'Há um registro sobreposto. Revise os horários antes de encerrar.';
    END IF;
    INSERT INTO horacerta.entries(user_id,client_id,date,start,"end",break_minutes,company,service,notes,status,rate,rules,order_id)
-   VALUES(p_user,NULL,day_value,(segment_start AT TIME ZONE 'America/Sao_Paulo')::time,end_value,break_value,coalesce(nullif(trim(t.company),''),'Empresa não informada'),coalesce(nullif(trim(t.service),''),'Serviço técnico'),coalesce(t.notes,''),CASE WHEN (current_rules->>'approval_required')::boolean THEN 'Pendente' ELSE 'Aprovado' END,t.rate,t.rules,t.order_id)
+   VALUES(p_user,(SELECT client_id FROM horacerta.orders WHERE id=t.order_id),day_value,(segment_start AT TIME ZONE 'America/Sao_Paulo')::time,end_value,break_value,coalesce(nullif(trim(t.company),''),'Empresa não informada'),coalesce(nullif(trim(t.service),''),'Serviço técnico'),coalesce(t.notes,''),CASE WHEN (current_rules->>'approval_required')::boolean THEN 'Pendente' ELSE 'Aprovado' END,t.rate,t.rules,t.order_id)
    RETURNING id INTO entry_id;
    INSERT INTO horacerta.audit(actor_id,entry_id,action,after_value)
      SELECT p_user,id,'clock',to_jsonb(e) FROM horacerta.entries e WHERE id=entry_id;

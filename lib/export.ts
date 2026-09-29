@@ -8,6 +8,7 @@ export async function exportReport(
 ) {
   const headers = [
     "Data",
+    "OS",
     "Colaborador",
     "Empresa atendida",
     "Serviço",
@@ -23,6 +24,7 @@ export async function exportReport(
   ];
   const data = rows.map((e) => [
     e.date,
+    e.order_number ? `OS-${String(e.order_number).padStart(6, '0')}` : 'Histórico anterior · sem OS',
     state.users.find((u) => u.id === e.user_id)?.name || "",
     e.company || "Não informada",
     e.service || "Serviço técnico",
@@ -74,10 +76,10 @@ export async function exportReport(
       fgColor: { argb: "FF142B42" },
     };
     sheet.columns.forEach(
-      (c, i) => (c.width = [1, 2, 3].includes(i) ? 28 : 18),
+      (c, i) => (c.width = [2, 3, 4].includes(i) ? 28 : 18),
     );
     sheet.views = [{ state: "frozen", ySplit: 1 }];
-    sheet.autoFilter = { from: "A1", to: "M1" };
+    sheet.autoFilter = { from: "A1", to: "N1" };
     download(
       new Blob([(await book.xlsx.writeBuffer()) as ArrayBuffer], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
