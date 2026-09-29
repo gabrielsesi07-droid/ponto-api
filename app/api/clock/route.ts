@@ -4,12 +4,11 @@ import { z } from "zod";
 const command = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("start"),
-    started_at: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d$/),
+    started_at: z.string().regex(/^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d$/),
     company: z.string().trim().min(2).max(160),
     service: z.string().trim().min(2).max(500),
     notes: z.string().trim().max(2000).default(""),
+    order_id: z.string().uuid().optional(),
   }),
   z.object({ action: z.enum(["pause", "resume", "stop"]) }),
 ]);
@@ -30,8 +29,9 @@ export async function POST(req: Request) {
           400,
           "Informe um início válido dos últimos 7 dias, sem usar um horário futuro.",
         );
-      const r =
-        await sql`SELECT horacerta.clock_start(${user.id}::uuid,${started.toISOString()}::timestamptz,${p.company},${p.service},${p.notes}) AS result`;
+      const r = p.order_id
+        ? await sql`SELECT horacerta.order_action(${user.id}::uuid,'start_clock',${JSON.stringify({ id: p.order_id, started_at: started.toISOString(), notes: p.notes })}::jsonb) AS result`
+        : await sql`SELECT horacerta.clock_start(${user.id}::uuid,${started.toISOString()}::timestamptz,${p.company},${p.service},${p.notes}) AS result`;
       return Response.json(r[0].result);
     }
     const r =

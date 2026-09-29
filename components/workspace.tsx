@@ -1,11 +1,5 @@
 "use client";
-import {
-  useState,
-  useEffect,
-  useMemo,
-  useCallback,
-  useRef,
-} from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   Clock3,
   LayoutDashboard,
@@ -31,6 +25,8 @@ import {
   Building2,
   Eye,
   ArrowRight,
+  ClipboardList,
+  Car,
 } from "lucide-react";
 import {
   Sidebar,
@@ -70,6 +66,8 @@ import { PersonalInsights } from "./personal-insights";
 import { Dashboard } from "./dashboard";
 import { EntriesTable } from "./entries-table";
 import { demoState } from "@/lib/demo";
+import { ServiceOrders } from "./service-orders";
+import "@/app/operations.css";
 import {
   calculate,
   totals,
@@ -90,6 +88,9 @@ const nav = [
     admin: true,
   },
   { key: "register", label: "Meu ponto", icon: Timer },
+  { key: "orders", label: "Ordens de serviço", icon: ClipboardList },
+  { key: "vehicles", label: "Veículos", icon: Car, admin: true },
+  { key: "clients", label: "Clientes", icon: Building2, admin: true },
   { key: "insights", label: "Meu resumo", icon: FileBarChart2 },
   { key: "entries", label: "Histórico de pontos", icon: ListChecks },
   { key: "reports", label: "Relatórios", icon: FileBarChart2 },
@@ -649,14 +650,6 @@ export function Workspace() {
                       <Plus />
                       Adicionar colaborador
                     </Button>
-                  ) : view === "clients" && admin ? (
-                    <Button
-                      onClick={() => setEditor({ kind: "client" })}
-                      className="action"
-                    >
-                      <Plus />
-                      Novo cliente
-                    </Button>
                   ) : view === "profile" ? (
                     <Button
                       onClick={() =>
@@ -670,6 +663,7 @@ export function Workspace() {
                     </Button>
                   ) : (
                     view !== "settings" &&
+                    !["orders", "clients", "vehicles"].includes(view) &&
                     view !== "register" && (
                       <Button onClick={() => go("register")} className="action">
                         <Plus />
@@ -687,6 +681,21 @@ export function Workspace() {
                   {error}
                 </div>
               )}
+              <ServiceOrders
+                key={data.me.id + String(demo)}
+                me={data.me}
+                view={view}
+                demo={demo}
+                blocked={
+                  !!editor ||
+                  (!!data.me.pin_change_required &&
+                    !data.me.pin_change_prompted)
+                }
+                onPoint={async () => {
+                  await reload();
+                  go("register");
+                }}
+              />
               {[
                 "dashboard",
                 "insights",
@@ -1182,7 +1191,7 @@ export function Workspace() {
           {[
             { key: "register", label: "Ponto", Icon: Timer },
             { key: "insights", label: "Resumo", Icon: FileBarChart2 },
-            { key: "entries", label: "Histórico", Icon: ListChecks },
+            { key: "orders", label: "Minhas OS", Icon: ClipboardList },
             { key: "reports", label: "Relatório", Icon: Download },
             { key: "profile", label: "Meu acesso", Icon: UserRound },
           ].map(({ key, label, Icon }) => (

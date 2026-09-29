@@ -28,5 +28,5 @@ const ddl=[
 ];
 await sql.transaction(ddl.map(q=>sql.query(q)));
 await sql.query(await readFile(new URL('../sql/002-clock-start-function.sql',import.meta.url),'utf8'));
-await sql.query(await readFile(new URL('../sql/002-clock-function.sql',import.meta.url),'utf8'));
+await import('./migrate-orders.mjs');
 console.log('Acesso rápido e relógio de serviço preparados.');

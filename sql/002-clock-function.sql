@@ -55,8 +55,8 @@ BEGIN
    IF EXISTS(SELECT 1 FROM horacerta.entries WHERE user_id=p_user AND date=day_value AND deleted_at IS NULL AND start<end_value AND coalesce("end",'24:00'::time)>(segment_start AT TIME ZONE 'America/Sao_Paulo')::time) THEN
      RAISE EXCEPTION 'Há um registro sobreposto. Revise os horários antes de encerrar.';
    END IF;
-   INSERT INTO horacerta.entries(user_id,client_id,date,start,"end",break_minutes,company,service,notes,status,rate,rules)
-   VALUES(p_user,NULL,day_value,(segment_start AT TIME ZONE 'America/Sao_Paulo')::time,end_value,break_value,coalesce(nullif(trim(t.company),''),'Empresa não informada'),coalesce(nullif(trim(t.service),''),'Serviço técnico'),coalesce(t.notes,''),CASE WHEN (current_rules->>'approval_required')::boolean THEN 'Pendente' ELSE 'Aprovado' END,t.rate,t.rules)
+   INSERT INTO horacerta.entries(user_id,client_id,date,start,"end",break_minutes,company,service,notes,status,rate,rules,order_id)
+   VALUES(p_user,NULL,day_value,(segment_start AT TIME ZONE 'America/Sao_Paulo')::time,end_value,break_value,coalesce(nullif(trim(t.company),''),'Empresa não informada'),coalesce(nullif(trim(t.service),''),'Serviço técnico'),coalesce(t.notes,''),CASE WHEN (current_rules->>'approval_required')::boolean THEN 'Pendente' ELSE 'Aprovado' END,t.rate,t.rules,t.order_id)
    RETURNING id INTO entry_id;
    INSERT INTO horacerta.audit(actor_id,entry_id,action,after_value)
      SELECT p_user,id,'clock',to_jsonb(e) FROM horacerta.entries e WHERE id=entry_id;

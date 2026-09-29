@@ -1,0 +1,75 @@
+.ops-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+.ops-form .full {
+  grid-column: 1/-1;
+}
+.ops-form label,
+.ops-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  min-width: 0;
+}
+.ops-form input,
+.ops-form select,
+.ops-form textarea,
+.ops-notes textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  border: 1px solid #cad5e4;
+  border-radius: 0.65rem;
+  padding: 0.7rem 0.85rem;
+  background: white;
+  color: #142b42;
+  font: inherit;
+}
+.ops-form input[type="checkbox"] {
+  min-height: 16px;
+  accent-color: #2563eb;
+}
+.ops-form input:focus,
+.ops-form select:focus,
+.ops-form textarea:focus,
+.ops-notes textarea:focus {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+.ops-form textarea,
+.ops-notes textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+.ops-notes textarea {
+  display: block;
+  margin-top: 0.5rem;
+}
+.ops-form input[readonly] {
+  background: #f1f5f9;
+}
+.ops-dialog {
+  grid-template-columns: minmax(0, 1fr);
+}
+.ops-dialog > * {
+  min-width: 0;
+}
+.ops-dialog [data-slot="button"] {
+  min-height: 44px;
+  height: auto;
+  max-width: 100%;
+  white-space: normal;
+}
+.ops-dialog [data-slot="dialog-title"] {
+  padding-right: 1rem;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 639px) {
+  .ops-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
