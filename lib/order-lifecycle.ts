@@ -1,8 +1,8 @@
 type PendingOrder = { status: string; active_points?: number; pending_checklists?: number; trips: { return_km: number | null }[] };
 export function closeoutSteps(order: PendingOrder, result: string) {
   return [
-    { id: 'service', label: 'Atendimento iniciado', done: order.status === 'Em andamento', help: 'Inicie seu ponto nesta OS ou inicie somente o atendimento.' },
-    { id: 'points', label: 'Pontos da equipe encerrados', done: order.active_points === 0, help: order.active_points === undefined ? 'Atualize a OS para verificar os pontos.' : `${order.active_points} ponto(s) aberto(s). Encerre o relógio em Meu ponto ou preencha a saída do registro manual no histórico de pontos.` },
+    { id: 'service', label: 'Atendimento iniciado', done: order.status === 'Em andamento', help: 'Use “Marcar atendimento como iniciado”. Isso não abre um cronômetro.' },
+    { id: 'points', label: 'Nenhum registro incompleto ou cronômetro antigo aberto', done: order.active_points === 0, help: order.active_points === undefined ? 'Atualize a OS para verificar os registros.' : `${order.active_points} registro(s) aberto(s). Resolva o cronômetro antigo em Meu ponto ou preencha a saída no histórico. Horas ainda não lançadas podem ser registradas após concluir a OS.` },
     { id: 'vehicle', label: 'Viagens encerradas', done: !order.trips.some(t => t.return_km === null), help: 'Uma pessoa da equipe deve informar a leitura do veículo no retorno.' },
     { id: 'equipment', label: 'Checklists vinculados finalizados', done: order.pending_checklists === 0, help: order.pending_checklists === undefined ? 'Atualize a OS para verificar as conferências.' : `${order.pending_checklists} checklist(s) pendente(s). Um colaborador designado confere a ida e a volta.` },
     { id: 'result', label: 'Resultado do serviço preenchido', done: result.trim().length >= 3, help: 'Descreva abaixo o que foi realizado (mínimo de 3 caracteres).' },

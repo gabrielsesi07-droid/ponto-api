@@ -129,6 +129,7 @@ export function ServiceOrders({
   blocked,
   onPoint,
   onNavigate,
+  onRegister,
 }: {
   me: Person;
   view: string;
@@ -136,6 +137,7 @@ export function ServiceOrders({
   blocked: boolean;
   onPoint: () => Promise<void>;
   onNavigate: (view: string) => void;
+  onRegister: (order: Order) => void;
 }) {
   const [data, setData] = useState<OperationsData>(emptyData),
     [loading, setLoading] = useState(true),
@@ -589,6 +591,7 @@ export function ServiceOrders({
           onChanged={reload}
           onEdit={() => setEditOrder(order)}
           onPoint={onPoint}
+          onRegister={onRegister}
         />
       )}
     </>
@@ -604,6 +607,7 @@ function OrderDetail({
   onChanged,
   onEdit,
   onPoint,
+  onRegister,
 }: {
   order: Order;
   vehicle?: Vehicle;
@@ -613,6 +617,7 @@ function OrderDetail({
   onChanged: () => Promise<void>;
   onEdit: () => void;
   onPoint: () => Promise<void>;
+  onRegister: (order: Order) => void;
 }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
@@ -681,31 +686,9 @@ function OrderDetail({
       setBusy(false);
     }
   }
-  async function startPoint() {
-    if (demo) {
-      setError("Entre com seu login para iniciar o ponto desta OS.");
-      return;
-    }
-    setBusy(true);
-    setError("");
-    try {
-      await api("/api/clock", {
-        action: "start",
-        order_id: o.id,
-        started_at: localDateTime(new Date().toISOString()),
-        company: o.client_name,
-        service: o.title,
-        notes: "",
-      });
-      await onChanged();
-      await onPoint();
-      onClose();
-      toast.success("Seu ponto foi iniciado e vinculado à OS.");
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+  function registerHours() {
+    if ((notes.trim() || km.trim()) && !window.confirm('Abrir o registro de horas sem salvar o resultado ou a quilometragem digitados?')) return;
+    onClose(); onRegister(o);
   }
   async function upload(file?: File) {
     if (!file) return;
@@ -743,7 +726,7 @@ function OrderDetail({
         <div className="space-y-5">
           {open && <section className="rounded-xl border border-blue-200 bg-blue-50 p-4" aria-label="Etapas para concluir a OS">
             <h3 className="font-semibold">O que falta para concluir esta OS?</h3>
-            <p className="mt-1 text-sm">Encerrar seu ponto, finalizar um checklist e concluir a OS são ações diferentes. A conclusão da OS vale para toda a equipe.</p>
+            <p className="mt-1 text-sm">Registrar horas, finalizar um checklist e concluir a OS são ações diferentes. As horas podem ser informadas depois do trabalho, inclusive após concluir a OS.</p>
             <ol className="mt-3 space-y-3 text-sm">{steps.map(step => <li key={step.id}>
               <span className="font-semibold">{step.done ? '✓ Pronto: ' : 'Pendente: '}{step.label}</span>
               {!step.done && <p className="mt-1">{step.help}</p>}
@@ -937,14 +920,13 @@ function OrderDetail({
             <section className="rounded-xl border border-blue-200 bg-blue-50 p-4">
               <h3 className="font-semibold">Atendimento e ponto</h3>
               <p className="mt-1 text-sm text-blue-900">
-                Cada colaborador inicia e encerra o próprio ponto. Concluir a OS
-                encerra o atendimento para a equipe.
+                Cada colaborador registra seus horários após o trabalho. Concluir a OS encerra o atendimento para a equipe, mas as horas ainda podem ser registradas depois, conforme as permissões de data.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {assigned && !o.my_point_active && (
-                  <Button disabled={busy || beforeScheduledDay} onClick={() => void startPoint()}>
+                  <Button disabled={busy || beforeScheduledDay} onClick={registerHours}>
                     <Play />
-                    Iniciar meu ponto nesta OS
+                    Registrar minhas horas nesta OS
                   </Button>
                 )}
                 {assigned && o.my_point_active && <Button variant="outline" disabled={busy} onClick={() => {
@@ -958,7 +940,7 @@ function OrderDetail({
                     variant="outline"
                     onClick={() => void action("begin")}
                   >
-                    Iniciar atendimento sem abrir ponto
+                    Marcar atendimento como iniciado
                   </Button>
                 )}
               </div>
@@ -1004,6 +986,7 @@ function OrderDetail({
               </p>
             </section>
           )}
+          {!open && assigned && <section className="rounded-xl border bg-blue-50 p-4"><p className="mb-3 text-sm">Trabalhou nesta OS? Mesmo encerrada, ela aceita o registro das horas realmente realizadas, conforme as permissões de data. Isso não reabre o atendimento.</p><Button disabled={busy || beforeScheduledDay} onClick={registerHours}>Registrar minhas horas nesta OS</Button></section>}
           {admin && open && (
             <label className="ops-notes block rounded-xl border border-dashed p-4 text-sm">
               {o.pdf_name ? "Substituir PDF da OS" : "Anexar PDF da OS"} (até 3

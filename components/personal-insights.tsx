@@ -395,7 +395,7 @@ export function PersonalInsights({
         <div>
           <b>Vai começar um serviço?</b>
           <p className="text-sm text-slate-300 mt-1">
-            O ponto rápido está sempre a um toque.
+            Registre seus horários depois do trabalho, sem cronômetro.
           </p>
         </div>
         <Button

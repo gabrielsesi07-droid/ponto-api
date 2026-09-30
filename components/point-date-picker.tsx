@@ -22,7 +22,7 @@ export function PointDatePicker({ value, onChange, initiallyOpen, disabled = fal
           onClick={() => setOpen(v => !v)}>{open ? 'Ocultar calendário' : 'Abrir calendário'}</Button>
       </div>
       {open && <div id="point-calendar" className="mt-3 flex flex-col items-center">
-        <p className="mb-2 text-center text-sm text-blue-900">Escolha o dia em que esqueceu de registrar o ponto.</p>
+        <p className="mb-2 text-center text-sm text-blue-900">Escolha o dia em que o trabalho foi realizado.</p>
         <Calendar mode="single" locale={ptBR} captionLayout="dropdown" endMonth={lastDay} today={lastDay}
           defaultMonth={value ? calendarDay(value) : lastDay} selected={value ? calendarDay(value) : undefined}
           disabled={disabled ? true : { after: lastDay }} required

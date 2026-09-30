@@ -38,6 +38,7 @@ export async function POST(req: Request) {
     if (me.role !== "coordinator" && p.user_id !== me.id)
       throw new ApiError(403, "Você só pode registrar a própria jornada.");
     if(!p.id&&p.user_id!==me.id)throw new ApiError(403,'Novas marcações pertencem sempre à pessoa conectada.');
+    if (!p.end) throw new ApiError(400, 'Informe a saída real do trabalho. O registro deve conter entrada, saída e intervalo.');
     if (
       !Number.isFinite(new Date(p.date + "T12:00:00Z").getTime()) ||
       new Date(p.date + "T12:00:00Z").toISOString().slice(0, 10) !== p.date ||

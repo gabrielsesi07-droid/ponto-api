@@ -311,7 +311,7 @@ export function QuickLogin({
 
           <div className="login-benefits" aria-label="Recursos do HoraCerta">
             <span>
-              <Check size={14} /> Ponto rápido
+              <Check size={14} /> Registro de horas
             </span>
             <span>
               <Check size={14} /> Suas horas extras

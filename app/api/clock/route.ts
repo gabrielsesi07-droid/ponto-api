@@ -28,8 +28,7 @@ export async function POST(req: Request) {
           400,
           "Informe um início válido dos últimos 7 dias, sem usar um horário futuro.",
         );
-      const r = await sql`SELECT horacerta.order_action(${user.id}::uuid,'start_clock',${JSON.stringify({ id: p.order_id, started_at: started.toISOString(), notes: p.notes })}::jsonb) AS result`;
-      return Response.json(r[0].result);
+      throw new ApiError(409, 'O cronômetro foi substituído. Atualize a página e use Registrar horas trabalhadas, informando entrada, saída e intervalo.');
     }
     const r =
       await sql`SELECT horacerta.clock_action(${user.id}::uuid,${p.action}) AS result`;

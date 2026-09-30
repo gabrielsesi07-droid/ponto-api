@@ -25,8 +25,9 @@ import { PointOrderPicker } from './point-order-picker';
 import { PointDatePicker } from './point-date-picker';
 import { CompensationFields } from './compensation-fields';
 import { compensationSchema, DEFAULT_MONTHLY_HOURS } from '@/lib/compensation';
+import { workedMinutes } from '@/lib/manual-work';
 export type Editor =
-  | { kind: "entry"; data?: Entry }
+  | { kind: "entry"; data?: Entry; order?: {id:string; date:string; company:string; service:string} }
   | { kind: "user"; data?: Person }
   | { kind: "client"; data?: Client }
   | { kind: "profile"; data: Person };
@@ -67,13 +68,13 @@ export function EditDialog({
   >(() =>
     editor.kind === "entry"
       ? {
-          order_id: e?.order_id || '',
-          date: e?.date || today(),
-          start: e?.start.slice(0, 5) || "08:00",
+          order_id: e?.order_id || editor.order?.id || '',
+          date: e?.date || (editor.order?.date && editor.order.date <= today() ? editor.order.date : today()),
+          start: e?.start.slice(0, 5) || "",
           end: e?.end?.slice(0, 5) || "",
           break_minutes: e?.break_minutes ?? 0,
-          company: e?.company || "",
-          service: e?.service || "Serviço técnico",
+          company: e?.company || editor.order?.company || "",
+          service: e?.service || editor.order?.service || "",
           notes: e?.notes || "",
           holiday: e?.holiday || false,
         }
@@ -94,6 +95,7 @@ export function EditDialog({
     [error, setError] = useState("");
   const change = (key: string, value: string | number | boolean) =>
     setForm((f) => ({ ...f, [key]: value }));
+  const workMinutes = editor.kind === 'entry' ? workedMinutes(String(form.start), String(form.end), Number(form.break_minutes)) : null;
   const input = (
     key: string,
     label: string,
@@ -172,7 +174,7 @@ export function EditDialog({
             {editor.kind === "entry"
               ? e
                 ? "Ajustar marcação"
-                : "Registrar ponto esquecido"
+                : "Registrar horas trabalhadas"
               : editor.kind === "profile"
                 ? "Meu acesso e salário"
                 : p
@@ -181,7 +183,7 @@ export function EditDialog({
           </DialogTitle>
           <DialogDescription>
             {editor.kind === "entry"
-              ? "A marcação pertence à OS do trabalho. Use esta tela para correções ou marcações esquecidas; o histórico antigo é preservado."
+              ? "Informe os horários reais do trabalho, mesmo após chegar em casa. A data é a do serviço, não a do preenchimento. Salvar não conclui a OS."
               : editor.kind === "profile"
                 ? "O valor-hora é calculado pelo salário bruto mensal dividido pelas horas mensais. Pontos antigos e serviços já iniciados mantêm o valor anterior."
                 : p
@@ -211,11 +213,12 @@ export function EditDialog({
                 max: 1439,
               })}
               {input("start", "Entrada", "time", true)}
-              {input("end", "Saída (HH:MM)", "text", false, {
+              {input("end", "Saída (HH:MM)", "text", true, {
                 placeholder: "18:00 ou 24:00",
                 pattern: "([01][0-9]|2[0-3]):[0-5][0-9]|24:00",
                 maxLength: 5,
               })}
+              <p className="full rounded-lg bg-blue-50 p-3 text-sm" aria-live="polite">{workMinutes === null ? 'Informe entrada, saída e intervalo para conferir a duração. Se o trabalho passou da meia-noite, registre cada data separadamente: até 24:00 no primeiro dia e a partir de 00:00 no seguinte.' : `Tempo de trabalho: ${Math.floor(workMinutes / 60)}h ${String(workMinutes % 60).padStart(2,'0')}min, descontado o intervalo. As horas extras são calculadas ao salvar, somando os serviços do dia.`}</p>
               <div className="full">
                 {input("company", "Empresa atendida", "text", true, {
                   readOnly: true,
@@ -245,7 +248,7 @@ export function EditDialog({
                   value={String(form.notes)}
                   maxLength={2000}
                   onChange={(ev) => change("notes", ev.target.value)}
-                  placeholder="Ex.: esqueci de encerrar o serviço."
+                  placeholder="Detalhes do trabalho ou motivo de uma correção."
                 />
               </label>
             </>
@@ -336,9 +339,9 @@ export function EditDialog({
             >
               Cancelar
             </Button>
-            <Button type="submit" className="action" disabled={busy || (editor.kind === 'entry' && !e && !form.order_id)}>
+            <Button type="submit" className="action" disabled={busy || (editor.kind === 'entry' && ((!e && !form.order_id) || workMinutes === null))}>
               {busy ? <LoaderCircle className="animate-spin" /> : <Save />}
-              {busy ? "Salvando…" : "Salvar"}
+              {busy ? "Salvando…" : editor.kind === 'entry' ? 'Salvar horas trabalhadas' : "Salvar"}
             </Button>
           </div>
         </form>

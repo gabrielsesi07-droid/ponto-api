@@ -63,7 +63,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Pick, Blank, Status } from "./controls";
 import { EditDialog, SettingsForm, api, type Editor } from "./editors";
-import { QuickClock } from "./quick-clock";
+import { ManualPoints } from "./manual-points";
 import { QuickLogin } from "./quick-login";
 import { PersonalInsights } from "./personal-insights";
 import { Dashboard } from "./dashboard";
@@ -634,7 +634,7 @@ export function Workspace() {
                                 : view === "settings"
                                   ? "As regras da sua equipe, do seu jeito."
                                   : view === "register"
-                                    ? "Inicie, pause e encerre seu serviço com um toque."
+                                    ? "Registre os horários reais após o trabalho, vinculados à OS."
                                     : "Sua atividade, seu histórico e seus resultados."}
                   </p>
                 </div>
@@ -708,6 +708,7 @@ export function Workspace() {
                   await reload();
                   go("register");
                 }}
+                onRegister={order => setEditor({kind:'entry', order: {id:order.id, date: new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(order.starts_at)), company:order.client_name, service:order.title}})}
               />
               {[
                 "dashboard",
@@ -1030,7 +1031,7 @@ export function Workspace() {
                 </>
               )}
               {view === "register" && (
-                <QuickClock
+                <ManualPoints
                   state={data}
                   demo={demo}
                   onChanged={reload}
@@ -1039,6 +1040,7 @@ export function Workspace() {
                     setEditor({ kind: "profile", data: data.me })
                   }
                   onManual={() => setEditor({ kind: "entry" })}
+                  onHistory={() => go('entries')}
                 />
               )}
               {view === "people" &&
