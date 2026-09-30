@@ -287,7 +287,7 @@ export function Dashboard({
             {pending
               ? pending +
                 " pontos aguardam sua revisão. Confira horários, pausas e valores antes de aprovar."
-              : "Acompanhe os pontos em serviço da equipe. Cada colaborador configura o próprio valor-hora."}
+              : "Acompanhe os pontos em serviço da equipe. Cada colaborador informa o salário e as horas mensais para calcular seu valor-hora."}
           </p>
           <div className="mt-6 space-y-4 text-sm">
             <div className="flex justify-between border-b border-white/15 pb-4">

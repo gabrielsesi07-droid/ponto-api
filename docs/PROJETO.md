@@ -2,7 +2,7 @@
 
 ## Objetivo e perfis
 
-Controle de pontos durante serviços técnicos, separado do sistema diário da empresa. Há um coordenador e não existe limite de colaboradores. Cada pessoa recebe um código único, usa seu próprio PIN e define seu próprio valor-hora. Nomes alternativos considerados: Jornada360 e TempoEquipe.
+Controle de pontos durante serviços técnicos, separado do sistema diário da empresa. Há um coordenador e não existe limite de colaboradores. Cada pessoa recebe um código único, usa seu próprio PIN e informa o próprio salário bruto mensal e carga mensal para calcular o valor-hora. Nomes alternativos considerados: Jornada360 e TempoEquipe.
 
 | Área            | Colaborador                                               | Coordenador                                                                             |
 | --------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------- |
@@ -10,7 +10,7 @@ Controle de pontos durante serviços técnicos, separado do sistema diário da e
 | Meu resumo      | Extras por dia, seis meses, calendário e valores pessoais | O próprio resumo, separado da equipe                                                    |
 | Histórico       | Somente seus pontos; ajustes conforme permissão           | Pontos de todos, revisão, aprovação e exclusão lógica                                   |
 | Relatórios      | Somente dados pessoais                                    | Consolidação da equipe e filtros por pessoa                                             |
-| Meu acesso      | Nome, cargo, telefone, PIN e valor-hora próprios          | O mesmo para si                                                                         |
+| Meu acesso      | Nome, cargo, telefone, PIN, salário e horas mensais próprios | O mesmo para si                                                                      |
 | Visão da equipe | Sem acesso                                                | Relógios em serviço/pausa, horas, extras, valores e pendências                          |
 | Colaboradores   | Sem acesso                                                | Criar quantos acessos forem necessários, consultar códigos, trocar PIN, ativar/desativar e permitir ajustes |
 | Configurações   | Sem acesso                                                | Jornada, adicionais, retroatividade e aprovação                                         |
@@ -19,9 +19,9 @@ Rotas de interface: ?view=register, insights, entries, reports, profile, dashboa
 
 ## Fluxos e interface
 
-Colaborador: buscar nome → escolher seu código → informar PIN → configurar sua hora → iniciar serviço → registrar pausas → encerrar → consultar Meu resumo ou Histórico. Não seleciona pessoa nem cliente/local. Marcações esquecidas usam um formulário secundário com data, entrada/saída, pausa, feriado e observação opcional.
+Colaborador: buscar nome → escolher seu código → informar PIN → configurar salário e horas mensais → escolher sua OS e iniciar serviço → registrar pausas → encerrar → consultar Meu resumo ou Histórico. A pessoa é identificada pelo login; empresa e serviço vêm da OS. “Registrar ponto”, no Histórico, abre diretamente um calendário e formulário com OS obrigatória, entrada/saída, pausa, feriado e observação opcional, sem navegar para Meu ponto.
 
-Coordenador: criar primeiro acesso → cadastrar os colaboradores → acompanhar equipe → revisar horários e valores → aprovar → exportar relatórios. Cada colaborador continua responsável por configurar seu valor-hora; o coordenador pode visualizá-lo, mas a edição do cadastro da equipe não o altera.
+Coordenador: criar primeiro acesso → cadastrar os colaboradores → acompanhar equipe → revisar horários e valores → aprovar → exportar relatórios. Cada colaborador configura seu salário e carga mensal; o coordenador pode visualizar o valor-hora resultante, mas a edição do cadastro da equipe não o altera. Salário bruto e carga mensal são retornados somente para o próprio usuário, não na lista de pessoas.
 
 No celular há navegação inferior fixa com Ponto, Resumo, Histórico e Meu acesso. O menu lateral reúne as áreas adicionais. Indicadores adaptam-se à largura; gráficos ocupam uma coluna em telas estreitas; o histórico vira cartões. O calendário permite selecionar uma data e conferir as marcações daquele dia. O resumo mensal compara seis meses de dados próprios.
 
@@ -29,6 +29,8 @@ Visual: azul-marinho, azul de ação, âmbar para extras e verde para aprovaçã
 
 ## Regras de cálculo
 
+- Valor-hora = salário bruto mensal ÷ horas mensais do contrato, arredondado em centavos. Base inicial de 220 horas ajustável (1 a 744, até duas casas decimais), não uma determinação legal do contrato. Salário de 0 a 1.000.000, até duas casas decimais. O servidor calcula; não aceita valor-hora editável. A configuração não é folha de pagamento.
+- Migração aditiva `014-monthly-salary.sql`: contas anteriores ficam com salário não informado e valor-hora inalterado. Não se deduz salário multiplicando a taxa antiga por 220. Atualizações valem para novos pontos; pontos existentes e relógios em andamento preservam seus valores.
 - Trabalhadas = saída − entrada − pausas, em minutos. Relógio ao vivo mostra segundos; registros e pausas são consolidados na precisão do minuto.
 - Em dias úteis, até 540 minutos normais por pessoa/data; somente o excedente é extra.
 - Vários serviços compartilham a franquia diária. Calcular antes dos filtros evita conceder 9h novamente a cada registro.

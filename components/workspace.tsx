@@ -676,7 +676,7 @@ export function Workspace() {
                     view !== "settings" &&
                     !["orders", "order-history", "clients", "vehicles", "library", "equipment"].includes(view) &&
                     view !== "register" && (
-                      <Button onClick={() => go("register")} className="action">
+                      <Button onClick={() => view === 'entries' ? setEditor({ kind: 'entry' }) : go("register")} className="action">
                         <Plus />
                         Registrar ponto
                       </Button>
@@ -1424,6 +1424,15 @@ function Profile({
                 <b className="text-xl block mt-2">{v}</b>
               </div>
             ))}
+          </div>
+          <div className="mt-6 rounded-xl border border-blue-100 bg-blue-50/60 p-4">
+            <b>Meu salário e valor-hora</b>
+            <p className="mt-2 text-sm text-slate-700">
+              {data.me.monthly_salary != null
+                ? `${money(Number(data.me.monthly_salary), data.settings.currency)} por mês ÷ ${Number(data.me.monthly_hours).toLocaleString('pt-BR')} horas = ${money(Number(data.me.hourly_rate), data.settings.currency)} por hora.`
+                : `Salário ainda não informado. Valor-hora atual mantido: ${money(Number(data.me.hourly_rate), data.settings.currency)}.`}
+            </p>
+            <Button type="button" variant="outline" className="action mt-3" onClick={onEditAccess}><Pencil />Configurar meu salário</Button>
           </div>
           <Button className="action mt-7" onClick={onRegister}>
             <Plus />

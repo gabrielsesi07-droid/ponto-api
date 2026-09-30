@@ -8,6 +8,8 @@ export type Person = {
   job: string;
   phone: string;
   hourly_rate: number;
+  monthly_salary?: number | null;
+  monthly_hours?: number;
   active: boolean;
   can_edit: boolean;
   pin_change_required: boolean;

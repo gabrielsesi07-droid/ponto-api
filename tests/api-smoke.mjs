@@ -53,7 +53,8 @@ try {
     {
       name: "QA Coordenador",
       username: adminUsername,
-      hourly_rate: 30,
+      monthly_salary: 6600,
+      monthly_hours: 220,
     },
     null,
   );
@@ -80,7 +81,8 @@ try {
         {
           name: "QA Segundo Coordenador",
           username: "qa_second_" + tag.slice(0, 8),
-          hourly_rate: 30,
+          monthly_salary: 6600,
+          monthly_hours: 220,
         },
         null,
       )
@@ -362,11 +364,14 @@ try {
     "exclusão lógica com auditoria",
   );
 
+  // Accounts created by name/code need not have the legacy username field.
+  await sql`UPDATE horacerta.users SET username=NULL WHERE id=${worker}`;
   const profile = {
     entity: "profile",
     data: {
       name: "QA Colaborador",
-      hourly_rate: 47.5,
+      monthly_salary: 10450,
+      monthly_hours: 220,
       job: "Técnico",
       phone: "",
     },
@@ -374,7 +379,7 @@ try {
   check(
     (await call("/api/manage", profile, worker)).status,
     200,
-    "colaborador configura sua própria hora",
+    "colaborador configura salário para calcular a própria hora",
   );
   const profileState = await call(
     "/api/state?from=2026-09-01&to=2026-09-30",
@@ -386,6 +391,9 @@ try {
     47.5,
     "valor-hora individual persistido",
   );
+  check(Number(profileState.data.me.monthly_salary), 10450, "salário próprio persistido");
+  check(Number(profileState.data.me.monthly_hours), 220, "carga mensal persistida");
+  check((await call('/api/manage', {...profile, data:{...profile.data, monthly_hours:0}}, worker)).status, 400, "carga zero bloqueada sem alterar perfil");
   const oldRate =
     await sql`SELECT rate FROM horacerta.entries WHERE id=${open.data.id}`;
   check(

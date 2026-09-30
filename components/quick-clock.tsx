@@ -357,13 +357,13 @@ export function QuickClock({
           </div>
         ))}
       </div>
-      {Number(state.me.hourly_rate) === 0 && (
+      {state.me.monthly_salary == null && (
         <button
           className="mt-5 w-full rounded-xl bg-amber-50 border border-amber-200 px-5 py-4 text-amber-900 text-sm flex items-center justify-between gap-3 text-left"
           onClick={onProfile}
         >
           <span>
-            Configure quanto vale sua hora para calcular o valor das extras.
+            Informe seu salário mensal para calcular automaticamente o valor da sua hora.
           </span>
           <Pencil size={18} />
         </button>
@@ -399,7 +399,7 @@ export function QuickClock({
           <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-700">
             <Wallet size={17} />
           </span>
-          <span>Configurar minha hora</span>
+          <span>Configurar meu salário</span>
         </Button>
       </div>
       <p className="text-sm muted text-center mt-7 leading-relaxed">

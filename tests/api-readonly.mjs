@@ -26,6 +26,11 @@ try {
   for(const path of ['/api/session','/api/state'+date,'/api/operations','/api/library'])check((await call(path,role)).status===200,role+' reads '+path.split('?')[0]);
  }
  const own=(await call('/api/state'+date,'employee')).body;
+ check('monthly_salary' in own.me && Number(own.me.monthly_hours)>0,'Own salary configuration exposed');
+ check(own.users.every(u=>u.id===own.me.id || !('monthly_salary' in u)),'Salary is not exposed across employee accounts');
+ for(const data of [{monthly_salary:4400,monthly_hours:0},{monthly_salary:-1,monthly_hours:220},{monthly_salary:4400,monthly_hours:745},{hourly_rate:999}]) {
+  check((await call('/api/manage','employee',{entity:'profile',data:{name:'Audit invalid salary',...data}})).status===400,'Invalid compensation rejected before mutation '+JSON.stringify(data));
+ }
  const pointOrders=await call('/api/clock','employee');
  check(pointOrders.status===200&&pointOrders.body.orders.every(o=>o.assigned===true),'Point selector only offers assigned OS');
  check((await call('/api/clock')).status===401,'Anonymous point selector blocked');

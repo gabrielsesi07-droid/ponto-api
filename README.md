@@ -6,9 +6,11 @@ Ponto exclusivo dos serviços técnicos, com um coordenador e quantos colaborado
 
 1. Abra o aplicativo e crie o nome e PIN de seis números do coordenador. O código único é gerado automaticamente.
 2. Em Colaboradores, cadastre o nome e PIN inicial de cada integrante; cada pessoa recebe um código diferente, mesmo quando os nomes são iguais.
-3. Cada pessoa entra na própria conta e configura seu valor-hora em Meu acesso.
+3. Cada pessoa entra na própria conta e informa o salário bruto mensal e a carga mensal (padrão ajustável de 220 horas) em Meu acesso. O valor-hora é calculado automaticamente.
 4. Em Meu ponto, use Iniciar serviço, Pausar/Retomar e Encerrar serviço.
 5. Em Meu resumo, consulte extras por dia, calendário e comparativo dos últimos seis meses.
+
+Em Histórico de pontos, “Registrar ponto” abre o calendário e o formulário do ponto esquecido, sem sair do histórico. A OS é obrigatória e fornece empresa e serviço. Alterar salário ou carga mensal não muda os valores dos pontos antigos nem de um serviço já iniciado. Contas anteriores conservam o valor-hora cadastrado até informarem seu salário; o sistema não presume salários.
 
 A página `/login` apresenta o acesso em duas etapas: sugestões automáticas pelo nome, escolha do cadastro identificado pelo código único e PIN de seis números. Depois do primeiro login, o aparelho lembra somente o nome e o código para oferecer “Continuar como”; o PIN nunca é armazenado. Falhas transitórias são repetidas automaticamente e avisos antigos desaparecem quando a conexão volta. O fundo tem animações com opção de pausa e respeita a preferência de movimento reduzido.
 

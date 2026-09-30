@@ -12,6 +12,7 @@ import {
   digest,
   sessionCookie,
 } from "@/lib/pin";
+import { compensationSchema } from '@/lib/compensation';
 export const dynamic = "force-dynamic";
 export async function GET() {
   try {
@@ -49,11 +50,14 @@ export async function POST(req: Request) {
             ? body.email
             : crypto.randomUUID() + "@horacerta.local",
       });
+    if ('hourly_rate' in body && body.monthly_salary == null)
+      throw new ApiError(400, 'Atualize a página. O valor-hora agora é calculado a partir do salário mensal.');
+    const pay = body.monthly_salary == null ? null : compensationSchema.parse(body);
     const sql = db(),
       pin = await hashPin(DEFAULT_INITIAL_PIN),
       result = await sql.transaction([
         sql`SELECT id FROM horacerta.settings WHERE id=1 FOR UPDATE`,
-        sql`INSERT INTO horacerta.users(name,username,email,role,job,phone,hourly_rate,pin_hash,pin_change_required,pin_change_prompted) SELECT ${p.name},${p.username || null},${p.email},'coordinator',${p.job},${p.phone},${p.hourly_rate},${pin},true,false WHERE NOT EXISTS(SELECT 1 FROM horacerta.users) RETURNING id,name,access_code,job`,
+        sql`INSERT INTO horacerta.users(name,username,email,role,job,phone,hourly_rate,monthly_salary,monthly_hours,pin_hash,pin_change_required,pin_change_prompted) SELECT ${p.name},${p.username || null},${p.email},'coordinator',${p.job},${p.phone},0,${pay?.monthly_salary ?? null},${pay?.monthly_hours ?? 220},${pin},true,false WHERE NOT EXISTS(SELECT 1 FROM horacerta.users) RETURNING id,name,access_code,job`,
       ]);
     if (!result[1].length)
       throw new ApiError(409, "O primeiro acesso já foi configurado.");

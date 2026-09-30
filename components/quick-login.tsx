@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import { api } from "./editors";
 import { DEFAULT_INITIAL_PIN } from "@/lib/pin";
+import { CompensationFields } from './compensation-fields';
+import { DEFAULT_MONTHLY_HOURS } from '@/lib/compensation';
 
 type AccessOption = {
   name: string;
@@ -82,7 +84,8 @@ export function QuickLogin({
   const [showSearch, setShowSearch] = useState(true);
   const [pin, setPin] = useState("");
   const [name, setName] = useState("");
-  const [rate, setRate] = useState("0");
+  const [salary, setSalary] = useState('');
+  const [monthlyHours, setMonthlyHours] = useState(String(DEFAULT_MONTHLY_HOURS));
   const [remember, setRemember] = useState(true);
   const [busy, setBusy] = useState(false);
   const [issue, setIssue] = useState("");
@@ -168,7 +171,7 @@ export function QuickLogin({
       const result = await api<{ ok: boolean; person?: AccessOption }>(
         setup ? "/api/session" : "/api/login",
         setup
-          ? { name, hourly_rate: Number(rate) }
+          ? { name, monthly_salary: salary.trim() ? Number(salary) : null, monthly_hours: Number(monthlyHours) }
           : { access_code: selected?.access_code, pin, remember },
       );
       const person = result.person || selected;
@@ -621,21 +624,9 @@ export function QuickLogin({
                   )}
 
                   {setup && (
-                    <label className="login-field" htmlFor="login-rate">
-                      Seu valor-hora (R$)
-                      <input
-                        id="login-rate"
-                        name="hourly_rate"
-                        type="number"
-                        inputMode="decimal"
-                        min={0}
-                        max={100000}
-                        step="0.01"
-                        required
-                        value={rate}
-                        onChange={(e) => setRate(e.target.value)}
-                      />
-                    </label>
+                    <div className="form-grid">
+                      <CompensationFields salary={salary} hours={monthlyHours} onSalary={setSalary} onHours={setMonthlyHours} />
+                    </div>
                   )}
 
                   {!setup && step === "pin" && (

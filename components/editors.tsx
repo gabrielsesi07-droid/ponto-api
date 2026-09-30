@@ -22,6 +22,9 @@ import { toast } from "sonner";
 import { LoaderCircle, Save, UserRound } from "lucide-react";
 import { DEFAULT_INITIAL_PIN } from "@/lib/pin";
 import { PointOrderPicker } from './point-order-picker';
+import { PointDatePicker } from './point-date-picker';
+import { CompensationFields } from './compensation-fields';
+import { compensationSchema, DEFAULT_MONTHLY_HOURS } from '@/lib/compensation';
 export type Editor =
   | { kind: "entry"; data?: Entry }
   | { kind: "user"; data?: Person }
@@ -79,7 +82,8 @@ export function EditDialog({
           email: p?.email || "",
           job: p?.job || "",
           phone: p?.phone || "",
-          hourly_rate: p?.hourly_rate ?? 0,
+          monthly_salary: p?.monthly_salary ?? '',
+          monthly_hours: p?.monthly_hours ?? DEFAULT_MONTHLY_HOURS,
           active: p?.active ?? true,
           can_edit: p?.can_edit ?? true,
           pin:
@@ -130,16 +134,21 @@ export function EditDialog({
           break_minutes: Number(form.break_minutes),
           ...(e ? { id: e.id, version: e.version } : {}),
         });
-      else
+      else {
+        const checked = editor.kind === 'profile' && String(form.monthly_salary).trim() !== ''
+          ? compensationSchema.safeParse({ monthly_salary: Number(form.monthly_salary), monthly_hours: Number(form.monthly_hours) }) : null;
+        if (checked && !checked.success) throw new Error(checked.error.issues[0].message);
+        const pay = checked?.success ? checked.data : null;
         await api("/api/manage", {
           entity: editor.kind,
           data: {
             ...form,
             pin: form.pin || undefined,
-            hourly_rate: Number(form.hourly_rate || 0),
+            ...(editor.kind === 'profile' ? { monthly_salary: pay?.monthly_salary ?? null, monthly_hours: pay?.monthly_hours ?? DEFAULT_MONTHLY_HOURS } : {}),
             ...(p ? { id: p.id } : {}),
           },
         });
+      }
       await onSaved();
       toast.success(
         editor.kind === "user" && !p
@@ -163,9 +172,9 @@ export function EditDialog({
             {editor.kind === "entry"
               ? e
                 ? "Ajustar marcação"
-                : "Adicionar marcação manual"
+                : "Registrar ponto esquecido"
               : editor.kind === "profile"
-                ? "Meu acesso e valor-hora"
+                ? "Meu acesso e salário"
                 : p
                   ? "Editar acesso e PIN"
                   : "Criar acesso do colaborador"}
@@ -174,7 +183,7 @@ export function EditDialog({
             {editor.kind === "entry"
               ? "A marcação pertence à OS do trabalho. Use esta tela para correções ou marcações esquecidas; o histórico antigo é preservado."
               : editor.kind === "profile"
-                ? "Seu valor-hora vale para os próximos serviços. As marcações antigas mantêm o valor anterior."
+                ? "O valor-hora é calculado pelo salário bruto mensal dividido pelas horas mensais. Pontos antigos e serviços já iniciados mantêm o valor anterior."
                 : p
                   ? "Altere os dados ou defina um novo PIN de 6 números. Ao trocar o PIN, as sessões abertas dessa pessoa serão encerradas."
                   : `Cada pessoa recebe um código único e começa com o PIN ${DEFAULT_INITIAL_PIN}. No primeiro acesso, ela será orientada a criar um PIN pessoal.`}
@@ -193,10 +202,10 @@ export function EditDialog({
                   }
                 </b>
               </div>
+              <PointDatePicker value={String(form.date)} onChange={date => change('date', date)} initiallyOpen={!e} disabled={busy} />
               <PointOrderPicker value={String(form.order_id || '')} date={String(form.date)} demo={demo} disabled={busy} entryId={e?.id} existingOrderId={e?.order_id}
                 onChange={order => setForm(f => ({...f,order_id:order?.id || '',company:order?.client_name || e?.company || '',service:order?.title || e?.service || ''}))} />
               {e && !e.order_id && <p className="full text-sm text-amber-900">Registro anterior à obrigatoriedade de OS. Você pode preservar o histórico ou vinculá-lo à OS correta; o sistema não escolherá uma por conta própria.</p>}
-              {input("date", "Data", "date", true, { max: today() })}
               {input("break_minutes", "Pausa (minutos)", "number", true, {
                 min: 0,
                 max: 1439,
@@ -253,12 +262,9 @@ export function EditDialog({
                   O código único será criado automaticamente ao salvar.
                 </p>
               )}
-              {editor.kind === "profile" &&
-                input("hourly_rate", "Quanto vale sua hora?", "number", true, {
-                  min: 0,
-                  max: 100000,
-                  step: ".01",
-                })}
+              {editor.kind === "profile" && <CompensationFields salary={String(form.monthly_salary)} hours={String(form.monthly_hours)}
+                onSalary={v => change('monthly_salary', v)} onHours={v => change('monthly_hours', v)}
+                currency={state.settings.currency} legacyRate={Number(p?.hourly_rate || 0)} required={p?.monthly_salary != null} />}
               {editor.kind === "user" && !p ? (
                 <div className="full rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-950">
                   <span className="block text-xs font-semibold uppercase tracking-wider text-blue-700">

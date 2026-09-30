@@ -27,6 +27,7 @@ const ddl=[
  'ALTER TABLE horacerta.entries ADD CONSTRAINT entry_duration CHECK("end" IS NULL OR ("end">=start AND extract(epoch from ("end"-start))/60>=break_minutes))'
 ];
 await sql.transaction(ddl.map(q=>sql.query(q)));
+await import('./migrate-compensation.mjs');
 await sql.query(await readFile(new URL('../sql/002-clock-start-function.sql',import.meta.url),'utf8'));
 await import('./migrate-orders.mjs');
 console.log('Acesso rápido e relógio de serviço preparados.');

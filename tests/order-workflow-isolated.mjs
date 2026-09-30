@@ -10,10 +10,28 @@ const read=async name=>readFile(new URL('../sql/'+name,import.meta.url),'utf8');
 const statements=(await read('001-schema.sql')).split(';').filter(s=>s.trim());
 statements.push(`CREATE TABLE horacerta.timers(user_id uuid PRIMARY KEY REFERENCES horacerta.users(id),started_at timestamptz NOT NULL,paused_at timestamptz,pauses jsonb NOT NULL DEFAULT '[]',rate numeric(12,2) NOT NULL,rules jsonb NOT NULL,company text NOT NULL DEFAULT '',service text NOT NULL DEFAULT '',notes text NOT NULL DEFAULT '')`);
 for(const name of ['003-orders.sql','005-flexible-client.sql','006-library.sql','007-checklists.sql','009-imported-checklists.sql','010-client-search.sql','011-order-lifecycle.sql','012-client-lifecycle.sql','008-checklist-actions.sql','004-order-actions.sql','002-clock-start-function.sql','002-clock-function.sql','013-points-require-order.sql']) statements.push(...(await read(name)).split(/\r?\n-- statement-break\r?\n/).filter(s=>s.trim()));
+// Apply twice to verify the additive salary migration can be rerun safely.
+for (let i=0; i<2; i++) statements.push(...(await read('014-monthly-salary.sql')).split(/\r?\n-- statement-break\r?\n/).filter(s=>s.trim()));
 statements.push(`DO $$
 DECLARE admin uuid:=gen_random_uuid();worker uuid:=gen_random_uuid();model uuid:=gen_random_uuid();vehicle uuid:=gen_random_uuid();unused_client uuid:=gen_random_uuid();legacy_client uuid:=gen_random_uuid();other_order uuid;cid uuid;first_id uuid;second_id uuid;fresh_id uuid;result jsonb;p jsonb;first_num bigint;second_num bigint;seq_before bigint;count_before bigint;check_id uuid;item jsonb;blocked_action text;
 BEGIN
  INSERT INTO horacerta.users(id,name,email,role,hourly_rate) VALUES(admin,'QA admin','admin@example.invalid','coordinator',0),(worker,'QA worker','worker@example.invalid','employee',0);
+ ASSERT (SELECT monthly_salary IS NULL AND hourly_rate=0 AND monthly_hours=220 FROM horacerta.users WHERE id=worker),'Legacy rate retained; salary not invented';
+ UPDATE horacerta.users SET monthly_salary=4400 WHERE id=worker;
+ ASSERT (SELECT hourly_rate=20 FROM horacerta.users WHERE id=worker),'Monthly salary divided by default 220';
+ UPDATE horacerta.users SET monthly_hours=200,hourly_rate=9999 WHERE id=worker;
+ ASSERT (SELECT hourly_rate=22 FROM horacerta.users WHERE id=worker),'Server computes rate even if direct rate is tampered';
+ UPDATE horacerta.users SET monthly_salary=401 WHERE id=worker;
+ ASSERT (SELECT hourly_rate=2.01 FROM horacerta.users WHERE id=worker),'Numeric rate rounds half-cent correctly';
+ BEGIN
+  UPDATE horacerta.users SET monthly_hours=0 WHERE id=worker;
+  RAISE EXCEPTION 'Zero monthly hours unexpectedly allowed';
+ EXCEPTION WHEN check_violation OR division_by_zero THEN NULL; END;
+ BEGIN
+  UPDATE horacerta.users SET monthly_salary=-1 WHERE id=worker;
+  RAISE EXCEPTION 'Negative salary unexpectedly allowed';
+ EXCEPTION WHEN check_violation THEN NULL; END;
+ UPDATE horacerta.users SET monthly_salary=4400,monthly_hours=220 WHERE id=worker;
  INSERT INTO horacerta.equipment_models(id,name,family) VALUES(model,'Radian QA','Laser Tracker');
  item:=jsonb_build_object('id',gen_random_uuid(),'label','Cabo','planned',1,'outgoing',false,'incoming',false,'outgoing_qty',NULL,'incoming_qty',NULL,'na',false,'notes','');
  INSERT INTO horacerta.checklist_templates(model_id,title,status,items) VALUES(model,'Lista QA','active',jsonb_build_array(item));
@@ -97,6 +115,10 @@ BEGIN
  INSERT INTO horacerta.vehicles(id,plate,model,odometer) VALUES(vehicle,'QAQ1234','Carro QA',1000);
  UPDATE horacerta.orders SET vehicle_id=vehicle WHERE id=first_id;
  PERFORM horacerta.order_action(worker,'start_clock',jsonb_build_object('id',first_id,'started_at',now()-interval '10 minutes','notes',''));
+ ASSERT (SELECT rate=20 FROM horacerta.timers WHERE user_id=worker),'Timer snapshots salary-based rate';
+ UPDATE horacerta.users SET monthly_salary=6600 WHERE id=worker;
+ ASSERT (SELECT hourly_rate=30 FROM horacerta.users WHERE id=worker),'New salary updates current rate';
+ ASSERT (SELECT rate=20 FROM horacerta.timers WHERE user_id=worker),'Running service retains original rate';
  PERFORM horacerta.order_action(worker,'depart',jsonb_build_object('id',first_id,'km',1000));
  BEGIN
    PERFORM horacerta.order_action(worker,'cancel',jsonb_build_object('id',first_id,'notes','Cliente cancelou'));
@@ -140,6 +162,9 @@ BEGIN
  EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'Não há saída aberta%' THEN RAISE; END IF; END;
  PERFORM horacerta.clock_action(worker,'stop');
  ASSERT NOT EXISTS(SELECT 1 FROM horacerta.timers WHERE order_id=first_id),'Employee can stop cancelled order timer';
+ ASSERT (SELECT bool_and(rate=20) FROM horacerta.entries WHERE order_id=first_id),'Closing timer uses original salary rate';
+ UPDATE horacerta.users SET monthly_salary=8800 WHERE id=worker;
+ ASSERT (SELECT bool_and(rate=20) FROM horacerta.entries WHERE order_id=first_id),'Saved points retain historical rate after another salary change';
  ASSERT EXISTS(SELECT 1 FROM horacerta.entries WHERE order_id=first_id AND user_id=worker),'Time entry retains order link';
  ASSERT EXISTS(SELECT 1 FROM horacerta.entries WHERE order_id=first_id AND client_id=cid),'Timer closure retains client link';
  BEGIN

@@ -11,6 +11,7 @@ import {
   ApiError,
 } from "@/lib/server";
 import { DEFAULT_INITIAL_PIN, hashPin } from "@/lib/pin";
+import { compensationSchema } from '@/lib/compensation';
 export async function POST(req: Request) {
   try {
     const me = await member(),
@@ -32,15 +33,21 @@ export async function POST(req: Request) {
       return Response.json({ ok: true });
     }
     if (body.entity === "profile") {
+      const hasSalary = body.data.monthly_salary !== undefined && body.data.monthly_salary !== null;
+      if ('hourly_rate' in body.data && !hasSalary)
+        throw new ApiError(400, 'Atualize a página e informe seu salário mensal; o valor-hora agora é calculado automaticamente.');
+      if (body.data.monthly_salary === null && me.monthly_salary != null)
+        throw new ApiError(400, 'Informe seu salário mensal para atualizar o cálculo.');
+      const pay = hasSalary ? compensationSchema.parse(body.data) : null;
       const p = personSchema.parse({
         ...body.data,
         id: me.id,
         email: me.email,
-        username: me.username,
+        username: me.username || undefined,
       });
       const pin = p.pin ? await hashPin(p.pin) : null;
       await sql.transaction([
-        sql`UPDATE horacerta.users SET name=${p.name},job=${p.job},phone=${p.phone},hourly_rate=${p.hourly_rate},pin_hash=coalesce(${pin},pin_hash),login_attempts=CASE WHEN ${!!pin} THEN 0 ELSE login_attempts END,pin_change_required=CASE WHEN ${!!pin} THEN false ELSE pin_change_required END,pin_change_prompted=CASE WHEN ${!!pin} THEN true ELSE pin_change_prompted END WHERE id=${me.id}`,
+        sql`UPDATE horacerta.users SET name=${p.name},job=${p.job},phone=${p.phone},monthly_salary=CASE WHEN ${!!pay} THEN ${pay?.monthly_salary ?? null} ELSE monthly_salary END,monthly_hours=CASE WHEN ${!!pay} THEN ${pay?.monthly_hours ?? 220} ELSE monthly_hours END,pin_hash=coalesce(${pin},pin_hash),login_attempts=CASE WHEN ${!!pin} THEN 0 ELSE login_attempts END,pin_change_required=CASE WHEN ${!!pin} THEN false ELSE pin_change_required END,pin_change_prompted=CASE WHEN ${!!pin} THEN true ELSE pin_change_prompted END WHERE id=${me.id}`,
         ...(pin
           ? [sql`DELETE FROM horacerta.sessions WHERE user_id=${me.id}`]
           : []),
@@ -59,7 +66,6 @@ export async function POST(req: Request) {
       const p = personSchema.parse({
         ...body.data,
         email: old?.email || crypto.randomUUID() + "@horacerta.local",
-        hourly_rate: old?.hourly_rate || 0,
       });
       if (old?.role === "coordinator" && !p.active)
         throw new ApiError(400, "O coordenador deve permanecer ativo.");
