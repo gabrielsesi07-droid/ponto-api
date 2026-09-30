@@ -15,7 +15,7 @@ export function ManualPoints({state,demo,onChanged,onManual,onHistory,onSummary,
     <section className="panel p-6 sm:p-9">
       <p className="text-sm muted">Olá, {state.me.name}</p>
       <h2 className="mt-2 text-2xl font-bold">Registre as horas do seu trabalho</h2>
-      <p className="mt-3 muted">Terminou o atendimento? Escolha a OS e informe os horários reais de entrada, saída e intervalo. Você também pode registrar dias anteriores, conforme as permissões da empresa.</p>
+      <p className="mt-3 muted">Terminou o atendimento? Escolha a OS e informe os horários reais de entrada e saída. O intervalo é automático, com opção de definir uma duração específica. Você também pode registrar dias anteriores, conforme as permissões da empresa.</p>
       <ol className="my-6 grid gap-3 text-sm sm:grid-cols-3">
         <li className="rounded-xl bg-blue-50 p-4">1. Escolha a data e a OS</li>
         <li className="rounded-xl bg-blue-50 p-4">2. Informe os horários realizados</li>

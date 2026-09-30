@@ -25,7 +25,7 @@ import { PointOrderPicker } from './point-order-picker';
 import { PointDatePicker } from './point-date-picker';
 import { CompensationFields } from './compensation-fields';
 import { compensationSchema, DEFAULT_MONTHLY_HOURS } from '@/lib/compensation';
-import { workedMinutes } from '@/lib/manual-work';
+import { automaticBreakMinutes, workedMinutes } from '@/lib/manual-work';
 export type Editor =
   | { kind: "entry"; data?: Entry; order?: {id:string; date:string; company:string; service:string} }
   | { kind: "user"; data?: Person }
@@ -93,9 +93,11 @@ export function EditDialog({
   );
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const [customBreak, setCustomBreak] = useState(!!e);
   const change = (key: string, value: string | number | boolean) =>
     setForm((f) => ({ ...f, [key]: value }));
-  const workMinutes = editor.kind === 'entry' ? workedMinutes(String(form.start), String(form.end), Number(form.break_minutes)) : null;
+  const breakMinutes = customBreak ? Number(form.break_minutes) : automaticBreakMinutes(String(form.start), String(form.end));
+  const workMinutes = editor.kind === 'entry' ? workedMinutes(String(form.start), String(form.end), breakMinutes) : null;
   const input = (
     key: string,
     label: string,
@@ -133,7 +135,8 @@ export function EditDialog({
           client_id: e?.client_id || null,
           service_type: e?.service_type || "",
           end: form.end || null,
-          break_minutes: Number(form.break_minutes),
+          break_minutes: breakMinutes,
+          break_mode: customBreak ? 'custom' : 'automatic',
           ...(e ? { id: e.id, version: e.version } : {}),
         });
       else {
@@ -208,16 +211,20 @@ export function EditDialog({
               <PointOrderPicker value={String(form.order_id || '')} date={String(form.date)} demo={demo} disabled={busy} entryId={e?.id} existingOrderId={e?.order_id}
                 onChange={order => setForm(f => ({...f,order_id:order?.id || '',company:order?.client_name || e?.company || '',service:order?.title || e?.service || ''}))} />
               {e && !e.order_id && <p className="full text-sm text-amber-900">Registro anterior à obrigatoriedade de OS. Você pode preservar o histórico ou vinculá-lo à OS correta; o sistema não escolherá uma por conta própria.</p>}
-              {input("break_minutes", "Pausa (minutos)", "number", true, {
-                min: 0,
-                max: 1439,
-              })}
               {input("start", "Entrada", "time", true)}
               {input("end", "Saída (HH:MM)", "text", true, {
                 placeholder: "18:00 ou 24:00",
                 pattern: "([01][0-9]|2[0-3]):[0-5][0-9]|24:00",
                 maxLength: 5,
               })}
+              <div className="full space-y-2 rounded-lg border p-3">
+                <label className="flex-row! items-center gap-3! cursor-pointer"><input type="checkbox" className="h-5! w-5! shrink-0" checked={customBreak} disabled={busy} onChange={event => setCustomBreak(event.target.checked)} />Definir intervalo específico</label>
+                {customBreak ? <>
+                  {input('break_minutes', 'Intervalo total (minutos)', 'number', true, {min:0,max:1439})}
+                  <p className="text-xs muted">Substitui o intervalo automático, não soma. Informe 0 se não houve intervalo.{e ? ' O valor salvo foi preservado; desmarque para recalcular pelo padrão.' : ''}</p>
+                </> : <p className="text-xs muted">Padrão: 12h–13h; se não houver sobreposição, 19h–20h. Apenas um intervalo é descontado, limitado ao trecho dentro da jornada. Das 10h às 22h, o desconto é de 60 minutos.</p>}
+                <p className="text-sm" aria-live="polite">Intervalo {customBreak ? 'específico' : 'automático'}: {breakMinutes} minutos.</p>
+              </div>
               <p className="full rounded-lg bg-blue-50 p-3 text-sm" aria-live="polite">{workMinutes === null ? 'Informe entrada, saída e intervalo para conferir a duração. Se o trabalho passou da meia-noite, registre cada data separadamente: até 24:00 no primeiro dia e a partir de 00:00 no seguinte.' : `Tempo de trabalho: ${Math.floor(workMinutes / 60)}h ${String(workMinutes % 60).padStart(2,'0')}min, descontado o intervalo. As horas extras são calculadas ao salvar, somando os serviços do dia.`}</p>
               <div className="full">
                 {input("company", "Empresa atendida", "text", true, {

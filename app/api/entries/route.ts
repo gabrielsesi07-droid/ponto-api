@@ -8,6 +8,7 @@ import {
   ApiError,
 } from "@/lib/server";
 import { minutes, today, type Entry, type Rules } from "@/lib/domain";
+import { automaticBreakMinutes } from '@/lib/manual-work';
 const schema = z.object({
   id: z.string().uuid().optional(),
   version: z.number().int().optional(),
@@ -21,6 +22,7 @@ const schema = z.object({
     .regex(/^(?:([01]\d|2[0-3]):[0-5]\d|24:00)$/)
     .nullable(),
   break_minutes: z.coerce.number().int().min(0).max(1439),
+  break_mode: z.enum(['automatic', 'custom']).default('custom'),
   company: z.string().trim().max(160).default(''),
   service: z
     .string()
@@ -39,6 +41,7 @@ export async function POST(req: Request) {
       throw new ApiError(403, "Você só pode registrar a própria jornada.");
     if(!p.id&&p.user_id!==me.id)throw new ApiError(403,'Novas marcações pertencem sempre à pessoa conectada.');
     if (!p.end) throw new ApiError(400, 'Informe a saída real do trabalho. O registro deve conter entrada, saída e intervalo.');
+    if (p.break_mode === 'automatic') p.break_minutes = automaticBreakMinutes(p.start, p.end);
     if (
       !Number.isFinite(new Date(p.date + "T12:00:00Z").getTime()) ||
       new Date(p.date + "T12:00:00Z").toISOString().slice(0, 10) !== p.date ||
