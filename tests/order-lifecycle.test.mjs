@@ -1,8 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { hasCancelledPending, matchesOrderFilter, matchesOrderSection } from '../lib/order-lifecycle.ts';
+import { hasCancelledPending, matchesOrderFilter, matchesOrderSection, orderStatusFilters } from '../lib/order-lifecycle.ts';
 
 const cancelled = { status: 'Cancelada', trips: [], active_points: 0, pending_checklists: 0 };
+test('Situação oferece Todas como primeira opção e reúne as OS em aberto', () => {
+  assert.deepEqual(orderStatusFilters(false), ['Todas', 'Abertas', 'Agendada', 'Em andamento']);
+  const orders = ['Agendada', 'Em andamento', 'Concluída', 'Cancelada'].map(status => ({...cancelled, status}));
+  assert.deepEqual(orders.filter(o => matchesOrderSection(o, false, orderStatusFilters(false)[0])).map(o => o.status), ['Agendada', 'Em andamento']);
+  assert.deepEqual(orderStatusFilters(true), ['Todas', 'Concluída', 'Cancelada', 'Pendências']);
+});
 test('Canceladas com ponto, viagem ou conferência pendente permanecem visíveis', () => {
   for (const patch of [{ active_points: 1 }, { pending_checklists: 1 }, { trips: [{ return_km: null }] }]) {
     const order = { ...cancelled, ...patch };

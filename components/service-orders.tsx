@@ -53,7 +53,7 @@ import {
   type ServiceClient,
 } from "@/lib/orders";
 import { today, type Person } from "@/lib/domain";
-import { hasCancelledPending, matchesOrderSection } from '@/lib/order-lifecycle';
+import { hasCancelledPending, matchesOrderSection, orderStatusFilters } from '@/lib/order-lifecycle';
 
 const dateLabel = (v: string) =>
   new Intl.DateTimeFormat("pt-BR", {
@@ -146,7 +146,7 @@ export function ServiceOrders({
       kind: "client" | "vehicle";
       data?: ServiceClient | Vehicle;
     } | null>(null);
-  const [filter, setFilter] = useState("Abertas"),
+  const [filter, setFilter] = useState("Todas"),
     [search, setSearch] = useState("");
   const [clientFilter, setClientFilter] = useState('Ativos'), [clientSearch, setClientSearch] = useState('');
   const [historyFilter, setHistoryFilter] = useState('Todas'), [historySearch, setHistorySearch] = useState(''), [historyMonth, setHistoryMonth] = useState('');
@@ -345,7 +345,7 @@ export function ServiceOrders({
                 value={currentFilter}
                 onChange={(e) => history ? setHistoryFilter(e.target.value) : setFilter(e.target.value)}
               >
-                {(history ? ['Todas', 'Concluída', 'Cancelada', 'Pendências'] : ['Abertas', 'Agendada', 'Em andamento']).map((s) => (
+                {orderStatusFilters(history).map((s) => (
                   <option key={s}>{s}</option>
                 ))}
               </select>
