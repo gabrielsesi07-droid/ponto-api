@@ -17,7 +17,8 @@ export type ChecklistTemplate = { id: string; model_id: string; title: string; i
   source_name: string; source_hash: string; status: 'draft' | 'imported' | 'active' | 'archived'; version: number };
 export type OrderChecklist = { id: string; order_id: string; model_id: string; model_name: string; template_version: number | null;
   title: string; source_name: string; source_hash: string; source_obsolete?: boolean; source_review_pending?: boolean; items: ChecklistItem[];
-  notes: string; identification: string; version: number; status: 'open' | 'completed';
+  notes: string; identification: string; version: number; status: 'open' | 'completed' | 'waived';
+  waived_reason?: string | null; waived_at?: string | null; waived_by_name?: string | null;
   updated_at: string; updated_by_name: string; completed_at: string | null; completed_by_name: string | null; detached: boolean };
 export const newChecklistItem = (): ChecklistItem => ({ id: crypto.randomUUID(), label: '', planned: null,
   outgoing: false, incoming: false, outgoing_qty: null, incoming_qty: null, na: false, notes: '' });

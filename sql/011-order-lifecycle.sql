@@ -5,7 +5,7 @@ CREATE OR REPLACE FUNCTION horacerta.order_can_delete(target uuid) RETURNS boole
  AND NOT EXISTS(SELECT 1 FROM horacerta.vehicle_trips WHERE order_id=target)
  AND NOT EXISTS(SELECT 1 FROM horacerta.order_events e WHERE e.order_id=target AND e.action IN ('Atendimento iniciado','Ponto iniciado','OS concluída','Saída do veículo','Retorno do veículo'))
  AND NOT EXISTS(SELECT 1 FROM horacerta.order_checklists c WHERE c.order_id=target AND
-   (c.status='completed' OR c.notes<>'' OR c.identification<>'' OR EXISTS(SELECT 1 FROM jsonb_array_elements(c.items) i
+   (c.status IN ('completed','waived') OR c.notes<>'' OR c.identification<>'' OR EXISTS(SELECT 1 FROM jsonb_array_elements(c.items) i
     WHERE coalesce((i->>'outgoing')::boolean,false) OR coalesce((i->>'incoming')::boolean,false) OR coalesce((i->>'na')::boolean,false)
       OR i->>'outgoing_qty' IS NOT NULL OR i->>'incoming_qty' IS NOT NULL OR coalesce(i->>'notes','')<>'')))
  AND NOT EXISTS(SELECT 1 FROM horacerta.checklist_history h JOIN horacerta.order_checklists c ON c.id=h.checklist_id WHERE c.order_id=target

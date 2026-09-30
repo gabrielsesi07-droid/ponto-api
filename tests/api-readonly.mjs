@@ -57,7 +57,8 @@ try {
  for(const entity of ['user','client','settings'])check((await call('/api/manage','employee',{entity,data:{}})).status===403,'Employee denied manage '+entity);
  check((await call('/api/library','employee',{})).status===403,'Employee cannot publish library');
  check((await call('/api/checklists','coordinator',{action:'save'})).status===403,'Coordinator cannot confer for employee');
- for(const action of ['sync','custom','reopen'])check((await call('/api/checklists','employee',{action})).status===403,'Employee denied checklist '+action);
+ for(const action of ['sync','custom','reopen','waive'])check((await call('/api/checklists','employee',{action})).status===403,'Employee denied checklist '+action);
+ check((await call('/api/checklists','coordinator',{action:'waive',id:zero,version:1,reason:'curto'})).status===400,'Checklist waiver requires a meaningful reason before mutation');
  check((await call('/api/places?q=abc','employee')).status===403,'Places restricted to coordinator');
  for(const path of ['/api/entries','/api/clock','/api/manage']){const r=await call(path,'employee','{');check(r.status===400,'Malformed JSON handled '+path+' '+JSON.stringify(r));}
  check((await call('/api/manage','employee',{data:'x'.repeat(30001)})).status===413,'Actual payload size bounded');

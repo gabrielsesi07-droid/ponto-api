@@ -10,6 +10,8 @@ const read=async name=>readFile(new URL('../sql/'+name,import.meta.url),'utf8');
 const statements=(await read('001-schema.sql')).split(';').filter(s=>s.trim());
 statements.push(`CREATE TABLE horacerta.timers(user_id uuid PRIMARY KEY REFERENCES horacerta.users(id),started_at timestamptz NOT NULL,paused_at timestamptz,pauses jsonb NOT NULL DEFAULT '[]',rate numeric(12,2) NOT NULL,rules jsonb NOT NULL,company text NOT NULL DEFAULT '',service text NOT NULL DEFAULT '',notes text NOT NULL DEFAULT '')`);
 for(const name of ['003-orders.sql','005-flexible-client.sql','006-library.sql','007-checklists.sql','009-imported-checklists.sql','010-client-search.sql','011-order-lifecycle.sql','012-client-lifecycle.sql','008-checklist-actions.sql','004-order-actions.sql','002-clock-start-function.sql','002-clock-function.sql','013-points-require-order.sql']) statements.push(...(await read(name)).split(/\r?\n-- statement-break\r?\n/).filter(s=>s.trim()));
+// Waiver migration is additive and repeatable; no real checklists are changed.
+for (let i=0;i<2;i++) statements.push(...(await read('018-checklist-waiver.sql')).split(/\r?\n-- statement-break\r?\n/).filter(s=>s.trim()));
 // Apply twice to verify the additive salary migration can be rerun safely.
 for (let i=0; i<2; i++) statements.push(...(await read('014-monthly-salary.sql')).split(/\r?\n-- statement-break\r?\n/).filter(s=>s.trim()));
 statements.push(`DO $$
@@ -185,6 +187,32 @@ BEGIN
  ASSERT horacerta.order_pending_checklists(first_id)=0,'Return conference clears pending';
  PERFORM horacerta.checklist_action(admin,'reopen',jsonb_build_object('id',check_id,'version',3,'reason','Corrigir observação'));
  ASSERT horacerta.order_pending_checklists(first_id)=1,'Reopened conference is pending again';
+ BEGIN
+   PERFORM horacerta.waive_order_checklist(worker,check_id,4,'Cliente cancelou o atendimento');
+   RAISE EXCEPTION 'Employee waiver unexpectedly allowed';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'Somente o coordenador%' THEN RAISE; END IF; END;
+ BEGIN
+   PERFORM horacerta.waive_order_checklist(admin,check_id,4,'curto');
+   RAISE EXCEPTION 'Waiver without reason unexpectedly allowed';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'Informe uma justificativa%' THEN RAISE; END IF; END;
+ BEGIN
+   PERFORM horacerta.waive_order_checklist(admin,check_id,3,'Cliente cancelou o atendimento');
+   RAISE EXCEPTION 'Stale waiver unexpectedly allowed';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'Checklist atualizado%' THEN RAISE; END IF; END;
+ item:=(SELECT items FROM horacerta.order_checklists WHERE id=check_id);
+ PERFORM horacerta.waive_order_checklist(admin,check_id,4,'Cliente cancelou o atendimento');
+ ASSERT horacerta.order_pending_checklists(first_id)=0,'Waiver clears cancelled checklist pending';
+ ASSERT (SELECT status='waived' AND items=item AND completed_by IS NULL AND waived_by=admin AND waived_reason='Cliente cancelou o atendimento' FROM horacerta.order_checklists WHERE id=check_id),'Waiver preserves items and does not invent completion';
+ ASSERT EXISTS(SELECT 1 FROM horacerta.checklist_history WHERE checklist_id=check_id AND action LIKE 'Checklist dispensado:%' AND snapshot->'before'->>'status'='open'),'Waiver audited with original snapshot';
+ ASSERT NOT horacerta.order_can_delete(first_id),'Waived history cannot be erased';
+ BEGIN
+   PERFORM horacerta.waive_order_checklist(admin,check_id,5,'Nova tentativa de dispensa');
+   RAISE EXCEPTION 'Duplicate waiver unexpectedly allowed';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'Somente checklists pendentes%' THEN RAISE; END IF; END;
+ BEGIN
+   PERFORM horacerta.waive_order_checklist(admin,(SELECT id FROM horacerta.order_checklists WHERE order_id=fresh_id),1,'Atendimento ainda não cancelado');
+   RAISE EXCEPTION 'Active order waiver unexpectedly allowed';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'Somente checklists de OS canceladas%' THEN RAISE; END IF; END;
  PERFORM horacerta.order_action(admin,'cancel',jsonb_build_object('id',fresh_id,'version',1,'notes','Cliente cancelou antes da saída'));
  ASSERT horacerta.order_pending_checklists(fresh_id)=0,'Untouched copied checklist is not pending after cancellation';
  ASSERT horacerta.order_can_delete(fresh_id),'Unused cancelled order can be deleted';

@@ -103,7 +103,7 @@ export function OrderChecklistEditor({ checklist, admin, closed, onClose, onSave
   const sending = useRef(false), feedback = useRef<HTMLDivElement>(null), editor = useRef<HTMLDivElement>(null);
   const issues = attemptedComplete ? checklistCompletionIssues(items) : [];
   useEffect(() => { if (error) feedback.current?.focus(); }, [error]);
-  const readOnly = admin || closed || checklist.detached || checklist.status === 'completed' || !checklist.items.length;
+  const readOnly = admin || closed || checklist.detached || checklist.status !== 'open' || !checklist.items.length;
   const progress = checklistProgress(items);
   async function save(action: 'save' | 'complete' | 'reopen') {
     if (sending.current) return;
@@ -124,7 +124,8 @@ export function OrderChecklistEditor({ checklist, admin, closed, onClose, onSave
   }
   return <Dialog open onOpenChange={open => { if (!open && !busy && (!dirty || window.confirm('Sair sem salvar este checklist da OS?'))) onClose(); }}>
     <DialogContent ref={editor} className="max-h-[92dvh] overflow-y-auto sm:max-w-3xl">
-      <DialogHeader><DialogTitle>{checklist.model_name} · conferência</DialogTitle><DialogDescription>Cópia exclusiva desta OS. Editar aqui não altera o catálogo. {checklist.status === 'completed' ? 'Concluído.' : 'Em preenchimento.'}</DialogDescription></DialogHeader>
+      <DialogHeader><DialogTitle>{checklist.model_name} · conferência</DialogTitle><DialogDescription>Cópia exclusiva desta OS. Editar aqui não altera o catálogo. {checklist.status === 'waived' ? 'Dispensado — não equivale a conferência concluída.' : checklist.status === 'completed' ? 'Concluído.' : 'Em preenchimento.'}</DialogDescription></DialogHeader>
+      {checklist.status === 'waived' && <p className="rounded-lg bg-amber-50 p-3 text-sm">Dispensado por {checklist.waived_by_name || checklist.updated_by_name}{checklist.waived_at ? ` em ${new Date(checklist.waived_at).toLocaleString('pt-BR')}` : ''}. Motivo: {checklist.waived_reason}. As marcações abaixo são o registro anterior à dispensa.</p>}
       <p className="rounded-lg bg-blue-50 p-3 text-sm">Ida: {progress.outgoing}/{progress.total} · Volta: {progress.incoming}/{progress.total}. {admin ? 'Acompanhamento do coordenador. A conferência é realizada por um colaborador da equipe.' : readOnly ? 'Conferência disponível para consulta e impressão.' : 'Confira os itens e salve pelo seu login. Seu nome será registrado no histórico.'}</p>
       {checklist.completed_by_name && <p className="text-sm font-semibold text-emerald-800">Conferência concluída por {checklist.completed_by_name}{checklist.completed_at ? ` em ${new Date(checklist.completed_at).toLocaleString('pt-BR')}` : ''}.</p>}
       {checklist.source_obsolete && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">A origem foi marcada como obsoleta. Consulte o coordenador antes de utilizar este checklist.</p>}
@@ -158,6 +159,16 @@ export function OrderChecklists({ orderId, admin, closed, cancelled = false, dem
   const [data, setData] = useState<OrderData | null>(null), [error, setError] = useState(''), [selected, setSelected] = useState<OrderChecklist | null>(null);
   const [revision, setRevision] = useState(0), [busy, setBusy] = useState(false);
   const [templateModel, setTemplateModel] = useState('');
+  const [waiving,setWaiving]=useState<OrderChecklist|null>(null),[waiveReason,setWaiveReason]=useState(''),[waiveError,setWaiveError]=useState(''),[waiveConfirmed,setWaiveConfirmed]=useState(false);
+  async function waive() {
+    if(!waiving || busy || demo)return;
+    setBusy(true);setWaiveError('');
+    try {
+      await submitChecklist({action:'waive',id:waiving.id,version:waiving.version,reason:waiveReason});
+      setWaiving(null);setRevision(n=>n+1);await onChanged?.();
+      toast.success('Checklist dispensado. Histórico preservado; pontos e viagens não foram alterados.');
+    } catch(e){setWaiveError((e as Error).message);}finally{setBusy(false);}
+  }
   useEffect(() => {
     if (demo) return;
     const controller = new AbortController();
@@ -176,17 +187,20 @@ export function OrderChecklists({ orderId, admin, closed, cancelled = false, dem
   if (demo) return <p className="text-sm text-slate-500">Checklists digitais disponíveis ao entrar com seu acesso.</p>;
   return <section className="space-y-3 rounded-xl border p-4">
     <h3 className="flex items-center gap-2 font-semibold"><ClipboardList size={18} />Checklists dos equipamentos</h3>
+    {admin && cancelled && <p className="rounded-lg bg-amber-50 p-3 text-sm">Nesta OS cancelada, você pode dispensar um checklist pendente com justificativa. A dispensa não confirma a devolução dos equipamentos e não resolve pontos ou viagens em aberto.</p>}
     <p className="text-sm text-slate-600">{admin ? 'Acompanhe a conferência feita pelos colaboradores designados. Você pode consultar, imprimir e reabrir para correção.' : 'Um colaborador da equipe confere os equipamentos na saída e no retorno. O sistema registra quem salvou e quem concluiu.'}</p>
     {admin && !closed && !cancelled && data?.order.checker_count === 0 && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Esta OS não tem colaborador designado para conferir. Use “Editar OS” e inclua alguém com perfil de colaborador na equipe. O acesso de coordenador é somente para acompanhamento.</p>}
     {!closed && data?.checklists.some(c => !c.detached && c.status === 'open') && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{cancelled ? 'Confira a devolução do que saiu. Para itens não utilizados, marque “Não se aplica” e justifique. Listas nunca iniciadas não geram pendência no cancelamento.' : 'Conclua os checklists vinculados antes de encerrar a OS. Diferenças de quantidade precisam de observação.'}</p>}
     {error && <p role="alert" className="text-sm text-red-700">{error}<button className="ml-2 underline" onClick={() => setRevision(n => n + 1)}>Tentar novamente</button></p>}
     {!data && !error && <p role="status" className="text-sm">Carregando checklists…</p>}
     {data?.checklists.map(c => { const progress = checklistProgress(c.items); return <div key={c.id} className="rounded-lg border bg-slate-50 p-3">
-      <b className="text-sm">{c.model_name}</b><p className="mt-1 text-xs text-slate-600">{c.detached ? 'Equipamento removido da OS · histórico preservado' : !progress.total ? 'Lista de itens ausente — preparação pendente' : c.status === 'completed' ? 'Concluído' : `Ida ${progress.outgoing}/${progress.total} · Volta ${progress.incoming}/${progress.total}`} · rev. {c.version}</p>
+      <b className="text-sm">{c.model_name}</b><p className="mt-1 text-xs text-slate-600">{c.status === 'waived' ? 'Dispensado pelo coordenador — não conferido' : c.detached ? 'Equipamento removido da OS · histórico preservado' : !progress.total ? 'Lista de itens ausente — preparação pendente' : c.status === 'completed' ? 'Concluído' : `Ida ${progress.outgoing}/${progress.total} · Volta ${progress.incoming}/${progress.total}`} · rev. {c.version}</p>
+      {c.status === 'waived' && <p className="mt-2 text-sm text-amber-900">Justificativa: {c.waived_reason}</p>}
       {c.source_review_pending && <p className="mt-2 text-xs text-amber-900">Lista importada do documento do equipamento · confira os itens.</p>}
       <p className="mt-1 text-xs text-slate-500">Última alteração: {c.updated_by_name} · {new Date(c.updated_at).toLocaleString('pt-BR')}</p>
       {c.completed_by_name && <p className="mt-2 text-sm font-medium text-emerald-800">Conferido por {c.completed_by_name}</p>}
-      <Button className="mt-3" variant="outline" onClick={() => setSelected(c)}>{admin || closed || c.detached || c.status === 'completed' ? 'Consultar e imprimir' : 'Conferir equipamentos'}</Button>
+      <Button className="mt-3" variant="outline" onClick={() => setSelected(c)}>{admin || closed || c.detached || c.status !== 'open' ? 'Consultar e imprimir' : 'Conferir equipamentos'}</Button>
+      {admin && cancelled && !closed && !c.detached && c.status === 'open' && <Button className="mt-3 sm:ml-2" variant="outline" disabled={busy} onClick={()=>{setWaiving(c);setWaiveReason('');setWaiveError('');setWaiveConfirmed(false);}}>Dispensar checklist</Button>}
       {admin && !closed && !cancelled && !c.detached && !c.items.length && <Button disabled={busy} className="ml-2 mt-3" onClick={() => data.models.find(m => m.id === c.model_id)?.template_title ? void attach() : setTemplateModel(c.model_id)}>Preparar e vincular itens</Button>}
     </div>; })}
     {data?.models.filter(m => !data.checklists.some(c => c.model_id === m.id)).map(m => <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm" key={m.id}><b>{m.name}</b><p className="mt-1">{cancelled ? 'Nenhum checklist foi vinculado antes do cancelamento.' : m.template_title ? 'Existe uma lista de itens do equipamento disponível para vincular.' : 'Sem lista de itens disponível. O coordenador precisa preparar o checklist para a equipe.'}</p>{admin && !closed && !cancelled && <Button disabled={busy} className="mt-2" variant="outline" onClick={() => m.template_title ? void attach() : setTemplateModel(m.id)}>{m.template_title ? 'Vincular itens do equipamento' : 'Preparar lista de itens'}</Button>}</div>)}
@@ -194,5 +208,11 @@ export function OrderChecklists({ orderId, admin, closed, cancelled = false, dem
     {!!data?.history.length && <details className="border-t pt-2 text-xs"><summary className="cursor-pointer py-2 font-semibold">Histórico de conferências</summary>{data.history.map(h => <p className="mb-2" key={h.id}>{h.action} · {h.name} · {new Date(h.created_at).toLocaleString('pt-BR')}</p>)}</details>}
     {selected && <OrderChecklistEditor checklist={selected} admin={admin} closed={closed} onClose={() => setSelected(null)} onSaved={() => { setRevision(n => n + 1); void onChanged?.(); }} />}
     {templateModel && <ChecklistTemplateEditor modelId={templateModel} onClose={() => setTemplateModel('')} onSaved={() => void attach()} />}
+    {waiving && <Dialog open onOpenChange={open=>{if(!open&&!busy)setWaiving(null);}}><DialogContent className="max-h-[90dvh] overflow-y-auto"><DialogHeader><DialogTitle>Dispensar checklist · {waiving.model_name}</DialogTitle><DialogDescription>Somente para OS cancelada. Os itens e as conferências anteriores serão preservados. O checklist deixará de bloquear as pendências, sem ser marcado como concluído.</DialogDescription></DialogHeader>
+      <label className="block text-sm font-medium">Justificativa (mínimo de 10 caracteres)<textarea className="check-input min-h-24" disabled={busy} maxLength={500} value={waiveReason} onChange={e=>setWaiveReason(e.target.value)} placeholder="Explique por que esta conferência será dispensada." /></label>
+      <label className="flex items-start gap-3 text-sm"><input type="checkbox" className="mt-1 size-4 shrink-0" disabled={busy} checked={waiveConfirmed} onChange={e=>setWaiveConfirmed(e.target.checked)} />Estou ciente de que dispensar não comprova a devolução dos equipamentos. Meu nome e a justificativa ficarão no histórico.</label>
+      {waiveError&&<p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{waiveError}</p>}
+      <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={busy} onClick={()=>setWaiving(null)}>Voltar sem dispensar</Button><Button disabled={busy||!waiveConfirmed||waiveReason.trim().length<10} onClick={()=>void waive()}>{busy?'Dispensando…':'Confirmar dispensa'}</Button></div>
+    </DialogContent></Dialog>}
   </section>;
 }

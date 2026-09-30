@@ -10,9 +10,10 @@ export async function GET(req: Request) {
     const id = z.string().uuid().parse(new URL(req.url).searchParams.get('order'));
     const order = await orderForChecklist(id, me);
     const [checklists, models, history] = await Promise.all([
-      sql`SELECT c.*,u.name updated_by_name,fin.name completed_by_name,NOT c.model_id=ANY(${order.model_ids}::uuid[]) detached,
+      sql`SELECT c.*,u.name updated_by_name,fin.name completed_by_name,w.name waived_by_name,NOT c.model_id=ANY(${order.model_ids}::uuid[]) detached,
         coalesce(d.obsolete,false) source_obsolete FROM horacerta.order_checklists c
         JOIN horacerta.users u ON u.id=c.updated_by LEFT JOIN horacerta.users fin ON fin.id=c.completed_by
+        LEFT JOIN horacerta.users w ON w.id=c.waived_by
         LEFT JOIN horacerta.library_documents d ON d.id=c.source_document_id WHERE c.order_id=${id}::uuid ORDER BY c.model_name`,
       sql`SELECT m.id,m.name,CASE WHEN m.status<>'archived' AND NOT coalesce(d.obsolete,false) AND jsonb_array_length(t.items)>0
         AND (t.source_document_id IS NULL OR d.ready) AND (t.status<>'imported' OR t.source_document_id IS NOT NULL) THEN t.title END template_title FROM horacerta.equipment_models m
@@ -30,6 +31,12 @@ export async function POST(req: Request) {
   try {
     const me = await member();
     const raw = await checklistPayload(req);
+    if (raw.action === 'waive') {
+      coordinator(me);
+      const p=z.object({id:z.string().uuid(),version:z.number().int().positive(),reason:z.string().trim().min(10,'Informe uma justificativa com pelo menos 10 caracteres.').max(500)}).parse(raw);
+      const [out]=await db()`SELECT horacerta.waive_order_checklist(${me.id}::uuid,${p.id}::uuid,${p.version},${p.reason}) result`;
+      return Response.json(out.result,{headers:libraryHeaders});
+    }
     const action = z.enum(['save','complete','reopen','sync','custom']).parse(raw.action);
     let data;
     if (action === 'sync') {
