@@ -20,7 +20,7 @@ export function CompensationFields({ salary, hours, onSalary, onHours, currency 
             min={1} max={744} step="0.01" required />
         </label>
       </div>
-      <p className="mt-3 text-sm muted">Padrão da empresa: 8h por dia, de segunda a sexta, 40h semanais e divisor de 200h mensais. Informe o salário bruto, antes dos descontos.</p>
+      <p className="mt-3 text-sm muted">Salário dividido por 200h mensais (base do escritório: 8h por dia, 40h semanais). Neste sistema, os serviços técnicos têm jornada padrão de 9h por dia útil. Informe o salário bruto, antes dos descontos.</p>
       <div className="mt-3 rounded-lg bg-white p-3 text-sm" role="status" aria-live="polite" aria-atomic="true">
         {valid ? <>
           <span className="block">{money(Number(salary), currency)} ÷ {Number(hours).toLocaleString('pt-BR')} horas mensais</span>

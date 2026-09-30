@@ -1,5 +1,11 @@
 # Jornada informada pelo RH
 
+## Esclarecimento posterior — prevalece sobre a descrição inicial abaixo
+
+O usuário esclareceu que 8h/dia se refere somente ao escritório. Este sistema registra exclusivamente serviços técnicos: a migração 016 mantém o divisor salarial de 200h e restaura a franquia diária de 9h (540 minutos). Não foi criado registro de escritório nem compensação semanal. Pontos já salvos não foram recalculados, inclusive durante o intervalo entre as duas configurações. Testes finais cobrem 9h de serviço com divisor salarial de 200h.
+
+## Registro da solicitação inicial (substituída quanto à jornada diária)
+
 - Regra padrão: 8 horas líquidas por dia útil (480 minutos), segunda a sexta, referência de 40 horas semanais.
 - Divisor mensal para salário bruto: 200 horas, conforme orientação do usuário/RH.
 - Mantida apuração diária das extras, sem compensação automática entre dias nem nova apuração de limite semanal.

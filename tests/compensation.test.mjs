@@ -21,7 +21,7 @@ test('invalid salaries and monthly hours are rejected, not coerced into zero', (
   for (const monthly_hours of [0, -1, 0.5, 744.01, 220.001, NaN, Infinity, null, '', '220'])
     assert.equal(compensationSchema.safeParse({ monthly_salary: 4400, monthly_hours }).success, false);
 });
-test('new 8h/200h rules preserve historical 9h point snapshots', () => {
+test('200h salary divisor is independent of the 9h service quota and preserves history', () => {
   const old = { id:'old', user_id:'u', date:'2026-09-21', start:'08:00', end:'19:00', break_minutes:60,
     rate:30, rules:{...defaults,daily_minutes:540}, holiday:false };
   const currentRate = hourlyRateFromSalary(4400);
@@ -30,7 +30,7 @@ test('new 8h/200h rules preserve historical 9h point snapshots', () => {
   assert.equal(historical.normal, 540);
   assert.equal(historical.extra, 60);
   assert.equal(historical.amount, 45);
-  assert.equal(fresh.normal, 480);
-  assert.equal(fresh.amount, 66);
+  assert.equal(fresh.normal, 540);
+  assert.equal(fresh.amount, 33);
   assert.equal(old.rate, 30);
 });

@@ -91,7 +91,7 @@ export type State = {
   } | null;
 };
 export const defaults: Rules = {
-  daily_minutes: 480,
+  daily_minutes: 540,
   weekday_bonus: 50,
   saturday_bonus: 60,
   sunday_bonus: 100,
