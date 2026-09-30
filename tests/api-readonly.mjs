@@ -41,7 +41,7 @@ try {
  check((await call('/api/clock')).status===401,'Anonymous point selector blocked');
  check((await call('/api/clock?entry_id='+zero,'employee')).status===404,'Unrelated point metadata inaccessible');
  const startedAt=new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date()).replace(' ','T');
- check((await call('/api/clock','employee',{action:'start',started_at:startedAt,company:'Avulso',service:'Avulso'})).status===400,'Live point without OS rejected before mutation');
+ check((await call('/api/clock','employee',{action:'start',started_at:startedAt,company:'Avulso',service:'Avulso'})).status===409,'Legacy timer start rejected; manual hours required');
  check((await call('/api/clock','employee',{action:'start',order_id:zero,started_at:startedAt})).status===409,'Nonexistent OS cannot start a point');
  check((await call('/api/entries','employee',{user_id:actors.employee.id,date:startedAt.slice(0,10),start:'08:00',end:null,break_minutes:0})).status===400,'Manual hours require an actual exit before mutation');
  check((await call('/api/entries','employee',{user_id:actors.employee.id,date:startedAt.slice(0,10),start:'08:00',end:'09:00',break_minutes:0,company:'Avulso',service:'Avulso'})).status===400,'Manual point without OS rejected before mutation');
