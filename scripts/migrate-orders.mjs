@@ -18,3 +18,4 @@ await sql.transaction([
  sql.query(await readFile(new URL('../sql/002-clock-function.sql',import.meta.url),'utf8'))
 ]);
 console.log('Ordens de serviço, clientes e frota preparados.');
+await import('./migrate-push.mjs');

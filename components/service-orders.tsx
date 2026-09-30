@@ -159,6 +159,19 @@ export function ServiceOrders({
   const dismissed = useRef(new Set<string>()),
     request = useRef(0);
   const admin = me.role === "coordinator";
+  const openedFromPush=useRef<string | null>(null);
+  useEffect(()=>{
+    if (loading || blocked || demo) return;
+    const target=new URLSearchParams(window.location.search).get('order');
+    if (!target || openedFromPush.current===target) return;
+    const found=data.orders.find(order=>order.id===target);
+    const timer=setTimeout(()=>{
+      openedFromPush.current=target;
+      if(found)setSelected(found.id);
+      else toast.error('Esta OS não está mais disponível para o seu acesso.');
+    },0);
+    return()=>clearTimeout(timer);
+  },[loading,blocked,demo,data.orders]);
   const reload = useCallback(async () => {
     const version = ++request.current;
     try {
@@ -205,6 +218,7 @@ export function ServiceOrders({
   );
   useEffect(() => {
     if (blocked || selected || editOrder || resource || demo || view === 'register' || view === 'order-history') return;
+    if (new URLSearchParams(window.location.search).has('order')) return;
     const next = data.orders.find(
       (o) =>
         o.members.includes(me.id) &&

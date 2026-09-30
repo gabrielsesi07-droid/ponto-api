@@ -22,6 +22,11 @@ try {
  const end=new Date().toISOString().slice(0,10), date='?from='+end.slice(0,7)+'-01&to='+end;
  for(const path of ['/api/state'+date,'/api/operations','/api/library','/api/checklists?order='+zero,'/api/checklists/preview?models='+zero,'/api/checklists/templates?model='+zero,'/api/places?q=abc','/api/operations/'+zero+'/pdf','/api/library/'+zero,'/api/library/'+zero+'/file'])check((await call(path)).status===401,'Anonymous blocked '+path.split('?')[0]);
  check((await call('/api/session')).body.login===true,'Anonymous session requests login');
+ check((await call('/api/push')).status===401,'Push settings require login');
+ const pushConfig=await call('/api/push','employee');
+ check(pushConfig.status===200 && !!pushConfig.body.publicKey && !('private_key' in pushConfig.body),'Only public push key exposed');
+ check((await call('/api/push','employee',{endpoint:'https://127.0.0.1/private',keys:{p256dh:'bad',auth:'bad'}})).status===400,'Push SSRF payload rejected');
+ check((await call('/api/push','employee',{action:'retry'})).status===403,'Only coordinator may retry queued notifications');
  for(const role of ['coordinator','employee']){
   for(const path of ['/api/session','/api/state'+date,'/api/operations','/api/library'])check((await call(path,role)).status===200,role+' reads '+path.split('?')[0]);
  }

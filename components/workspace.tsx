@@ -64,6 +64,7 @@ import { toast } from "sonner";
 import { Pick, Blank, Status } from "./controls";
 import { EditDialog, SettingsForm, api, type Editor } from "./editors";
 import { ManualPoints } from "./manual-points";
+import {PushSettings} from './push-settings';
 import { QuickLogin } from "./quick-login";
 import { PersonalInsights } from "./personal-insights";
 import { Dashboard } from "./dashboard";
@@ -1043,6 +1044,7 @@ export function Workspace() {
                   onHistory={() => go('entries')}
                 />
               )}
+              {['register','profile'].includes(view) && <PushSettings key={data.me.id} userId={data.me.id} demo={demo} admin={admin}/>}
               {view === "people" &&
                 (admin ? (
                   <>

@@ -1,4 +1,6 @@
 import { z } from "zod";
+import {after} from 'next/server';
+import {dispatchPushSafely} from '@/lib/push-server';
 import {
   db,
   member,
@@ -9,6 +11,7 @@ import {
 import { orderSchema, vehicleSchema, serviceClientSchema } from "@/lib/orders";
 import { checklistPayload } from '@/lib/checklist-server';
 export const dynamic = "force-dynamic";
+export const maxDuration=60;
 export async function GET() {
   try {
     const me = await member(),
@@ -93,6 +96,7 @@ export async function POST(req: Request) {
       throw new ApiError(400, "Atualize a página antes de editar.");
     const result =
       await db()`SELECT horacerta.order_action(${me.id}::uuid,${action},${JSON.stringify(data)}::jsonb) result`;
+    if (action==='save_order') after(dispatchPushSafely);
     return Response.json(result[0].result);
   } catch (e) {
     if ((e as { code?: string }).code === "P0001")
