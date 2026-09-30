@@ -217,7 +217,7 @@ export function ModelPicker({ value, onChange, demo }: { value: string[]; onChan
   const shown = available.filter(m => normalizeSearch(m.name + ' ' + m.family).includes(normalizeSearch(query.trim())));
   return <fieldset className="full min-w-0 rounded-xl border border-blue-200 bg-blue-50/30 p-3 sm:p-4"><legend className="px-1 text-sm font-semibold">Equipamentos do catálogo</legend>
     {demo ? <p className="text-sm">Catálogo privado indisponível na demonstração.</p> : <>
-      <p className="mb-3 text-sm text-slate-600">Selecione os equipamentos desta OS. Você pode revisar e ativar o checklist logo abaixo, sem sair do formulário. Não representa reserva de estoque.</p>
+      <p className="mb-3 text-sm text-slate-600">Selecione apenas os equipamentos desta OS. Os checklists disponíveis serão vinculados automaticamente para os colaboradores conferirem pelo próprio login. Não representa reserva de estoque.</p>
       <label className="block text-sm font-medium">Buscar equipamento<input className="mt-1 min-h-11 w-full min-w-0 rounded-lg border bg-white px-3" type="search" value={query} maxLength={120} placeholder="Nome ou família do equipamento…" onChange={e => setQuery(e.target.value)} /></label>
       {loading && <p className="mt-3 text-sm" role="status">Carregando equipamentos…</p>}
       {error && <div role="alert" className="mt-3 text-sm text-red-800">{error}<Button type="button" variant="outline" className="ml-2" onClick={() => { setLoading(true); setError(''); setRevision(n => n + 1); }}>Tentar novamente</Button></div>}
