@@ -1044,7 +1044,7 @@ export function Workspace() {
                   onHistory={() => go('entries')}
                 />
               )}
-              {['register','profile'].includes(view) && <PushSettings key={data.me.id} userId={data.me.id} demo={demo} admin={admin}/>}
+              {view === 'profile' && <PushSettings key={data.me.id} userId={data.me.id} demo={demo} admin={admin}/>}
               {view === "people" &&
                 (admin ? (
                   <>
