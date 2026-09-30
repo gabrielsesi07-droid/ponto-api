@@ -8,7 +8,7 @@ import {
   ApiError,
 } from "@/lib/server";
 import { minutes, today, type Entry, type Rules } from "@/lib/domain";
-import { automaticBreakMinutes } from '@/lib/manual-work';
+import { automaticBreakForDay } from '@/lib/manual-work';
 const schema = z.object({
   id: z.string().uuid().optional(),
   version: z.number().int().optional(),
@@ -41,7 +41,11 @@ export async function POST(req: Request) {
       throw new ApiError(403, "Você só pode registrar a própria jornada.");
     if(!p.id&&p.user_id!==me.id)throw new ApiError(403,'Novas marcações pertencem sempre à pessoa conectada.');
     if (!p.end) throw new ApiError(400, 'Informe a saída real do trabalho. O registro deve conter entrada, saída e intervalo.');
-    if (p.break_mode === 'automatic') p.break_minutes = automaticBreakMinutes(p.start, p.end);
+    if (p.break_mode === 'automatic') {
+      // Preview value; recompute_auto_breaks re-applies the same rule under the transaction lock.
+      const sameDay = await sql`SELECT start::text,"end"::text FROM horacerta.entries WHERE user_id=${p.user_id}::uuid AND date=${p.date}::date AND deleted_at IS NULL AND (${p.id ?? null}::uuid IS NULL OR id<>${p.id ?? null}::uuid)`;
+      p.break_minutes = automaticBreakForDay(p.start, p.end, sameDay as {start:string;end:string|null}[]);
+    }
     if (
       !Number.isFinite(new Date(p.date + "T12:00:00Z").getTime()) ||
       new Date(p.date + "T12:00:00Z").toISOString().slice(0, 10) !== p.date ||
@@ -104,17 +108,23 @@ export async function POST(req: Request) {
       status = settings.approval_required || !p.end ? "Pendente" : "Aprovado",
       id = p.id || crypto.randomUUID();
     const mutation = sql`WITH source AS MATERIALIZED (SELECT horacerta.point_entry_order(${p.user_id}::uuid,${orderId}::uuid,${p.date}::date,${p.end}::time,${old?.id || null}::uuid) data), changed AS (
- INSERT INTO horacerta.entries AS current(id,user_id,client_id,order_id,date,start,"end",break_minutes,company,service,service_type,notes,holiday,status,rate,rules)
- SELECT ${id}::uuid,${p.user_id}::uuid,(data->>'client_id')::uuid,(data->>'order_id')::uuid,${p.date}::date,${p.start}::time,${p.end}::time,${p.break_minutes},data->>'company',data->>'service',${p.service_type},${p.notes},${p.holiday},${status},${rate},${JSON.stringify(rules)}::jsonb FROM source
+ INSERT INTO horacerta.entries AS current(id,user_id,client_id,order_id,date,start,"end",break_minutes,break_mode,company,service,service_type,notes,holiday,status,rate,rules)
+ SELECT ${id}::uuid,${p.user_id}::uuid,(data->>'client_id')::uuid,(data->>'order_id')::uuid,${p.date}::date,${p.start}::time,${p.end}::time,${p.break_minutes},${p.break_mode},data->>'company',data->>'service',${p.service_type},${p.notes},${p.holiday},${status},${rate},${JSON.stringify(rules)}::jsonb FROM source
  WHERE NOT EXISTS(SELECT 1 FROM horacerta.entries e WHERE e.user_id=${p.user_id}::uuid AND e.date=${p.date}::date AND e.deleted_at IS NULL AND e.id<>${id}::uuid AND e.start<coalesce(${p.end}::time,'24:00'::time) AND coalesce(e."end",'24:00'::time)>${p.start}::time)
  AND NOT EXISTS(SELECT 1 FROM horacerta.timers t WHERE t.user_id=${p.user_id}::uuid AND (t.started_at AT TIME ZONE 'America/Sao_Paulo')<(${p.date}::date+coalesce(${p.end}::time,'24:00'::time)))
- ON CONFLICT(id) DO UPDATE SET client_id=excluded.client_id,order_id=excluded.order_id,date=excluded.date,start=excluded.start,"end"=excluded."end",break_minutes=excluded.break_minutes,company=excluded.company,service=excluded.service,service_type=excluded.service_type,notes=excluded.notes,holiday=excluded.holiday,status=excluded.status,version=current.version+1,updated_at=now()
+ ON CONFLICT(id) DO UPDATE SET client_id=excluded.client_id,order_id=excluded.order_id,date=excluded.date,start=excluded.start,"end"=excluded."end",break_minutes=excluded.break_minutes,break_mode=excluded.break_mode,company=excluded.company,service=excluded.service,service_type=excluded.service_type,notes=excluded.notes,holiday=excluded.holiday,status=excluded.status,version=current.version+1,updated_at=now()
  WHERE current.version=${p.version ?? 0} AND current.deleted_at IS NULL
  RETURNING * ) INSERT INTO horacerta.audit(actor_id,entry_id,action,before_value,after_value) SELECT ${me.id}::uuid,id,${old ? "edit" : "create"},${old ? JSON.stringify(old) : null}::jsonb,to_jsonb(changed) FROM changed RETURNING entry_id`;
     const result = await sql.transaction([
       sql`SELECT pg_advisory_xact_lock(2849061701)`,
       sql`SELECT id FROM horacerta.users WHERE id=${p.user_id} FOR UPDATE`,
       mutation,
+      sql`SELECT horacerta.recompute_auto_breaks(${p.user_id}::uuid,${p.date}::date,${me.id}::uuid)`,
+      ...(old && old.date !== p.date ? [sql`SELECT horacerta.recompute_auto_breaks(${p.user_id}::uuid,${old.date}::date,${me.id}::uuid)`] : []),
+      // Registering hours is proof the service started; no separate "begin" step is required.
+      sql`WITH started AS (UPDATE horacerta.orders SET status='Em andamento' WHERE id=(SELECT order_id FROM horacerta.entries WHERE id=${id}::uuid AND deleted_at IS NULL) AND status='Agendada'
+          AND EXISTS(SELECT 1 FROM horacerta.audit a WHERE a.entry_id=${id}::uuid AND a.actor_id=${me.id}::uuid AND a.created_at=now()) RETURNING id)
+        INSERT INTO horacerta.order_events(order_id,actor_id,action,detail) SELECT id,${me.id}::uuid,'Atendimento iniciado','Horas registradas' FROM started`,
     ]);
     if (!result[2].length)
       throw new ApiError(
@@ -148,6 +158,7 @@ export async function PATCH(req: Request) {
       );
     return Response.json({ ok: true });
   } catch (e) {
+    if ((e as {code?:string}).code === 'P0001') return failure(new ApiError(409, (e as Error).message));
     return failure(e);
   }
 }
@@ -159,12 +170,17 @@ export async function DELETE(req: Request) {
         .object({ id: z.string().uuid(), version: z.number().int() })
         .parse(await payload(req)),
       sql = db();
-    const r =
-      await sql`WITH old AS (SELECT * FROM horacerta.entries WHERE id=${p.id} AND version=${p.version} AND deleted_at IS NULL FOR UPDATE), changed AS (UPDATE horacerta.entries e SET deleted_at=now(),version=e.version+1 FROM old WHERE e.id=old.id RETURNING e.*) INSERT INTO horacerta.audit(actor_id,entry_id,action,before_value,after_value) SELECT ${me.id}::uuid,changed.id,'delete',to_jsonb(old),to_jsonb(changed) FROM changed JOIN old USING(id) RETURNING entry_id`;
+    const [, r] = await sql.transaction([
+      sql`SELECT pg_advisory_xact_lock(2849061701)`,
+      sql`WITH old AS (SELECT * FROM horacerta.entries WHERE id=${p.id} AND version=${p.version} AND deleted_at IS NULL FOR UPDATE), changed AS (UPDATE horacerta.entries e SET deleted_at=now(),version=e.version+1 FROM old WHERE e.id=old.id RETURNING e.*) INSERT INTO horacerta.audit(actor_id,entry_id,action,before_value,after_value) SELECT ${me.id}::uuid,changed.id,'delete',to_jsonb(old),to_jsonb(changed) FROM changed JOIN old USING(id) RETURNING entry_id`,
+      // Removing a record can change the day's span, and therefore its single break window.
+      sql`SELECT horacerta.recompute_auto_breaks(user_id,date,${me.id}::uuid) FROM horacerta.entries WHERE id=${p.id}::uuid AND deleted_at IS NOT NULL`,
+    ]);
     if (!r.length)
       throw new ApiError(409, "Registro já alterado. Atualize a lista.");
     return Response.json({ ok: true });
   } catch (e) {
+    if ((e as {code?:string}).code === 'P0001') return failure(new ApiError(409, (e as Error).message));
     return failure(e);
   }
 }

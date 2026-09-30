@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Pick } from "./controls";
 import {
   today,
+  isClosedMonth,
   type Person,
   type Client,
   type Entry,
@@ -25,7 +26,7 @@ import { PointOrderPicker } from './point-order-picker';
 import { PointDatePicker } from './point-date-picker';
 import { CompensationFields } from './compensation-fields';
 import { compensationSchema, DEFAULT_MONTHLY_HOURS } from '@/lib/compensation';
-import { automaticBreakMinutes, workedMinutes } from '@/lib/manual-work';
+import { automaticBreakForDay, workedMinutes } from '@/lib/manual-work';
 export type Editor =
   | { kind: "entry"; data?: Entry; order?: {id:string; date:string; company:string; service:string} }
   | { kind: "user"; data?: Person }
@@ -93,10 +94,16 @@ export function EditDialog({
   );
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  const [customBreak, setCustomBreak] = useState(!!e);
+  // Legacy records have no stored mode and keep their saved break as a specific value.
+  const [customBreak, setCustomBreak] = useState(!!e && e.break_mode !== 'automatic');
   const change = (key: string, value: string | number | boolean) =>
     setForm((f) => ({ ...f, [key]: value }));
-  const breakMinutes = customBreak ? Number(form.break_minutes) : automaticBreakMinutes(String(form.start), String(form.end));
+  const entryOwner = e?.user_id || state.me.id;
+  const sameDay = editor.kind === 'entry'
+    ? state.entries.filter(x => x.user_id === entryOwner && x.date === form.date && x.id !== e?.id)
+    : [];
+  const breakMinutes = customBreak ? Number(form.break_minutes) : automaticBreakForDay(String(form.start), String(form.end), sameDay);
+  const closedMonth = editor.kind === 'entry' && isClosedMonth(state, String(form.date));
   const workMinutes = editor.kind === 'entry' ? workedMinutes(String(form.start), String(form.end), breakMinutes) : null;
   const input = (
     key: string,
@@ -122,6 +129,10 @@ export function EditDialog({
       toast.info(
         "A demonstração não altera dados reais. Entre com seu login para salvar.",
       );
+      return;
+    }
+    if (closedMonth) {
+      setError('Este mês está fechado. Peça ao coordenador para reabri-lo antes de registrar ou ajustar horas nele.');
       return;
     }
     setBusy(true);
@@ -210,6 +221,7 @@ export function EditDialog({
               <PointDatePicker value={String(form.date)} onChange={date => change('date', date)} initiallyOpen={!e} disabled={busy} />
               <PointOrderPicker value={String(form.order_id || '')} date={String(form.date)} demo={demo} disabled={busy} entryId={e?.id} existingOrderId={e?.order_id}
                 onChange={order => setForm(f => ({...f,order_id:order?.id || '',company:order?.client_name || e?.company || '',service:order?.title || e?.service || ''}))} />
+              {closedMonth && <p className="full rounded-lg bg-amber-50 p-3 text-sm text-amber-900" role="alert">O mês desta data está fechado. Registros e ajustes ficam bloqueados até o coordenador reabri-lo.</p>}
               {e && !e.order_id && <p className="full text-sm text-amber-900">Registro anterior à obrigatoriedade de OS. Você pode preservar o histórico ou vinculá-lo à OS correta; o sistema não escolherá uma por conta própria.</p>}
               {input("start", "Entrada", "time", true)}
               {input("end", "Saída (HH:MM)", "text", true, {
@@ -222,7 +234,7 @@ export function EditDialog({
                 {customBreak ? <>
                   {input('break_minutes', 'Intervalo total (minutos)', 'number', true, {min:0,max:1439})}
                   <p className="text-xs muted">Substitui o intervalo automático, não soma. Informe 0 se não houve intervalo.{e ? ' O valor salvo foi preservado; desmarque para recalcular pelo padrão.' : ''}</p>
-                </> : <p className="text-xs muted">Padrão: 12h–13h; se não houver sobreposição, 19h–20h. Apenas um intervalo é descontado, limitado ao trecho dentro da jornada. Das 10h às 22h, o desconto é de 60 minutos.</p>}
+                </> : <p className="text-xs muted">Um único intervalo por dia, somando todos os seus registros da data: 12h–13h se o dia passa pelo almoço (mesmo que o almoço tenha ficado fora dos registros); caso contrário, 19h–20h. Das 10h às 22h, o desconto é de 60 minutos.{sameDay.length ? ` Considerando ${sameDay.length} outro(s) registro(s) seu(s) nesta data.` : ''}</p>}
                 <p className="text-sm" aria-live="polite">Intervalo {customBreak ? 'específico' : 'automático'}: {breakMinutes} minutos.</p>
               </div>
               <p className="full rounded-lg bg-blue-50 p-3 text-sm" aria-live="polite">{workMinutes === null ? 'Informe entrada, saída e intervalo para conferir a duração. Se o trabalho passou da meia-noite, registre cada data separadamente: até 24:00 no primeiro dia e a partir de 00:00 no seguinte.' : `Tempo de trabalho: ${Math.floor(workMinutes / 60)}h ${String(workMinutes % 60).padStart(2,'0')}min, descontado o intervalo. As horas extras são calculadas ao salvar, somando os serviços do dia.`}</p>
@@ -398,7 +410,7 @@ export function SettingsForm({
       <div className="form-grid">
         {(
           [
-            ["daily_minutes", "Jornada diária (minutos)"],
+            ["daily_minutes", "Horas normais por dia de campo (minutos)"],
             ["weekday_bonus", "Adicional de dia útil (%)"],
             ["saturday_bonus", "Adicional de sábado (%)"],
             ["sunday_bonus", "Adicional de domingo (%)"],
@@ -455,6 +467,9 @@ export function SettingsForm({
             ]}
           />
         </label>
+        <p className="full -mt-2 text-xs muted">
+          Em dia útil, o que passar de {Math.floor(Number(f.daily_minutes) / 60)}h{String(Number(f.daily_minutes) % 60).padStart(2, "0")} no dia é extra. Sábado, domingo e feriado: todas as horas são extras.
+        </p>
         <label className="full flex-row! items-center justify-between border-t pt-5">
           Permitir lançamentos e edições retroativas
           <Switch
@@ -463,6 +478,11 @@ export function SettingsForm({
             aria-label="Permitir retroativos"
           />
         </label>
+        {!f.allow_retro && (
+          <p className="full -mt-2 text-sm text-amber-900">
+            Sem retroativos, o colaborador só registra horas no próprio dia. Quem chega de madrugada ou só preenche no dia seguinte precisará do coordenador.
+          </p>
+        )}
         <label className="full flex-row! items-center justify-between">
           Exigir aprovação do coordenador
           <Switch

@@ -46,6 +46,7 @@ export type Entry = {
   start: string;
   end: string | null;
   break_minutes: number;
+  break_mode?: "automatic" | "custom";
   company: string;
   service: string;
   service_type: string;
@@ -71,6 +72,7 @@ export type State = {
   clients: Client[];
   entries: Entry[];
   settings: Rules;
+  closedMonths?: { month: string; closed_at: string; closed_by: string }[];
   teamTimers?: {
     user_id: string;
     started_at: string;
@@ -187,6 +189,9 @@ export function totals(entries: Calculated[]) {
     { worked: 0, normal: 0, extra: 0, amount: 0 },
   );
 }
+/** Entries of a closed month are read-only for everyone until the coordinator reopens it. */
+export const isClosedMonth = (state: Pick<State, "closedMonths">, date: string) =>
+  !!state.closedMonths?.some((c) => c.month === date.slice(0, 7));
 export function monthBounds(month: string) {
   const [y, m] = month.split("-").map(Number);
   return {

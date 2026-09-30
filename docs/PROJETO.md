@@ -19,9 +19,9 @@ Rotas de interface: ?view=register, insights, entries, reports, profile, dashboa
 
 ## Fluxos e interface
 
-Colaborador: buscar nome → escolher seu código → informar PIN → configurar salário e horas mensais → escolher sua OS e iniciar serviço → registrar pausas → encerrar → consultar Meu resumo ou Histórico. A pessoa é identificada pelo login; empresa e serviço vêm da OS. “Registrar ponto”, no Histórico, abre diretamente um calendário e formulário com OS obrigatória, entrada/saída, pausa, feriado e observação opcional, sem navegar para Meu ponto.
+Colaborador: buscar nome → escolher seu código → informar PIN → configurar salário e horas mensais → abrir a OS do dia → viagem e checklist, quando houver → depois do trabalho, registrar entrada/saída/intervalo na OS → consultar Meu resumo ou Histórico. A pessoa é identificada pelo login; empresa e serviço vêm da OS. “Registrar ponto”, no Histórico, abre diretamente um calendário e formulário com OS obrigatória, entrada/saída, pausa, feriado e observação opcional, sem navegar para Meu ponto.
 
-Coordenador: criar primeiro acesso → cadastrar os colaboradores → acompanhar equipe → revisar horários e valores → aprovar → exportar relatórios. Cada colaborador configura seu salário e carga mensal; o coordenador pode visualizar o valor-hora resultante, mas a edição do cadastro da equipe não o altera. Salário bruto e carga mensal são retornados somente para o próprio usuário, não na lista de pessoas.
+Coordenador: criar primeiro acesso → cadastrar os colaboradores → gerar OS → acompanhar equipe → concluir OS (vê quem ainda não registrou horas) → aprovar o mês em lote → fechar o mês → exportar relatórios. Cada colaborador configura seu salário e carga mensal; o coordenador pode visualizar o valor-hora resultante, mas a edição do cadastro da equipe não o altera. Salário bruto e carga mensal são retornados somente para o próprio usuário, não na lista de pessoas.
 
 No celular há navegação inferior fixa com Ponto, Resumo, Histórico e Meu acesso. O menu lateral reúne as áreas adicionais. Indicadores adaptam-se à largura; gráficos ocupam uma coluna em telas estreitas; o histórico vira cartões. O calendário permite selecionar uma data e conferir as marcações daquele dia. O resumo mensal compara seis meses de dados próprios.
 
@@ -29,8 +29,10 @@ Visual: azul-marinho, azul de ação, âmbar para extras e verde para aprovaçã
 
 ## Regras de cálculo
 
-- Valor-hora = salário bruto mensal ÷ horas mensais do contrato, arredondado em centavos. Base inicial de 220 horas ajustável (1 a 744, até duas casas decimais), não uma determinação legal do contrato. Salário de 0 a 1.000.000, até duas casas decimais. O servidor calcula; não aceita valor-hora editável. A configuração não é folha de pagamento.
+- Valor-hora = salário bruto mensal ÷ horas mensais do contrato, arredondado em centavos. Base inicial de 200 horas ajustável (1 a 744, até duas casas decimais), não uma determinação legal do contrato. Salário de 0 a 1.000.000, até duas casas decimais. O servidor calcula; não aceita valor-hora editável. A configuração não é folha de pagamento.
 - Migração aditiva `014-monthly-salary.sql`: contas anteriores ficam com salário não informado e valor-hora inalterado. Não se deduz salário multiplicando a taxa antiga por 220. Atualizações valem para novos pontos; pontos existentes e relógios em andamento preservam seus valores.
+- Intervalo automático: um único por pessoa/dia. Se o dia (primeira entrada até a última saída, somando todos os registros) passa por 12h–13h, essa é a janela, mesmo que o almoço tenha ficado fora dos registros; senão, 19h–20h. Cada registro automático desconta só o trecho trabalhado dentro da janela. O banco recalcula os registros automáticos do dia a cada gravação/exclusão (`recompute_auto_breaks`), com auditoria; se um valor aprovado muda, volta a Pendente. Intervalo específico nunca é recalculado.
+- O sistema é usado somente em dias de campo; não existe dia misto com escritório. O deslocamento conta como trabalho: entrada = hora em que saiu de casa, saída = hora em que chegou em casa.
 - Trabalhadas = saída − entrada − pausas, em minutos. Relógio ao vivo mostra segundos; registros e pausas são consolidados na precisão do minuto.
 - Em dias úteis, até 540 minutos normais por pessoa/data; somente o excedente é extra.
 - Vários serviços compartilham a franquia diária. Calcular antes dos filtros evita conceder 9h novamente a cada registro.
@@ -44,6 +46,7 @@ Visual: azul-marinho, azul de ação, âmbar para extras e verde para aprovaçã
 - Sobreposição é recusada; versões evitam sobrescrever alterações concorrentes; exclusão é lógica e auditada.
 - Totais incluem pendências, claramente identificadas como estimativas. Relatórios também distinguem valores aprovados.
 - O mês corrente é parcial; a comparação exibe os totais registrados, não uma projeção.
+- Fechamento mensal: exige mês encerrado, nenhum registro sem saída e todos aprovados (há aprovação em lote por mês e pessoa). Um gatilho no banco impede criar, editar, aprovar ou excluir registros de mês fechado por qualquer caminho. Reabrir exige motivo (10+ caracteres) e fica na auditoria.
 - Sem adicional noturno, folha salarial, banco de horas, feriados automáticos ou certificação como registrador oficial.
 
 ## Estrutura técnica
@@ -60,6 +63,7 @@ app/api contém sessão, login, estado, relógio, cadastros e CRUD de pontos. li
 | entries                     | Pessoa, data, horários, pausas, feriado, observação, status, versão e valor/regras históricos |
 | settings                    | Regras compartilhadas para próximos serviços                                                  |
 | audit                       | Ator, ponto, ação e valores anteriores/posteriores                                            |
+| month_closings              | Meses fechados, autor, data e resumo                                                          |
 | clients                     | Legado compatível, opcional e fora da interface atual                                         |
 
 ## Segurança e operação
@@ -78,4 +82,4 @@ Testes de cálculo cobrem dias úteis, finais de semana, feriado, intervalos, v�
 
 Conferência visual inclui celular de 320 e 390px, calendário, navegação inferior e histórico em cartões. Exportações verificadas em CSV, Excel e PDF. Compilação e checagem de tipos complementam os testes.
 
-Possíveis evoluções, não implementadas: recuperação autônoma do PIN do coordenador, aprovação em lote, fechamento mensal imutável e tela de auditoria.
+Possíveis evoluções, não implementadas: recuperação autônoma do PIN do coordenador (ou segundo coordenador) e tela de auditoria.

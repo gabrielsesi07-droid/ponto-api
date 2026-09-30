@@ -393,9 +393,9 @@ export function PersonalInsights({
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#142b42] text-white p-5">
         <div>
-          <b>Vai começar um serviço?</b>
+          <b>Voltou do campo?</b>
           <p className="text-sm text-slate-300 mt-1">
-            Registre seus horários depois do trabalho, sem cronômetro.
+            Registre a entrada, a saída e o intervalo na OS do dia.
           </p>
         </div>
         <Button

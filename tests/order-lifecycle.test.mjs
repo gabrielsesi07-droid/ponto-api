@@ -1,11 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { closeoutSteps, hasCancelledPending, matchesOrderFilter, matchesOrderSection, orderStatusFilters } from '../lib/order-lifecycle.ts';
+import { closeoutSteps, membersWithoutHours, hasCancelledPending, matchesOrderFilter, matchesOrderSection, orderStatusFilters } from '../lib/order-lifecycle.ts';
 
-test('Conclusão exige situação, pontos, retorno, checklists e resultado', () => {
+test('Conclusão exige dia alcançado, pontos, retorno, checklists e resultado', () => {
   const ready = {status:'Em andamento',active_points:0,pending_checklists:0,trips:[]};
   assert.equal(closeoutSteps(ready, 'Serviço realizado').every(s=>s.done), true);
-  for (const patch of [{status:'Agendada'}, {status:'Cancelada'}, {active_points:1}, {active_points:undefined}, {pending_checklists:1}, {pending_checklists:undefined}, {trips:[{return_km:null}]}]) {
+  // Sem etapa manual de início: OS agendada pode ser concluída a partir do dia previsto.
+  assert.equal(closeoutSteps({...ready,status:'Agendada'}, 'Serviço realizado', true).every(s=>s.done), true);
+  assert.equal(closeoutSteps({...ready,status:'Agendada'}, 'Serviço realizado', false).every(s=>s.done), false);
+  for (const patch of [{status:'Cancelada'}, {status:'Concluída'}, {active_points:1}, {active_points:undefined}, {pending_checklists:1}, {pending_checklists:undefined}, {trips:[{return_km:null}]}]) {
     assert.equal(closeoutSteps({...ready,...patch}, 'Serviço realizado').every(s=>s.done), false);
   }
   assert.equal(closeoutSteps(ready, '  ').every(s=>s.done), false);
@@ -50,4 +53,11 @@ test('Filtros preservam OS agendadas, em andamento e concluídas', () => {
     assert.equal(matchesOrderFilter(order, status), true);
     assert.equal(hasCancelledPending(order), false);
   }
+});
+
+test('Equipe sem horas registradas é apenas listada, sem inventar dados ausentes', () => {
+  const team = [{id:'a',name:'Ana'},{id:'b',name:'Bruno'}];
+  assert.deepEqual(membersWithoutHours({team, logged_members:['a']}).map(p=>p.name), ['Bruno']);
+  assert.deepEqual(membersWithoutHours({team, logged_members:['a','b']}), []);
+  assert.deepEqual(membersWithoutHours({team}), []);
 });

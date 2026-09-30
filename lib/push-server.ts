@@ -19,18 +19,24 @@ export async function dispatchPushJobs() {
     FROM picked WHERE j.id=picked.id RETURNING j.*`;
     if (!jobs.length) break;
     await Promise.all(jobs.map(async job=>{
-      const [s]=await sql`SELECT s.endpoint,s.p256dh,s.auth,o.number FROM horacerta.push_subscriptions s
+      const [s]=await sql`SELECT s.endpoint,s.p256dh,s.auth,o.number,o.status FROM horacerta.push_subscriptions s
         JOIN horacerta.sessions session ON session.token_hash=s.session_hash AND session.expires_at>now()
         JOIN horacerta.users u ON u.id=s.user_id AND u.active
-        JOIN horacerta.orders o ON o.id=${job.order_id}::uuid AND s.user_id=ANY(o.members) AND o.status IN ('Agendada','Em andamento')
+        JOIN horacerta.orders o ON o.id=${job.order_id}::uuid AND s.user_id=ANY(o.members)
+          AND (${job.kind==='hours'} OR o.status IN ('Agendada','Em andamento'))
+          -- Lembrete perde o sentido se a pessoa registrou horas enquanto o envio aguardava.
+          AND NOT (${job.kind==='hours'} AND EXISTS(SELECT 1 FROM horacerta.entries e WHERE e.order_id=o.id AND e.user_id=s.user_id AND e.deleted_at IS NULL))
         WHERE s.id=${job.subscription_id}::uuid AND s.user_id=${job.user_id}::uuid`;
       if (!s || !allowedPushEndpoint(s.endpoint)) {
         await sql`UPDATE horacerta.push_jobs SET status='skipped' WHERE id=${job.id}::uuid`; return;
       }
       try {
         await webpush.sendNotification({endpoint:s.endpoint,keys:{p256dh:s.p256dh,auth:s.auth}},JSON.stringify({
-          title:'Nova ordem de serviço',body:`Você foi designado para a OS-${String(s.number).padStart(6,'0')}. Abra para conferir.`,
-          url:`/?view=orders&order=${job.order_id}`,tag:`os-${job.order_id}`
+          ...(job.kind==='hours'
+            ? {title:'Registre suas horas',body:`A OS-${String(s.number).padStart(6,'0')} foi ${s.status==='Cancelada'?'cancelada':'concluída'} e ainda não há horas suas nela.`,
+              url:`/?view=orders&order=${job.order_id}`,tag:`horas-${job.order_id}`}
+            : {title:'Nova ordem de serviço',body:`Você foi designado para a OS-${String(s.number).padStart(6,'0')}. Abra para conferir.`,
+              url:`/?view=orders&order=${job.order_id}`,tag:`os-${job.order_id}`}),
         }),{TTL:86400,timeout:4000,vapidDetails:{subject:'https://ponto-api-gold.vercel.app',publicKey:keys.public_key,privateKey:keys.private_key}});
         await sql`UPDATE horacerta.push_jobs SET status='sent',sent_at=now(),last_code=201 WHERE id=${job.id}::uuid`;
       } catch (error) {

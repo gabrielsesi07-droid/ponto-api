@@ -53,7 +53,7 @@ import {
   type ServiceClient,
 } from "@/lib/orders";
 import { today, type Person } from "@/lib/domain";
-import { closeoutSteps, hasCancelledPending, matchesOrderSection, orderStatusFilters } from '@/lib/order-lifecycle';
+import { closeoutSteps, membersWithoutHours, hasCancelledPending, matchesOrderSection, orderStatusFilters } from '@/lib/order-lifecycle';
 
 const dateLabel = (v: string) =>
   new Intl.DateTimeFormat("pt-BR", {
@@ -640,9 +640,12 @@ function OrderDetail({
   const [confirmDelete, setConfirmDelete] = useState(false), [confirmation, setConfirmation] = useState(''), [deleteError, setDeleteError] = useState('');
   const [confirmCancel, setConfirmCancel] = useState(false), [cancelReason, setCancelReason] = useState(''), [cancelError, setCancelError] = useState('');
   const feedback = useRef<HTMLParagraphElement>(null);
-  const steps = closeoutSteps(o, notes);
-  const ready = steps.every(step => step.done);
   const beforeScheduledDay = localDateTime(o.starts_at).slice(0, 10) > today();
+  const steps = closeoutSteps(o, notes, !beforeScheduledDay);
+  const ready = steps.every(step => step.done);
+  // Colaboradores recebem apenas o próprio vínculo; a lista da equipe só é confiável para o coordenador.
+  const withoutHours = me.role === 'coordinator' ? membersWithoutHours(o) : [];
+  const myHoursLogged = !!o.logged_members?.includes(me.id);
   function closeWindow() {
     if ((!notes.trim() && !km.trim()) || window.confirm('Fechar a janela sem salvar o resultado ou a quilometragem digitados?')) onClose();
   }
@@ -663,7 +666,7 @@ function OrderDetail({
       await api('/api/operations', { action: 'cancel', data: { id: o.id, version: o.version, notes: cancelReason } });
       setConfirmCancel(false); setCancelReason('');
       await onChanged();
-      toast.success('Atendimento cancelado. Pontos, retorno e conferências existentes foram preservados.');
+      toast.success(o.status === 'Em andamento' ? 'Atendimento cancelado. Quem já estava em campo ainda deve registrar as horas; um lembrete foi agendado para quem ativou notificações.' : 'Atendimento cancelado. Pontos, retorno e conferências existentes foram preservados.');
     } catch (e) { setCancelError((e as Error).message); }
     finally { setBusy(false); }
   }
@@ -693,7 +696,7 @@ function OrderDetail({
       await onChanged();
       setKm("");
       if (action === 'finish') setNotes('');
-      toast.success(action === 'finish' ? 'OS concluída para toda a equipe. Disponível no histórico de OS.' : action === 'return' ? 'Retorno registrado e quilometragem do veículo atualizada.' : action === 'begin' ? 'Atendimento iniciado. Nenhum ponto pessoal foi aberto.' : 'OS atualizada.');
+      toast.success(action === 'finish' ? (withoutHours.length ? `OS concluída. ${withoutHours.length} pessoa(s) ainda precisam registrar horas; um lembrete foi agendado para quem ativou notificações.` : 'OS concluída para toda a equipe. Disponível no histórico de OS.') : action === 'return' ? 'Retorno registrado e quilometragem do veículo atualizada.' : action === 'begin' ? 'Atendimento iniciado. Nenhum ponto pessoal foi aberto.' : 'OS atualizada.');
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -745,6 +748,10 @@ function OrderDetail({
               <span className="font-semibold">{step.done ? '✓ Pronto: ' : 'Pendente: '}{step.label}</span>
               {!step.done && <p className="mt-1">{step.help}</p>}
             </li>)}</ol>
+            {me.role === 'coordinator' && o.logged_members && (withoutHours.length
+              ? <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Ainda sem horas registradas nesta OS: <b>{withoutHours.map(p => p.name).join(', ')}</b>. Não impede a conclusão; ao concluir, quem ativou as notificações recebe um lembrete para registrar.</p>
+              : <p className="mt-3 text-sm">✓ Toda a equipe já registrou horas nesta OS.</p>)}
+            {me.role !== 'coordinator' && o.members.includes(me.id) && <p className="mt-3 text-sm">{myHoursLogged ? '✓ Você já registrou horas nesta OS.' : 'Você ainda não registrou suas horas nesta OS. Use “Registrar minhas horas nesta OS” abaixo, agora ou depois de concluir.'}</p>}
             <p className="mt-3 text-xs">Sem viagem aberta, não há retorno pendente. A conferência considera apenas os checklists vinculados; confira também os avisos dos equipamentos abaixo.</p>
             <Button className="mt-3" variant="outline" onClick={() => document.getElementById('order-closeout-result')?.focus()}>Ir ao resultado e conclusão</Button>
           </section>}
@@ -934,7 +941,7 @@ function OrderDetail({
             <section className="rounded-xl border border-blue-200 bg-blue-50 p-4">
               <h3 className="font-semibold">Atendimento e ponto</h3>
               <p className="mt-1 text-sm text-blue-900">
-                Cada colaborador registra seus horários após o trabalho. Concluir a OS encerra o atendimento para a equipe, mas as horas ainda podem ser registradas depois, conforme as permissões de data.
+                Cada colaborador registra seus horários após o trabalho. O primeiro registro de horas (ou a saída do veículo) marca o atendimento como iniciado automaticamente. Concluir a OS encerra o atendimento para a equipe, mas as horas ainda podem ser registradas depois, conforme as permissões de data.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {assigned && !o.my_point_active && (
@@ -948,15 +955,6 @@ function OrderDetail({
                   const query = new URLSearchParams(window.location.search); query.set('view', 'register');
                   window.history.pushState({}, '', `/?${query}`); window.dispatchEvent(new PopStateEvent('popstate')); onClose();
                 }}>Ver / encerrar meu ponto</Button>}
-                {o.status === "Agendada" && (
-                  <Button
-                    disabled={busy || beforeScheduledDay}
-                    variant="outline"
-                    onClick={() => void action("begin")}
-                  >
-                    Marcar atendimento como iniciado
-                  </Button>
-                )}
               </div>
               {beforeScheduledDay && <p className="mt-2 text-sm">O atendimento e o ponto ficam disponíveis a partir do dia agendado da OS, no horário de Brasília.</p>}
               <label className="ops-notes mt-4 block text-sm">
@@ -970,7 +968,7 @@ function OrderDetail({
                 />
               </label>
               <div className="mt-3 flex flex-wrap gap-2">
-                {o.status === "Em andamento" && (
+                {open && (
                   <Button
                     disabled={busy || !ready}
                     onClick={() => { if (window.confirm('Concluir esta OS para toda a equipe e movê-la para o histórico? Isso não aprova nem altera os pontos registrados.')) void action("finish", { notes }); }}

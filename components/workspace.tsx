@@ -68,6 +68,7 @@ import {PushSettings} from './push-settings';
 import { QuickLogin } from "./quick-login";
 import { PersonalInsights } from "./personal-insights";
 import { Dashboard } from "./dashboard";
+import { MonthClosing } from "./month-closing";
 import { EntriesTable } from "./entries-table";
 import { demoState } from "@/lib/demo";
 import { ServiceOrders } from "./service-orders";
@@ -881,6 +882,16 @@ export function Workspace() {
               )}
               {view === "entries" && (
                 <>
+                  {period === "month" && (
+                    <MonthClosing
+                      state={data}
+                      month={month}
+                      userId={user}
+                      entries={data.entries}
+                      demo={demo}
+                      onChanged={reload}
+                    />
+                  )}
                   <div className="panel overflow-hidden">
                     <div className="px-6 py-5 flex flex-wrap gap-4 justify-between items-center">
                       <h2>{rows.length} lançamentos encontrados</h2>

@@ -1,5 +1,5 @@
 "use client";
-import { Pencil, Trash2, CheckCheck, SearchCheck } from "lucide-react";
+import { Pencil, Trash2, CheckCheck, SearchCheck, Lock } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -15,6 +15,7 @@ import {
   duration,
   money,
   initials,
+  isClosedMonth,
   type State,
   type Calculated,
   type Entry,
@@ -50,7 +51,11 @@ export function EntriesTable({
             hour: "numeric",
             minute: "2-digit",
           });
-  const actions = (e: Calculated) => (
+  const actions = (e: Calculated) => isClosedMonth(state, e.date) ? (
+    <span className="inline-flex items-center gap-1 text-xs muted" title="Mês fechado. O coordenador pode reabri-lo com justificativa.">
+      <Lock size={14} /> Mês fechado
+    </span>
+  ) : (
     <div className="flex gap-1">
       {(admin || (state.me.can_edit && e.status !== "Aprovado")) && (
         <Button

@@ -60,6 +60,8 @@ export type Order = {
   pending_checklists?: number;
   active_points?: number;
   my_point_active?: boolean;
+  /** Pessoas com horas registradas nesta OS (para colaboradores, somente a própria). */
+  logged_members?: string[];
   acknowledgements: { user_id: string; version: number }[];
   trips: Trip[];
   events: {

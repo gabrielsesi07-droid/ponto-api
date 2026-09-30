@@ -103,34 +103,35 @@ export function Dashboard({
     <>
       <section className="panel p-6 mb-6">
         <div className="flex flex-wrap justify-between gap-2">
-          <h2>Equipe agora</h2>
+          <h2>Equipe no período</h2>
           <span className="muted text-xs">
-            Atualizado ao abrir ou atualizar a página
+            Horas registradas depois de cada dia de campo
           </span>
         </div>
         <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4 mt-5">
           {state.users.map((u) => {
-            const timer = state.teamTimers?.find((t) => t.user_id === u.id);
+            const mine = rows.filter((e) => e.user_id === u.id),
+              sum = totals(mine),
+              waiting = mine.filter((e) => e.end && e.status !== "Aprovado").length,
+              fieldDays = new Set(mine.filter((e) => e.end).map((e) => e.date)).size;
             return (
               <div key={u.id} className="rounded-xl border p-4">
                 <b className="text-sm">{u.name}</b>
                 <p className="mt-3">
-                  <span
-                    className={
-                      "badge " +
-                      (timer ? (timer.paused_at ? "pending" : "approved") : "")
-                    }
-                  >
+                  <span className={"badge " + (!u.active ? "" : waiting ? "pending" : mine.length ? "approved" : "")}>
                     {!u.active
                       ? "Conta inativa"
-                      : timer
-                        ? timer.paused_at
-                          ? "Em pausa"
-                          : "Em serviço"
-                        : "Fora de serviço"}
+                      : waiting
+                        ? `${waiting} para aprovar`
+                        : mine.length
+                          ? "Tudo aprovado"
+                          : "Sem registros"}
                   </span>
                 </p>
-                <p className="muted text-xs mt-3">
+                <p className="text-xs mt-3">
+                  {fieldDays} dia(s) de campo · {duration(sum.worked)} · extras {duration(sum.extra)}
+                </p>
+                <p className="muted text-xs mt-1">
                   {money(Number(u.hourly_rate), state.settings.currency)} / hora
                 </p>
               </div>
@@ -286,8 +287,8 @@ export function Dashboard({
           <p className="text-slate-300 mt-3 leading-relaxed text-sm">
             {pending
               ? pending +
-                " pontos aguardam sua revisão. Confira horários, pausas e valores antes de aprovar."
-              : "Acompanhe os pontos em serviço da equipe. Cada colaborador informa o salário e as horas mensais para calcular seu valor-hora."}
+                " registros aguardam sua revisão. Confira horários, intervalos e valores antes de aprovar ou fechar o mês."
+              : "Cada colaborador registra as horas depois do dia de campo e informa o salário e as horas mensais para calcular seu valor-hora. Aprove e feche o mês em Histórico de pontos."}
           </p>
           <div className="mt-6 space-y-4 text-sm">
             <div className="flex justify-between border-b border-white/15 pb-4">

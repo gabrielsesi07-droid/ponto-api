@@ -172,11 +172,17 @@ BEGIN
    IF action='finish' AND EXISTS(SELECT 1 FROM horacerta.timers WHERE order_id=target) THEN RAISE EXCEPTION 'Há pontos em andamento nesta OS. Cada pessoa precisa encerrar seu ponto.'; END IF;
    IF action='finish' AND EXISTS(SELECT 1 FROM horacerta.entries WHERE order_id=target AND "end" IS NULL AND deleted_at IS NULL) THEN RAISE EXCEPTION 'Há registros manuais sem saída nesta OS. Complete a saída no histórico de pontos antes de concluir.'; END IF;
    IF action='cancel' AND p ? 'version' AND (p->>'version')::int IS DISTINCT FROM o.version THEN RAISE EXCEPTION 'A OS foi atualizada. Reabra antes de cancelar.'; END IF;
-   IF action='finish' AND o.status<>'Em andamento' THEN RAISE EXCEPTION 'Inicie o atendimento antes de concluir.'; END IF;
+   -- Registrar horas ou sair com o veículo já marcam o início; não há etapa manual obrigatória.
+   IF action='finish' AND (now() AT TIME ZONE 'America/Sao_Paulo')::date<(o.starts_at AT TIME ZONE 'America/Sao_Paulo')::date THEN
+     RAISE EXCEPTION 'A OS só pode ser concluída a partir do dia agendado.';
+   END IF;
    IF action='finish' AND EXISTS(SELECT 1 FROM horacerta.order_checklists WHERE order_id=target AND model_id=ANY(o.model_ids) AND status='open') THEN RAISE EXCEPTION 'Conclua a conferência de ida e volta dos checklists dos equipamentos antes de encerrar a OS.'; END IF;
    IF length(trim(coalesce(p->>'notes','')))<3 THEN RAISE EXCEPTION 'Descreva o resultado ou motivo do encerramento.'; END IF;
    UPDATE horacerta.orders SET status=CASE WHEN action='finish' THEN 'Concluída' ELSE 'Cancelada' END,completion=p->>'notes',version=version+1 WHERE id=target;
    detail_value := p->>'notes';
+   -- Quem ainda não registrou horas nesta OS recebe um lembrete (somente quem ativou notificações).
+   -- Cancelada em andamento também: o deslocamento já conta como trabalho.
+   IF action='finish' OR o.status='Em andamento' THEN PERFORM horacerta.queue_hours_reminder(target); END IF;
  ELSE RAISE EXCEPTION 'Ação inválida.';
  END IF;
  INSERT INTO horacerta.order_events(order_id,actor_id,action,detail) VALUES(target,actor,

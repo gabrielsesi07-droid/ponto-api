@@ -20,3 +20,4 @@ await sql.transaction([
 console.log('Ordens de serviço, clientes e frota preparados.');
 await import('./migrate-push.mjs');
 await import('./migrate-checklist-waiver.mjs');
+await import('./migrate-flow.mjs');

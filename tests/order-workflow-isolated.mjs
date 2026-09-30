@@ -12,6 +12,10 @@ statements.push(`CREATE TABLE horacerta.timers(user_id uuid PRIMARY KEY REFERENC
 for(const name of ['003-orders.sql','005-flexible-client.sql','006-library.sql','007-checklists.sql','009-imported-checklists.sql','010-client-search.sql','011-order-lifecycle.sql','012-client-lifecycle.sql','008-checklist-actions.sql','004-order-actions.sql','002-clock-start-function.sql','002-clock-function.sql','013-points-require-order.sql']) statements.push(...(await read(name)).split(/\r?\n-- statement-break\r?\n/).filter(s=>s.trim()));
 // Waiver migration is additive and repeatable; no real checklists are changed.
 for (let i=0;i<2;i++) statements.push(...(await read('018-checklist-waiver.sql')).split(/\r?\n-- statement-break\r?\n/).filter(s=>s.trim()));
+// Push schema and flow revision (019) are applied; 019 twice to verify it is repeatable.
+statements.push(`CREATE TABLE horacerta.sessions (token_hash text PRIMARY KEY,user_id uuid NOT NULL REFERENCES horacerta.users(id),expires_at timestamptz NOT NULL,created_at timestamptz NOT NULL DEFAULT now())`);
+statements.push(...(await read('017-push-notifications.sql')).split(/\r?\n-- statement-break\r?\n/).filter(s=>s.trim()));
+for (let i=0;i<2;i++) statements.push(...(await read('019-flow-fixes.sql')).split(/\r?\n-- statement-break\r?\n/).filter(s=>s.trim()));
 // Apply twice to verify the additive salary migration can be rerun safely.
 for (let i=0; i<2; i++) statements.push(...(await read('014-monthly-salary.sql')).split(/\r?\n-- statement-break\r?\n/).filter(s=>s.trim()));
 statements.push(`DO $$
@@ -267,6 +271,85 @@ BEGIN
  UPDATE horacerta.entries SET deleted_at=now() WHERE order_id=other_order AND "end" IS NULL;
  PERFORM horacerta.order_action(admin,'finish',jsonb_build_object('id',other_order,'notes','Serviço finalizado'));
  ASSERT (SELECT status='Concluída' FROM horacerta.orders WHERE id=other_order),'Deleted manual entries do not block closeout';
+END $$`);
+// Flow revision: one automatic break per person/day, month closing, closeout without "begin", hours reminder.
+statements.push(`DO $$
+DECLARE boss uuid;tech uuid:=gen_random_uuid();sub uuid:=gen_random_uuid();ord uuid;future_ord uuid;e1 uuid:=gen_random_uuid();e2 uuid:=gen_random_uuid();e3 uuid:=gen_random_uuid();e4 uuid:=gen_random_uuid();r jsonb;day date:='2020-01-15';
+BEGIN
+ INSERT INTO horacerta.users(id,name,email,role,hourly_rate) VALUES(tech,'QA tech','tech@example.invalid','employee',20);
+ SELECT id INTO boss FROM horacerta.users WHERE role='coordinator';
+ -- 10-14 + 14-20 used to deduct lunch AND dinner (60+60).
+ INSERT INTO horacerta.entries(id,user_id,date,start,"end",break_minutes,break_mode,service,status,rate,rules)
+ SELECT e1,tech,day,'10:00','14:00',60,'automatic','QA','Pendente',20,rules FROM horacerta.settings WHERE id=1;
+ INSERT INTO horacerta.entries(id,user_id,date,start,"end",break_minutes,break_mode,service,status,rate,rules)
+ SELECT e2,tech,day,'14:00','20:00',60,'automatic','QA','Aprovado',20,rules FROM horacerta.settings WHERE id=1;
+ ASSERT horacerta.recompute_auto_breaks(tech,day,boss)=1,'Only the double-counted record changes';
+ ASSERT (SELECT sum(break_minutes)=60 FROM horacerta.entries WHERE user_id=tech AND date=day),'One break per person/day';
+ ASSERT (SELECT status='Pendente' AND version=2 FROM horacerta.entries WHERE id=e2),'Changed approved value returns to review';
+ ASSERT EXISTS(SELECT 1 FROM horacerta.audit WHERE entry_id=e2 AND action='auto_break'),'Automatic change is audited';
+ ASSERT horacerta.recompute_auto_breaks(tech,day,boss)=0,'Recompute is idempotent';
+ -- Lunch as an unrecorded gap: the afternoon record deducts nothing; custom records are never touched.
+ INSERT INTO horacerta.entries(id,user_id,date,start,"end",break_minutes,break_mode,service,status,rate,rules)
+ SELECT e3,tech,day+1,'08:00','12:00',15,'custom','QA','Pendente',20,rules FROM horacerta.settings WHERE id=1;
+ INSERT INTO horacerta.entries(id,user_id,date,start,"end",break_minutes,break_mode,service,status,rate,rules)
+ SELECT e4,tech,day+1,'13:00','22:00',60,'automatic','QA','Pendente',20,rules FROM horacerta.settings WHERE id=1;
+ PERFORM horacerta.recompute_auto_breaks(tech,day+1,boss);
+ ASSERT (SELECT break_minutes FROM horacerta.entries WHERE id=e4)=0 AND (SELECT break_minutes FROM horacerta.entries WHERE id=e3)=15,'Gap covers lunch; custom preserved';
+ -- Month closing.
+ BEGIN PERFORM horacerta.month_action(tech,'approve',day,NULL,''); RAISE EXCEPTION 'Employee approved month';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'Somente o coordenador%' THEN RAISE; END IF; END;
+ BEGIN PERFORM horacerta.month_action(boss,'close',day,NULL,''); RAISE EXCEPTION 'Closed with pending entries';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE '%ainda não aprovados%' THEN RAISE; END IF; END;
+ r:=horacerta.month_action(boss,'approve',day,tech,'');
+ ASSERT (r->>'approved')::int=4,'Batch approval of the selected person';
+ ASSERT EXISTS(SELECT 1 FROM horacerta.audit WHERE entry_id=e1 AND action='status'),'Batch approval audited';
+ BEGIN PERFORM horacerta.month_action(boss,'close',date_trunc('month',now())::date,NULL,''); RAISE EXCEPTION 'Current month closed early';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'Feche o mês somente depois%' THEN RAISE; END IF; END;
+ PERFORM horacerta.month_action(boss,'close',day,NULL,'');
+ ASSERT EXISTS(SELECT 1 FROM horacerta.month_closings WHERE month='2020-01-01'),'Month closed';
+ BEGIN UPDATE horacerta.entries SET notes='x' WHERE id=e1; RAISE EXCEPTION 'Closed month edited';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'O mês 01/2020 está fechado%' THEN RAISE; END IF; END;
+ BEGIN INSERT INTO horacerta.entries(user_id,date,start,"end",service,status,rate,rules) SELECT tech,day+2,'08:00','09:00','QA','Pendente',20,rules FROM horacerta.settings WHERE id=1; RAISE EXCEPTION 'Closed month insert';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'O mês 01/2020 está fechado%' THEN RAISE; END IF; END;
+ BEGIN UPDATE horacerta.entries SET date='2020-02-03' WHERE id=e1; RAISE EXCEPTION 'Moved out of closed month';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'O mês 01/2020 está fechado%' THEN RAISE; END IF; END;
+ BEGIN PERFORM horacerta.month_action(boss,'reopen',day,NULL,'curto'); RAISE EXCEPTION 'Reopen without reason';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'Informe o motivo%' THEN RAISE; END IF; END;
+ PERFORM horacerta.month_action(boss,'reopen',day,NULL,'Correção solicitada pelo RH');
+ UPDATE horacerta.entries SET notes='corrigido' WHERE id=e1;
+ ASSERT EXISTS(SELECT 1 FROM horacerta.audit WHERE action='Mês reaberto' AND after_value->>'reason'='Correção solicitada pelo RH'),'Reopen audited';
+ -- Closeout straight from Agendada (no "begin" step), blocked before the scheduled day.
+ r:=horacerta.order_action(boss,'save_order',jsonb_build_object('title','QA fluxo','client_name','Cliente fluxo QA','client_id',NULL,'address','','contact','','phone','','place_id','','vehicle_id',NULL,'equipment','','instructions','','priority','Normal','members',jsonb_build_array(tech),'model_ids','[]'::jsonb,'starts_at',now()+interval '3 days','ends_at',now()+interval '4 days'));
+ future_ord:=(r->>'id')::uuid;
+ BEGIN PERFORM horacerta.order_action(boss,'finish',jsonb_build_object('id',future_ord,'notes','Feito')); RAISE EXCEPTION 'Finished before schedule';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'A OS só pode ser concluída a partir do dia agendado%' THEN RAISE; END IF; END;
+ r:=horacerta.order_action(boss,'save_order',jsonb_build_object('title','QA fluxo hoje','client_name','Cliente fluxo QA','client_id',NULL,'address','','contact','','phone','','place_id','','vehicle_id',NULL,'equipment','','instructions','','priority','Normal','members',jsonb_build_array(tech),'model_ids','[]'::jsonb,'starts_at',now(),'ends_at',now()+interval '1 hour'));
+ ord:=(r->>'id')::uuid;
+ -- Hours reminder: tech has an active subscription and no hours in this OS.
+ INSERT INTO horacerta.sessions(token_hash,user_id,expires_at) VALUES('qa-session',tech,now()+interval '1 day');
+ INSERT INTO horacerta.push_subscriptions(id,user_id,session_hash,endpoint,p256dh,auth) VALUES(sub,tech,'qa-session','https://push.example.invalid/qa','k','a');
+ DELETE FROM horacerta.push_jobs;
+ PERFORM horacerta.order_action(boss,'finish',jsonb_build_object('id',ord,'notes','Concluída sem etapa de início'));
+ ASSERT (SELECT status='Concluída' FROM horacerta.orders WHERE id=ord),'Scheduled OS concluded without begin';
+ ASSERT (SELECT count(*)=1 FROM horacerta.push_jobs WHERE order_id=ord AND user_id=tech AND kind='hours'),'Hours reminder queued';
+ ASSERT horacerta.queue_hours_reminder(ord)=0,'Reminder not duplicated';
+ DELETE FROM horacerta.push_jobs;
+ INSERT INTO horacerta.entries(user_id,order_id,date,start,"end",service,status,rate,rules)
+ SELECT tech,ord,current_date,'00:00','00:30','QA','Pendente',20,rules FROM horacerta.settings WHERE id=1;
+ ASSERT horacerta.queue_hours_reminder(ord)=0,'No reminder once hours exist';
+ -- Cancelled after the team left: travel counts, so a reminder is due. Cancelled before starting: none.
+ DELETE FROM horacerta.push_jobs;
+ r:=horacerta.order_action(boss,'save_order',jsonb_build_object('title','QA cancelada em campo','client_name','Cliente fluxo QA','client_id',NULL,'address','','contact','','phone','','place_id','','vehicle_id',NULL,'equipment','','instructions','','priority','Normal','members',jsonb_build_array(tech),'model_ids','[]'::jsonb,'starts_at',now(),'ends_at',now()+interval '1 hour'));
+ ord:=(r->>'id')::uuid;
+ DELETE FROM horacerta.push_jobs;
+ PERFORM horacerta.order_action(boss,'cancel',jsonb_build_object('id',ord,'notes','Cliente ausente'));
+ ASSERT NOT EXISTS(SELECT 1 FROM horacerta.push_jobs WHERE order_id=ord AND kind='hours'),'No reminder when nobody started';
+ r:=horacerta.order_action(boss,'save_order',jsonb_build_object('title','QA cancelada em campo 2','client_name','Cliente fluxo QA','client_id',NULL,'address','','contact','','phone','','place_id','','vehicle_id',NULL,'equipment','','instructions','','priority','Normal','members',jsonb_build_array(tech),'model_ids','[]'::jsonb,'starts_at',now(),'ends_at',now()+interval '1 hour'));
+ ord:=(r->>'id')::uuid;
+ DELETE FROM horacerta.push_jobs;
+ UPDATE horacerta.orders SET status='Em andamento' WHERE id=ord;
+ PERFORM horacerta.order_action(boss,'cancel',jsonb_build_object('id',ord,'notes','Cliente cancelou no caminho'));
+ ASSERT (SELECT count(*)=1 FROM horacerta.push_jobs WHERE order_id=ord AND kind='hours'),'Reminder when cancelled in the field';
  RAISE EXCEPTION 'QA_ORDER_WORKFLOW_OK_ROLLBACK';
 END $$`);
 try {
@@ -274,7 +357,7 @@ try {
  throw new Error('Expected rollback');
 } catch(error) {
  if(error.message!=='QA_ORDER_WORKFLOW_OK_ROLLBACK')throw error;
- console.log('Isolated SQL workflow passed: clients, sequence, equipment, deletion protection, cancellation in transit, permissions, stale version, reason, duplicate actions, return odometer, timer closure, checklist completion/reopen, pending cleanup, client delete/archive/restore, legacy history protection and retention of archived links.');
+ console.log('Isolated SQL workflow passed: clients, sequence, equipment, deletion protection, cancellation in transit, permissions, stale version, reason, duplicate actions, return odometer, timer closure, checklist completion/reopen, pending cleanup, client delete/archive/restore, legacy history protection, retention of archived links, one automatic break per day, month approval/closing/reopening, closeout without a begin step and hours reminders.');
 }
 assert.equal((await sql`SELECT schema_name FROM information_schema.schemata WHERE schema_name=${schema}`).length,0);
 console.log('Test schema rolled back; no production numbers consumed.');
