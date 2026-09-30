@@ -141,8 +141,9 @@ export function OrderChecklistEditor({ checklist, admin, closed, onClose, onSave
         {!!issues.length && <><p className="mt-2">{issues.length} item(ns) para revisar:</p><ul className="mt-2 max-h-48 space-y-2 overflow-y-auto">{issues.map(issue => <li key={issue.itemId}><button type="button" className="text-left underline underline-offset-2" onClick={() => { const field = editor.current?.querySelector<HTMLInputElement>(`[aria-label="Descrição do item ${issue.index}"]`); field?.scrollIntoView({ block: 'center' }); field?.focus({ preventScroll: true }); }}>Item {issue.index} — {issue.message}</button></li>)}</ul></>}
       </div>}
       {busy && <p role="status" className="flex items-center gap-2 text-sm text-blue-800"><LoaderCircle className="size-4 animate-spin" />{savingAction === 'complete' ? 'Concluindo ida e volta…' : savingAction === 'reopen' ? 'Reabrindo checklist…' : 'Salvando conferência…'} Aguarde a confirmação.</p>}
+      {!readOnly && <p className="rounded-lg bg-blue-50 p-3 text-sm">Na ida, salve para continuar depois. No retorno, confira a volta e finalize o checklist. Isso não encerra seu ponto nem conclui a OS. Diferenças de quantidade e itens não aplicáveis precisam de observação.</p>}
       <div className="flex flex-wrap gap-2" aria-busy={busy}>
-        {!readOnly && <><Button type="button" disabled={busy} onClick={() => void save('save')}>{savingAction === 'save' ? <LoaderCircle className="animate-spin" size={18} /> : <Save size={18} />}{savingAction === 'save' ? 'Salvando…' : 'Salvar conferência'}</Button><Button type="button" disabled={busy} variant="outline" onClick={() => void save('complete')}>{savingAction === 'complete' ? <LoaderCircle className="animate-spin" size={18} /> : <CheckCheck size={18} />}{savingAction === 'complete' ? 'Concluindo…' : 'Concluir ida e volta'}</Button></>}
+        {!readOnly && <><Button type="button" disabled={busy} onClick={() => void save('save')}>{savingAction === 'save' ? <LoaderCircle className="animate-spin" size={18} /> : <Save size={18} />}{savingAction === 'save' ? 'Salvando…' : 'Salvar e continuar depois'}</Button><Button type="button" disabled={busy} variant="outline" onClick={() => void save('complete')}>{savingAction === 'complete' ? <LoaderCircle className="animate-spin" size={18} /> : <CheckCheck size={18} />}{savingAction === 'complete' ? 'Concluindo…' : 'Finalizar checklist'}</Button></>}
         {!dirty && <Button variant="outline" asChild><a href={`/checklists/${checklist.id}/print`} target="_blank" rel="noopener noreferrer"><Printer size={18} />Imprimir / salvar PDF</a></Button>}
       </div>
       {dirty && <p className="text-xs text-amber-800">Salve antes de imprimir. Somente os dados salvos entram no relatório.</p>}
@@ -169,7 +170,7 @@ export function OrderChecklists({ orderId, admin, closed, cancelled = false, dem
   }, [orderId, demo, revision]);
   async function attach() {
     setBusy(true);
-    try { await api('/api/checklists', { action: 'sync', order_id: orderId }); setRevision(n => n + 1); }
+    try { await api('/api/checklists', { action: 'sync', order_id: orderId }); setRevision(n => n + 1); await onChanged?.(); }
     catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
   if (demo) return <p className="text-sm text-slate-500">Checklists digitais disponíveis ao entrar com seu acesso.</p>;

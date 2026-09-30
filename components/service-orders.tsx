@@ -53,7 +53,7 @@ import {
   type ServiceClient,
 } from "@/lib/orders";
 import { today, type Person } from "@/lib/domain";
-import { hasCancelledPending, matchesOrderSection, orderStatusFilters } from '@/lib/order-lifecycle';
+import { closeoutSteps, hasCancelledPending, matchesOrderSection, orderStatusFilters } from '@/lib/order-lifecycle';
 
 const dateLabel = (v: string) =>
   new Intl.DateTimeFormat("pt-BR", {
@@ -620,6 +620,16 @@ function OrderDetail({
     [notes, setNotes] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false), [confirmation, setConfirmation] = useState(''), [deleteError, setDeleteError] = useState('');
   const [confirmCancel, setConfirmCancel] = useState(false), [cancelReason, setCancelReason] = useState(''), [cancelError, setCancelError] = useState('');
+  const feedback = useRef<HTMLParagraphElement>(null);
+  const steps = closeoutSteps(o, notes);
+  const ready = steps.every(step => step.done);
+  const beforeScheduledDay = localDateTime(o.starts_at).slice(0, 10) > today();
+  function closeWindow() {
+    if ((!notes.trim() && !km.trim()) || window.confirm('Fechar a janela sem salvar o resultado ou a quilometragem digitados?')) onClose();
+  }
+  useEffect(() => {
+    if (error) { feedback.current?.scrollIntoView({ block: 'center' }); feedback.current?.focus({ preventScroll: true }); }
+  }, [error]);
   const open = ["Agendada", "Em andamento"].includes(o.status),
     admin = me.role === "coordinator",
     assigned = o.members.includes(me.id),
@@ -663,7 +673,8 @@ function OrderDetail({
       await api("/api/operations", { action, data: { id: o.id, ...data } });
       await onChanged();
       setKm("");
-      toast.success("OS atualizada.");
+      if (action === 'finish') setNotes('');
+      toast.success(action === 'finish' ? 'OS concluída para toda a equipe. Disponível no histórico de OS.' : action === 'return' ? 'Retorno registrado e quilometragem do veículo atualizada.' : action === 'begin' ? 'Atendimento iniciado. Nenhum ponto pessoal foi aberto.' : 'OS atualizada.');
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -719,7 +730,7 @@ function OrderDetail({
     0,
   );
   return (
-    <Dialog open onOpenChange={(v) => !v && !busy && onClose()}>
+    <Dialog open onOpenChange={(v) => !v && !busy && closeWindow()}>
       <DialogContent className="ops-dialog max-h-[92svh] overflow-y-auto bg-white sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>
@@ -730,6 +741,16 @@ function OrderDetail({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-5">
+          {open && <section className="rounded-xl border border-blue-200 bg-blue-50 p-4" aria-label="Etapas para concluir a OS">
+            <h3 className="font-semibold">O que falta para concluir esta OS?</h3>
+            <p className="mt-1 text-sm">Encerrar seu ponto, finalizar um checklist e concluir a OS são ações diferentes. A conclusão da OS vale para toda a equipe.</p>
+            <ol className="mt-3 space-y-3 text-sm">{steps.map(step => <li key={step.id}>
+              <span className="font-semibold">{step.done ? '✓ Pronto: ' : 'Pendente: '}{step.label}</span>
+              {!step.done && <p className="mt-1">{step.help}</p>}
+            </li>)}</ol>
+            <p className="mt-3 text-xs">Sem viagem aberta, não há retorno pendente. A conferência considera apenas os checklists vinculados; confira também os avisos dos equipamentos abaixo.</p>
+            <Button className="mt-3" variant="outline" onClick={() => document.getElementById('order-closeout-result')?.focus()}>Ir ao resultado e conclusão</Button>
+          </section>}
           <div className="grid gap-3 rounded-xl bg-slate-50 p-4 sm:grid-cols-2">
             <div>
               <b className="text-xs uppercase muted">Início previsto</b>
@@ -920,25 +941,32 @@ function OrderDetail({
                 encerra o atendimento para a equipe.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
-                {assigned && (
-                  <Button disabled={busy} onClick={() => void startPoint()}>
+                {assigned && !o.my_point_active && (
+                  <Button disabled={busy || beforeScheduledDay} onClick={() => void startPoint()}>
                     <Play />
                     Iniciar meu ponto nesta OS
                   </Button>
                 )}
+                {assigned && o.my_point_active && <Button variant="outline" disabled={busy} onClick={() => {
+                  if ((notes.trim() || km.trim()) && !window.confirm('Ir ao meu ponto sem salvar o resultado ou a quilometragem digitados?')) return;
+                  const query = new URLSearchParams(window.location.search); query.set('view', 'register');
+                  window.history.pushState({}, '', `/?${query}`); window.dispatchEvent(new PopStateEvent('popstate')); onClose();
+                }}>Ver / encerrar meu ponto</Button>}
                 {o.status === "Agendada" && (
                   <Button
-                    disabled={busy}
+                    disabled={busy || beforeScheduledDay}
                     variant="outline"
                     onClick={() => void action("begin")}
                   >
-                    Iniciar atendimento
+                    Iniciar atendimento sem abrir ponto
                   </Button>
                 )}
               </div>
+              {beforeScheduledDay && <p className="mt-2 text-sm">O atendimento e o ponto ficam disponíveis a partir do dia agendado da OS, no horário de Brasília.</p>}
               <label className="ops-notes mt-4 block text-sm">
-                Resultado do serviço
+                Resultado do serviço (mínimo de 3 caracteres)
                 <textarea
+                  id="order-closeout-result"
                   value={notes}
                   maxLength={5000}
                   onChange={(e) => setNotes(e.target.value)}
@@ -948,8 +976,8 @@ function OrderDetail({
               <div className="mt-3 flex flex-wrap gap-2">
                 {o.status === "Em andamento" && (
                   <Button
-                    disabled={busy || notes.trim().length < 3}
-                    onClick={() => void action("finish", { notes })}
+                    disabled={busy || !ready}
+                    onClick={() => { if (window.confirm('Concluir esta OS para toda a equipe e movê-la para o histórico? Isso não aprova nem altera os pontos registrados.')) void action("finish", { notes }); }}
                   >
                     <Check />
                     Concluir OS
@@ -965,6 +993,7 @@ function OrderDetail({
                   </Button>
                 )}
               </div>
+              <p className="mt-3 text-sm">{ready ? 'Tudo pronto. Concluir OS move este atendimento para o histórico; a aprovação dos pontos é separada.' : 'Resolva as pendências indicadas no início desta janela para liberar a conclusão.'}</p>
             </section>
           )}
           {o.completion && (
@@ -1013,6 +1042,8 @@ function OrderDetail({
           </details>
           {error && (
             <p
+              ref={feedback}
+              tabIndex={-1}
               role="alert"
               className="rounded-xl bg-red-50 p-3 text-sm text-red-700"
             >
@@ -1023,9 +1054,9 @@ function OrderDetail({
             disabled={busy}
             variant="outline"
             className="w-full"
-            onClick={onClose}
+            onClick={closeWindow}
           >
-            {busy ? <LoaderCircle className="animate-spin" /> : null}Fechar OS
+            {busy ? <LoaderCircle className="animate-spin" /> : null}Fechar janela
           </Button>
         </div>
       </DialogContent>

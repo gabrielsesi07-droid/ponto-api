@@ -1,6 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { hasCancelledPending, matchesOrderFilter, matchesOrderSection, orderStatusFilters } from '../lib/order-lifecycle.ts';
+import { closeoutSteps, hasCancelledPending, matchesOrderFilter, matchesOrderSection, orderStatusFilters } from '../lib/order-lifecycle.ts';
+
+test('Conclusão exige situação, pontos, retorno, checklists e resultado', () => {
+  const ready = {status:'Em andamento',active_points:0,pending_checklists:0,trips:[]};
+  assert.equal(closeoutSteps(ready, 'Serviço realizado').every(s=>s.done), true);
+  for (const patch of [{status:'Agendada'}, {status:'Cancelada'}, {active_points:1}, {active_points:undefined}, {pending_checklists:1}, {pending_checklists:undefined}, {trips:[{return_km:null}]}]) {
+    assert.equal(closeoutSteps({...ready,...patch}, 'Serviço realizado').every(s=>s.done), false);
+  }
+  assert.equal(closeoutSteps(ready, '  ').every(s=>s.done), false);
+  assert.equal(closeoutSteps({...ready,trips:[{return_km:0}]}, 'Feito').every(s=>s.done), true);
+});
 
 const cancelled = { status: 'Cancelada', trips: [], active_points: 0, pending_checklists: 0 };
 test('Situação oferece Todas como primeira opção e reúne as OS em aberto', () => {

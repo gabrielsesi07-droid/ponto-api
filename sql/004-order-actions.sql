@@ -170,6 +170,7 @@ BEGIN
    IF action='cancel' AND u.role<>'coordinator' THEN RAISE EXCEPTION 'Somente o coordenador pode cancelar a OS.'; END IF;
    IF action='finish' AND EXISTS(SELECT 1 FROM horacerta.vehicle_trips WHERE order_id=target AND return_km IS NULL) THEN RAISE EXCEPTION 'Registre o km de retorno antes de concluir a OS.'; END IF;
    IF action='finish' AND EXISTS(SELECT 1 FROM horacerta.timers WHERE order_id=target) THEN RAISE EXCEPTION 'Há pontos em andamento nesta OS. Cada pessoa precisa encerrar seu ponto.'; END IF;
+   IF action='finish' AND EXISTS(SELECT 1 FROM horacerta.entries WHERE order_id=target AND "end" IS NULL AND deleted_at IS NULL) THEN RAISE EXCEPTION 'Há registros manuais sem saída nesta OS. Complete a saída no histórico de pontos antes de concluir.'; END IF;
    IF action='cancel' AND p ? 'version' AND (p->>'version')::int IS DISTINCT FROM o.version THEN RAISE EXCEPTION 'A OS foi atualizada. Reabra antes de cancelar.'; END IF;
    IF action='finish' AND o.status<>'Em andamento' THEN RAISE EXCEPTION 'Inicie o atendimento antes de concluir.'; END IF;
    IF action='finish' AND EXISTS(SELECT 1 FROM horacerta.order_checklists WHERE order_id=target AND model_id=ANY(o.model_ids) AND status='open') THEN RAISE EXCEPTION 'Conclua a conferência de ida e volta dos checklists dos equipamentos antes de encerrar a OS.'; END IF;

@@ -227,6 +227,18 @@ BEGIN
  ASSERT EXISTS(SELECT 1 FROM horacerta.entries WHERE user_id=admin AND order_id IS NULL AND company='Cliente histórico'),'Legacy timer still closes without inventing an OS';
  result:=horacerta.point_entry_order(admin,NULL,(now() AT TIME ZONE 'America/Sao_Paulo')::date,'18:00',(SELECT id FROM horacerta.entries WHERE user_id=admin LIMIT 1));
  ASSERT result->>'company'='Cliente histórico','Legacy entry adjustment preserves history';
+ -- A manual entry with no exit must block closeout just like a live timer.
+ UPDATE horacerta.orders SET status='Em andamento',model_ids='{}' WHERE id=other_order;
+ INSERT INTO horacerta.entries(user_id,order_id,date,start,"end",service,status,rate,rules)
+ SELECT worker,other_order,current_date,'00:01',NULL,'QA manual','Pendente',20,rules FROM horacerta.settings WHERE id=1;
+ BEGIN
+   PERFORM horacerta.order_action(admin,'finish',jsonb_build_object('id',other_order,'notes','Serviço finalizado'));
+   RAISE EXCEPTION 'Manual open entry unexpectedly allowed closeout';
+ EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'Há registros manuais sem saída%' THEN RAISE; END IF; END;
+ ASSERT (SELECT status='Em andamento' FROM horacerta.orders WHERE id=other_order),'Failed closeout preserves status';
+ UPDATE horacerta.entries SET deleted_at=now() WHERE order_id=other_order AND "end" IS NULL;
+ PERFORM horacerta.order_action(admin,'finish',jsonb_build_object('id',other_order,'notes','Serviço finalizado'));
+ ASSERT (SELECT status='Concluída' FROM horacerta.orders WHERE id=other_order),'Deleted manual entries do not block closeout';
  RAISE EXCEPTION 'QA_ORDER_WORKFLOW_OK_ROLLBACK';
 END $$`);
 try {

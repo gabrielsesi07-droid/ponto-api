@@ -208,10 +208,10 @@ export function QuickClock({
         await onChanged();
         toast.success(
           {
-            start: "Serviço iniciado.",
+            start: "Seu ponto foi iniciado nesta OS.",
             pause: "Pausa registrada.",
             resume: "Serviço retomado.",
-            stop: "Serviço encerrado e ponto salvo.",
+            stop: "Seu ponto foi encerrado e salvo. A OS deve ser concluída separadamente.",
           }[action],
         );
       }
@@ -305,7 +305,7 @@ export function QuickClock({
               ) : (
                 <Play size={22} />
               )}
-              Iniciar serviço
+              Iniciar meu ponto
             </Button>
           ) : (
             <>
@@ -324,7 +324,7 @@ export function QuickClock({
                 onClick={() => void action("stop")}
               >
                 <Square size={19} />
-                Encerrar serviço
+                Encerrar meu ponto
               </Button>
             </>
           )}
@@ -413,7 +413,7 @@ export function QuickClock({
       >
         <DialogContent className="max-h-[90svh] overflow-y-auto bg-white sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Iniciar serviço</DialogTitle>
+            <DialogTitle>Iniciar meu ponto em uma OS</DialogTitle>
             <DialogDescription>
               Selecione a OS do trabalho. Cliente e serviço serão preenchidos
               automaticamente. Confira a data e o horário de Brasília.
