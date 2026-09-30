@@ -11,7 +11,7 @@ import {
   ApiError,
 } from "@/lib/server";
 import { DEFAULT_INITIAL_PIN, hashPin } from "@/lib/pin";
-import { compensationSchema } from '@/lib/compensation';
+import { compensationSchema, DEFAULT_MONTHLY_HOURS } from '@/lib/compensation';
 export async function POST(req: Request) {
   try {
     const me = await member(),
@@ -47,7 +47,7 @@ export async function POST(req: Request) {
       });
       const pin = p.pin ? await hashPin(p.pin) : null;
       await sql.transaction([
-        sql`UPDATE horacerta.users SET name=${p.name},job=${p.job},phone=${p.phone},monthly_salary=CASE WHEN ${!!pay} THEN ${pay?.monthly_salary ?? null} ELSE monthly_salary END,monthly_hours=CASE WHEN ${!!pay} THEN ${pay?.monthly_hours ?? 220} ELSE monthly_hours END,pin_hash=coalesce(${pin},pin_hash),login_attempts=CASE WHEN ${!!pin} THEN 0 ELSE login_attempts END,pin_change_required=CASE WHEN ${!!pin} THEN false ELSE pin_change_required END,pin_change_prompted=CASE WHEN ${!!pin} THEN true ELSE pin_change_prompted END WHERE id=${me.id}`,
+        sql`UPDATE horacerta.users SET name=${p.name},job=${p.job},phone=${p.phone},monthly_salary=CASE WHEN ${!!pay} THEN ${pay?.monthly_salary ?? null} ELSE monthly_salary END,monthly_hours=CASE WHEN ${!!pay} THEN ${pay?.monthly_hours ?? DEFAULT_MONTHLY_HOURS} ELSE monthly_hours END,pin_hash=coalesce(${pin},pin_hash),login_attempts=CASE WHEN ${!!pin} THEN 0 ELSE login_attempts END,pin_change_required=CASE WHEN ${!!pin} THEN false ELSE pin_change_required END,pin_change_prompted=CASE WHEN ${!!pin} THEN true ELSE pin_change_prompted END WHERE id=${me.id}`,
         ...(pin
           ? [sql`DELETE FROM horacerta.sessions WHERE user_id=${me.id}`]
           : []),

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const DEFAULT_MONTHLY_HOURS = 220;
+export const DEFAULT_MONTHLY_HOURS = 200;
 
 // Cents and hundredths of hours keep the preview aligned with PostgreSQL numeric.
 export const compensationSchema = z.object({

@@ -12,7 +12,7 @@ import {
   digest,
   sessionCookie,
 } from "@/lib/pin";
-import { compensationSchema } from '@/lib/compensation';
+import { compensationSchema, DEFAULT_MONTHLY_HOURS } from '@/lib/compensation';
 export const dynamic = "force-dynamic";
 export async function GET() {
   try {
@@ -57,7 +57,7 @@ export async function POST(req: Request) {
       pin = await hashPin(DEFAULT_INITIAL_PIN),
       result = await sql.transaction([
         sql`SELECT id FROM horacerta.settings WHERE id=1 FOR UPDATE`,
-        sql`INSERT INTO horacerta.users(name,username,email,role,job,phone,hourly_rate,monthly_salary,monthly_hours,pin_hash,pin_change_required,pin_change_prompted) SELECT ${p.name},${p.username || null},${p.email},'coordinator',${p.job},${p.phone},0,${pay?.monthly_salary ?? null},${pay?.monthly_hours ?? 220},${pin},true,false WHERE NOT EXISTS(SELECT 1 FROM horacerta.users) RETURNING id,name,access_code,job`,
+        sql`INSERT INTO horacerta.users(name,username,email,role,job,phone,hourly_rate,monthly_salary,monthly_hours,pin_hash,pin_change_required,pin_change_prompted) SELECT ${p.name},${p.username || null},${p.email},'coordinator',${p.job},${p.phone},0,${pay?.monthly_salary ?? null},${pay?.monthly_hours ?? DEFAULT_MONTHLY_HOURS},${pin},true,false WHERE NOT EXISTS(SELECT 1 FROM horacerta.users) RETURNING id,name,access_code,job`,
       ]);
     if (!result[1].length)
       throw new ApiError(409, "O primeiro acesso já foi configurado.");
