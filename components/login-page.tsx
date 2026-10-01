@@ -61,7 +61,7 @@ export function LoginPage() {
       error={error}
       clearError={clearError}
       reload={async () => {
-        router.replace("/?view=register");
+        router.replace("/");
       }}
       demo={() => router.push("/?demo=1")}
     />

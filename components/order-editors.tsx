@@ -10,6 +10,7 @@ import {
   DialogDescription,
 } from "./ui/dialog";
 import { api } from "./editors";
+import { toast } from "sonner";
 import {
   localDateTime,
   type Order,
@@ -543,6 +544,11 @@ export function ResourceEditor({
         },
       });
       await onSaved();
+      toast.success(
+        kind === "client"
+          ? resource ? "Cliente atualizado." : "Cliente cadastrado."
+          : resource ? "Veículo atualizado." : "Veículo cadastrado.",
+      );
       onClose();
     } catch (e) {
       setError((e as Error).message);

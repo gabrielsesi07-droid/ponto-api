@@ -21,6 +21,7 @@ export async function exportReport(
     "Tipo de dia",
     "Valor extras",
     "Status",
+    "Conferência do valor",
   ];
   const data = rows.map((e) => [
     e.date,
@@ -37,6 +38,7 @@ export async function exportReport(
     e.kind,
     Number(e.amount.toFixed(2)),
     e.status,
+    Number(e.rate) === 0 ? "Valor-hora registrado como zero: conferir antes de utilizar" : "Valor estimado",
   ]);
   const name = "horacerta-" + period.replace(/[^0-9-]/g, "") + "." + format;
   function download(blob: Blob) {
@@ -79,7 +81,7 @@ export async function exportReport(
       (c, i) => (c.width = [2, 3, 4].includes(i) ? 28 : 18),
     );
     sheet.views = [{ state: "frozen", ySplit: 1 }];
-    sheet.autoFilter = { from: "A1", to: "N1" };
+    sheet.autoFilter = { from: "A1", to: "O1" };
     download(
       new Blob([(await book.xlsx.writeBuffer()) as ArrayBuffer], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

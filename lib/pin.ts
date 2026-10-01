@@ -1,5 +1,25 @@
 export const pinPattern = /^\d{6}$/;
-export const DEFAULT_INITIAL_PIN = "123456";
+export const TEMPORARY_PIN_HOURS = 24;
+export function randomTemporaryPin() {
+  // Rejection sampling avoids bias in mapping random integers to six digits.
+  const range = 1_000_000, limit = Math.floor(2 ** 32 / range) * range;
+  let value: number;
+  do { value = crypto.getRandomValues(new Uint32Array(1))[0]; } while (value >= limit || value % range === 123456);
+  return String(value % range).padStart(6, "0");
+}
+export function pinAccessAllowed(required: boolean, allowPinChange = false) {
+  return !required || allowPinChange;
+}
+export function bootstrapConfigured(secret: string | undefined): secret is string {
+  return typeof secret === "string" && secret.length >= 32;
+}
+export async function validBootstrapToken(provided: unknown, secret: string | undefined) {
+  if (!bootstrapConfigured(secret) || typeof provided !== "string" || provided.length > 1024) return false;
+  const a = await digest(provided), b = await digest(secret);
+  let difference = 0;
+  for (let i = 0; i < a.length; i++) difference |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return difference === 0;
+}
 const hex = (b: ArrayBuffer) =>
   Array.from(new Uint8Array(b), (x) => x.toString(16).padStart(2, "0")).join(
     "",

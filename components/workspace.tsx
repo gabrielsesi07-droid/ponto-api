@@ -9,7 +9,6 @@ import {
   Users,
   Settings,
   Plus,
-  ArrowUpRight,
   UserRound,
   LogOut,
   ChevronRight,
@@ -73,6 +72,7 @@ import { EntriesTable } from "./entries-table";
 import { demoState } from "@/lib/demo";
 import { ServiceOrders } from "./service-orders";
 import { TechnicalLibrary } from "./technical-library";
+import type { CenterAction } from "@/lib/coordinator-center";
 import "@/app/operations.css";
 import "@/app/checklists.css";
 import {
@@ -90,7 +90,7 @@ import {
 const nav = [
   {
     key: "dashboard",
-    label: "Visão da equipe",
+    label: "Painel do coordenador",
     icon: LayoutDashboard,
     admin: true,
   },
@@ -115,6 +115,21 @@ type Session = {
   me?: Person;
   error?: string;
 };
+/** Inscrição de avisos deste aparelho, sem bloquear a saída se o navegador não responder. */
+async function currentPushSubscription(): Promise<PushSubscription | null> {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator) || !("PushManager" in window))
+    return null;
+  try {
+    return await Promise.race([
+      navigator.serviceWorker
+        .getRegistration("/")
+        .then((registration) => registration?.pushManager.getSubscription() ?? null),
+      new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 2000)),
+    ]);
+  } catch {
+    return null;
+  }
+}
 async function loadSessionWithRetry() {
   let lastError: unknown;
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -232,7 +247,10 @@ function Navigation({
 }
 export function Workspace() {
   const requestVersion = useRef(0),
-    [ready, setReady] = useState(false);
+    explicitView = useRef(false),
+    landedFor = useRef(""),
+    [ready, setReady] = useState(false),
+    [ordersKey, setOrdersKey] = useState(0);
   const [view, setView] = useState("register"),
     [demo, setDemo] = useState(false),
     [session, setSession] = useState<Session | null>(null),
@@ -253,7 +271,6 @@ export function Workspace() {
   const [editor, setEditor] = useState<Editor | null>(null),
     [deleting, setDeleting] = useState<Entry | null>(null),
     [busy, setBusy] = useState(false),
-    [pinPromptBusy, setPinPromptBusy] = useState(false),
     [exporting, setExporting] = useState(false);
   const bounds = monthBounds(month),
     range =
@@ -289,13 +306,24 @@ export function Workspace() {
     setError("");
     try {
       const s = await loadSessionWithRetry();
-      const result = s.me
-        ? await api<State>("/api/state?from=" + fetchFrom + "&to=" + fetchTo)
-        : null;
+      // Com troca de PIN obrigatória, nenhuma rota de dados é chamada até o novo PIN ser salvo.
+      const result =
+        s.me && !s.me.pin_change_required
+          ? await api<State>("/api/state?from=" + fetchFrom + "&to=" + fetchTo)
+          : null;
       if (version !== requestVersion.current) return;
       setSession(s);
       setData(result);
     } catch (e) {
+      // O servidor passou a exigir a troca de PIN no meio da sessão: mostra o bloqueio, não um erro.
+      if ((e as { code?: string }).code === "PIN_CHANGE_REQUIRED") {
+        const s = await loadSessionWithRetry().catch(() => null);
+        if (version === requestVersion.current && s?.me) {
+          setSession({ ...s, me: { ...s.me, pin_change_required: true } });
+          setData(null);
+          return;
+        }
+      }
       if (version === requestVersion.current) {
         setError((e as Error).message);
         setData(null);
@@ -308,6 +336,7 @@ export function Workspace() {
   useEffect(() => {
     const syncFromLocation = () => {
       const q = new URLSearchParams(window.location.search);
+      explicitView.current = q.has("view");
       setView(q.get("view") || "register");
       setDemo(q.get("demo") === "1");
       setReady(true);
@@ -338,7 +367,20 @@ export function Workspace() {
     const timer = window.setTimeout(() => setView("register"), 0);
     return () => window.clearTimeout(timer);
   }, [data, view]);
-  const go = useCallback((v: string) => {
+  // Sem `view` explícita na URL, o coordenador começa pela central de pendências.
+  useEffect(() => {
+    if (!data || explicitView.current || landedFor.current === data.me.id) return;
+    landedFor.current = data.me.id;
+    if (data.me.role !== "coordinator") return;
+    const timer = window.setTimeout(() => {
+      setView("dashboard");
+      const p = new URLSearchParams(window.location.search);
+      p.set("view", "dashboard");
+      window.history.replaceState({}, "", "?" + p);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [data]);
+  const go = useCallback((v: string, params: Record<string, string> = {}) => {
     setView(v);
     if (v === "register") setMonth(today().slice(0, 7));
     setStatus("all");
@@ -348,8 +390,31 @@ export function Workspace() {
     setPage(1);
     const p = new URLSearchParams(window.location.search);
     p.set("view", v);
+    // O parâmetro `order` só vale para a navegação que o pediu.
+    p.delete("order");
+    for (const [k, value] of Object.entries(params)) p.set(k, value);
+    explicitView.current = true;
     window.history.pushState({}, "", "?" + p);
   }, []);
+  const centerAction = useCallback(
+    (a: CenterAction) => {
+      if (a.kind === "order") {
+        go("orders", { order: a.orderId });
+        // Remonta ServiceOrders para que ele abra a OS indicada em `order`.
+        setOrdersKey((k) => k + 1);
+        return;
+      }
+      if (a.kind === "orders" || a.kind === "people") {
+        go(a.kind);
+        return;
+      }
+      go("entries");
+      setUser(a.userId || "all");
+      if (a.month) setMonth(a.month);
+      if (a.status) setStatus(a.status);
+    },
+    [go],
+  );
   function changeDemo(next: boolean) {
     setDemo(next);
     setUser("all");
@@ -388,31 +453,41 @@ export function Workspace() {
         .sort((a, b) => (b.date + b.start).localeCompare(a.date + a.start)),
     [all, range.from, range.to, user, status, day, search],
   );
-  const prev = all.filter(
-      (e) =>
-        e.date >= bounds.previous &&
-        e.date < bounds.from &&
-        (user === "all" || e.user_id === user),
-    ),
-    t = totals(rows),
+  const t = totals(rows),
     admin = data?.me.role === "coordinator";
   const title = nav.find((n) => n.key === view)?.label || "Dashboard";
   async function afterSave() {
     await reload();
   }
-  async function postponePinChange() {
-    setPinPromptBusy(true);
+  /** Encerra a sessão local e volta ao login; a próxima entrada recalcula a tela inicial. */
+  async function signOut() {
+    // "Sair" também encerra os avisos deste aparelho. Sem suporte ou com erro, a saída continua.
+    const subscription = await currentPushSubscription();
     try {
-      await api("/api/manage", { entity: "pin_prompt", data: {} });
-      await reload();
-      toast.info(
-        "Tudo bem. Você pode trocar o PIN quando quiser em Meu acesso.",
+      await api(
+        "/api/login",
+        subscription ? { push_endpoint: subscription.endpoint } : {},
+        "DELETE",
       );
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setPinPromptBusy(false);
+    } catch {
+      // A sessão pode já ter sido revogada (por exemplo, após trocar o PIN).
     }
+    try {
+      await subscription?.unsubscribe();
+    } catch {
+      // A inscrição local pode já ter sido removida pelo navegador.
+    }
+    setData(null);
+    setSession(null);
+    setUser("all");
+    setView("register");
+    explicitView.current = false;
+    landedFor.current = "";
+    const p = new URLSearchParams(window.location.search);
+    p.delete("view");
+    p.delete("order");
+    window.history.replaceState({}, "", p.size ? "?" + p : window.location.pathname);
+    await reload();
   }
   async function updateStatus(e: Entry, s: Entry["status"]) {
     if (demo) {
@@ -524,6 +599,9 @@ export function Workspace() {
       busy={busy}
     />
   );
+  if (!data && !demo && session?.me?.pin_change_required) {
+    return <PinChangeGate me={session.me} onSignOut={signOut} />;
+  }
   if (!data) {
     return (
       <QuickLogin
@@ -568,17 +646,7 @@ export function Workspace() {
                 variant="ghost"
                 className="action"
                 aria-label="Sair da conta"
-                onClick={async () => {
-                  try {
-                    await api("/api/login", {}, "DELETE");
-                    setData(null);
-                    setUser("all");
-                    go("register");
-                    await reload();
-                  } catch (e) {
-                    toast.error((e as Error).message);
-                  }
-                }}
+                onClick={() => void signOut()}
               >
                 <LogOut size={17} />
                 <span className="hidden sm:inline">Sair</span>
@@ -620,7 +688,7 @@ export function Workspace() {
                   <h1>{title}</h1>
                   <p className="muted mt-1 text-[15px]">
                     {view === "dashboard"
-                      ? "Cada hora conta. Acompanhe o que importa."
+                      ? "O que precisa da sua atenção, em ordem de prioridade."
                       : ["library", "equipment"].includes(view)
                         ? "Encontre os materiais técnicos que apoiam cada serviço."
                       : view === "insights"
@@ -696,16 +764,12 @@ export function Workspace() {
               )}
               {["library", "equipment"].includes(view) && <TechnicalLibrary key={view} admin={admin} demo={demo} initialTab={view === 'equipment' ? 'models' : 'documents'} />}
               <ServiceOrders
-                key={data.me.id + String(demo)}
+                key={data.me.id + String(demo) + ordersKey}
                 me={data.me}
                 view={view}
                 onNavigate={go}
                 demo={demo}
-                blocked={
-                  !!editor ||
-                  (!!data.me.pin_change_required &&
-                    !data.me.pin_change_prompted)
-                }
+                blocked={!!editor}
                 onPoint={async () => {
                   await reload();
                   go("register");
@@ -734,7 +798,7 @@ export function Workspace() {
                       }}
                     />
                   </label>
-                  {admin && !["profile", "insights"].includes(view) && (
+                  {admin && !["profile", "insights", "dashboard"].includes(view) && (
                     <label className="min-w-52">
                       Colaborador
                       <Pick
@@ -847,38 +911,22 @@ export function Workspace() {
                 />
               )}
               {view === "dashboard" && admin && (
-                <>
-                  <Dashboard
-                    rows={all.filter(
-                      (e) =>
-                        e.date >= bounds.from &&
-                        e.date <= bounds.to &&
-                        (user === "all" || e.user_id === user),
-                    )}
-                    previous={prev}
-                    state={data}
-                    onRegister={() => go("register")}
-                    onEntries={() => go("entries")}
-                  />
-                  <section className="panel mt-6 overflow-hidden">
-                    <div className="p-6 flex justify-between items-center">
-                      <div>
-                        <h2>Últimos lançamentos</h2>
-                        <p className="muted text-sm mt-1">
-                          Os registros mais recentes da equipe
-                        </p>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        onClick={() => go("entries")}
-                        className="text-blue-600 action"
-                      >
-                        Ver todos <ArrowUpRight size={16} />
-                      </Button>
-                    </div>
-                    {entryTable(true)}
-                  </section>
-                </>
+                <Dashboard
+                  rows={all.filter(
+                    (e) => e.date >= bounds.from && e.date <= bounds.to,
+                  )}
+                  allRows={all}
+                  previous={all.filter(
+                    (e) => e.date >= bounds.previous && e.date < bounds.from,
+                  )}
+                  state={data}
+                  month={month}
+                  demo={demo}
+                  busy={busy}
+                  onAction={centerAction}
+                  onApprove={(e) => void updateStatus(e, "Aprovado")}
+                  onEdit={(e) => setEditor({ kind: "entry", data: e })}
+                />
               )}
               {view === "entries" && (
                 <>
@@ -894,7 +942,10 @@ export function Workspace() {
                   )}
                   <div className="panel overflow-hidden">
                     <div className="px-6 py-5 flex flex-wrap gap-4 justify-between items-center">
-                      <h2>{rows.length} lançamentos encontrados</h2>
+                      <h2>
+                        {rows.length}{" "}
+                        {rows.length === 1 ? "lançamento encontrado" : "lançamentos encontrados"}
+                      </h2>
                       <Button
                         disabled={exporting || !rows.length}
                         variant="outline"
@@ -1216,13 +1267,22 @@ export function Workspace() {
           aria-label="Navegação rápida"
           className="mobile-tabs md:hidden fixed bottom-0 inset-x-0 z-40 border-t bg-white/95 backdrop-blur flex justify-around px-2 pt-2 pb-[max(.5rem,env(safe-area-inset-bottom))]"
         >
-          {[
-            { key: "register", label: "Ponto", Icon: Timer },
-            { key: "insights", label: "Resumo", Icon: FileBarChart2 },
-            { key: "orders", label: "Minhas OS", Icon: ClipboardList },
-            { key: "reports", label: "Relatório", Icon: Download },
-            { key: "profile", label: "Meu acesso", Icon: UserRound },
-          ].map(({ key, label, Icon }) => (
+          {(admin
+            ? [
+                { key: "dashboard", label: "Painel", Icon: LayoutDashboard },
+                { key: "orders", label: "OS", Icon: ClipboardList },
+                { key: "entries", label: "Pontos", Icon: ListChecks },
+                { key: "register", label: "Meu ponto", Icon: Timer },
+                { key: "people", label: "Equipe", Icon: Users },
+              ]
+            : [
+                { key: "register", label: "Ponto", Icon: Timer },
+                { key: "insights", label: "Resumo", Icon: FileBarChart2 },
+                { key: "orders", label: "Minhas OS", Icon: ClipboardList },
+                { key: "reports", label: "Relatório", Icon: Download },
+                { key: "profile", label: "Meu acesso", Icon: UserRound },
+              ]
+          ).map(({ key, label, Icon }) => (
             <button
               key={key}
               onClick={() => go(key)}
@@ -1251,46 +1311,6 @@ export function Workspace() {
         />
       )}
       <AlertDialog
-        open={
-          !!data?.me.pin_change_required &&
-          !data.me.pin_change_prompted &&
-          !demo &&
-          !editor
-        }
-        onOpenChange={() => {}}
-      >
-        <AlertDialogContent className="max-w-md bg-white">
-          <AlertDialogHeader>
-            <div className="mb-2 flex size-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">
-              <KeyRound size={24} />
-            </div>
-            <AlertDialogTitle>Crie seu PIN pessoal</AlertDialogTitle>
-            <AlertDialogDescription className="leading-relaxed">
-              Você entrou com o PIN inicial padrão. Troque-o agora para manter
-              seu acesso protegido. Se preferir, poderá fazer isso depois em
-              <b> Meu acesso</b>.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="mt-3 gap-2 sm:gap-2">
-            <Button
-              variant="outline"
-              disabled={pinPromptBusy}
-              onClick={() => void postponePinChange()}
-            >
-              {pinPromptBusy ? "Salvando…" : "Mudar depois"}
-            </Button>
-            <AlertDialogAction
-              disabled={pinPromptBusy}
-              onClick={() =>
-                data && setEditor({ kind: "profile", data: data.me })
-              }
-            >
-              Mudar PIN agora
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <AlertDialog
         open={!!deleting}
         onOpenChange={(open) => !open && !busy && setDeleting(null)}
       >
@@ -1318,6 +1338,102 @@ export function Workspace() {
         </AlertDialogContent>
       </AlertDialog>
     </SidebarProvider>
+  );
+}
+/** Troca obrigatória do PIN antes de qualquer acesso a dados. Não há como adiar. */
+function PinChangeGate({
+  me,
+  onSignOut,
+}: {
+  me: Person;
+  onSignOut: () => Promise<void>;
+}) {
+  const [pin, setPin] = useState(""),
+    [confirm, setConfirm] = useState(""),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false);
+  const digits = (v: string) => v.replace(/\D/g, "").slice(0, 6);
+  async function submit(ev: React.FormEvent) {
+    ev.preventDefault();
+    if (!/^\d{6}$/.test(pin)) return setError("O PIN deve ter exatamente 6 números.");
+    if (pin !== confirm) return setError("A confirmação não confere com o novo PIN.");
+    setBusy(true);
+    setError("");
+    try {
+      await api("/api/manage", {
+        entity: "profile",
+        data: { name: me.name, job: me.job || "", phone: me.phone || "", pin },
+      });
+      toast.success("PIN atualizado. Entre novamente com o novo PIN.");
+      await onSignOut();
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
+    }
+  }
+  return (
+    <main className="pin-gate">
+      <form className="panel" onSubmit={(e) => void submit(e)} aria-labelledby="pin-gate-title" noValidate>
+        <div className="mb-4 flex size-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">
+          <KeyRound size={24} aria-hidden />
+        </div>
+        <h1 id="pin-gate-title" className="text-2xl!">Crie seu PIN pessoal</h1>
+        <p className="muted mt-2 text-sm leading-relaxed">
+          Olá, {me.name.split(" ")[0]}. Antes de acessar o HoraCerta, defina um PIN de 6 números que só você conhece.
+          Depois de salvar, entre novamente com o novo PIN.
+        </p>
+        <div className="mt-6 grid gap-4">
+          <label>
+            Novo PIN
+            <input
+              type="password"
+              inputMode="numeric"
+              autoComplete="new-password"
+              pattern="\d{6}"
+              maxLength={6}
+              required
+              autoFocus
+              value={pin}
+              onChange={(e) => setPin(digits(e.target.value))}
+              aria-invalid={!!error && !/^\d{6}$/.test(pin)}
+              aria-describedby="pin-gate-help"
+            />
+          </label>
+          <label>
+            Confirme o novo PIN
+            <input
+              type="password"
+              inputMode="numeric"
+              autoComplete="new-password"
+              pattern="\d{6}"
+              maxLength={6}
+              required
+              value={confirm}
+              onChange={(e) => setConfirm(digits(e.target.value))}
+              aria-invalid={!!error && pin !== confirm}
+              aria-describedby="pin-gate-help"
+            />
+          </label>
+          <p id="pin-gate-help" className="muted text-xs">
+            Use 6 números. Evite datas e sequências fáceis de adivinhar.
+          </p>
+        </div>
+        {error && (
+          <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+            {error}
+          </p>
+        )}
+        <div className="mt-6 grid gap-2">
+          <Button type="submit" className="action w-full" disabled={busy}>
+            {busy ? <LoaderCircle className="animate-spin" /> : <ShieldCheck />}
+            {busy ? "Salvando…" : "Salvar novo PIN"}
+          </Button>
+          <Button type="button" variant="ghost" className="action w-full" disabled={busy} onClick={() => void onSignOut()}>
+            <LogOut size={16} /> Sair
+          </Button>
+        </div>
+      </form>
+    </main>
   );
 }
 function ReportGroups({
@@ -1478,9 +1594,9 @@ function Profile({
       <section className="panel mt-6 p-6">
         <h2>Últimos serviços</h2>
         {rows.length ? (
-          rows
-            .slice(-7)
-            .reverse()
+          [...rows]
+            .sort((a, b) => (b.date + b.start).localeCompare(a.date + a.start))
+            .slice(0, 7)
             .map((e) => (
               <div
                 key={e.id}
@@ -1489,7 +1605,7 @@ function Profile({
                 <div>
                   <p className="font-medium text-sm">{e.service}</p>
                   <p className="muted text-xs mt-1">
-                    {e.date} · {e.start.slice(0, 5)} —{" "}
+                    {e.date.split("-").reverse().join("/")} · {e.start.slice(0, 5)} —{" "}
                     {e.end?.slice(0, 5) || "Em aberto"}
                   </p>
                 </div>

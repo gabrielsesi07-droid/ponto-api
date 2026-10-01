@@ -7,6 +7,13 @@ import { api } from './editors';
 import { toast } from 'sonner';
 import { checklistProgress, checklistCompletionIssues, newChecklistItem, type ChecklistItem, type ChecklistTemplate, type OrderChecklist } from '@/lib/checklists';
 import { submitChecklist } from '@/lib/checklist-request';
+import { assignmentCandidates, assignmentIssue, canAssignChecklist, ASSIGNMENT_REASON_MAX, type Assignee, type AssignmentFields } from '@/lib/checklist-assignment';
+
+/** Campos opcionais do servidor: `can_edit` decide a edição; os demais descrevem a designação de responsável. */
+type ServerChecklist = OrderChecklist & AssignmentFields & { can_edit?: boolean };
+/** Sem `can_edit`, mantém a leitura anterior; com ele, o servidor decide quem confere, inclusive em checklist legado sem itens (o responsável adiciona os itens). */
+const checklistReadOnly = (c: ServerChecklist, admin: boolean, closed: boolean) =>
+  closed || c.detached || c.status !== 'open' || (c.can_edit === undefined ? admin || !c.items.length : !c.can_edit);
 
 export function ChecklistItems({ items, onChange, template = false, disabled = false }: {
   items: ChecklistItem[]; onChange: (items: ChecklistItem[]) => void; template?: boolean; disabled?: boolean;
@@ -95,7 +102,7 @@ export function ChecklistTemplateEditor({ modelId, onClose, onSaved }: { modelId
   </Dialog>;
 }
 
-export function OrderChecklistEditor({ checklist, admin, closed, onClose, onSaved }: { checklist: OrderChecklist; admin: boolean; closed: boolean; onClose: () => void; onSaved: () => void }) {
+export function OrderChecklistEditor({ checklist, admin, closed, onClose, onSaved }: { checklist: ServerChecklist; admin: boolean; closed: boolean; onClose: () => void; onSaved: () => void }) {
   const [title, setTitle] = useState(checklist.title), [items, setItems] = useState(checklist.items);
   const [notes, setNotes] = useState(checklist.notes), [identification, setIdentification] = useState(checklist.identification);
   const [dirty, setDirty] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(''), [reason, setReason] = useState('');
@@ -103,7 +110,7 @@ export function OrderChecklistEditor({ checklist, admin, closed, onClose, onSave
   const sending = useRef(false), feedback = useRef<HTMLDivElement>(null), editor = useRef<HTMLDivElement>(null);
   const issues = attemptedComplete ? checklistCompletionIssues(items) : [];
   useEffect(() => { if (error) feedback.current?.focus(); }, [error]);
-  const readOnly = admin || closed || checklist.detached || checklist.status !== 'open' || !checklist.items.length;
+  const readOnly = checklistReadOnly(checklist, admin, closed);
   const progress = checklistProgress(items);
   async function save(action: 'save' | 'complete' | 'reopen') {
     if (sending.current) return;
@@ -127,10 +134,11 @@ export function OrderChecklistEditor({ checklist, admin, closed, onClose, onSave
       <DialogHeader><DialogTitle>{checklist.model_name} · conferência</DialogTitle><DialogDescription>Cópia exclusiva desta OS. Editar aqui não altera o catálogo. {checklist.status === 'waived' ? 'Dispensado — não equivale a conferência concluída.' : checklist.status === 'completed' ? 'Concluído.' : 'Em preenchimento.'}</DialogDescription></DialogHeader>
       {checklist.status === 'waived' && <p className="rounded-lg bg-amber-50 p-3 text-sm">Dispensado por {checklist.waived_by_name || checklist.updated_by_name}{checklist.waived_at ? ` em ${new Date(checklist.waived_at).toLocaleString('pt-BR')}` : ''}. Motivo: {checklist.waived_reason}. As marcações abaixo são o registro anterior à dispensa.</p>}
       <p className="rounded-lg bg-blue-50 p-3 text-sm">Ida: {progress.outgoing}/{progress.total} · Volta: {progress.incoming}/{progress.total}. {admin ? 'Acompanhamento do coordenador. A conferência é realizada por um colaborador da equipe.' : readOnly ? 'Conferência disponível para consulta e impressão.' : 'Confira os itens e salve pelo seu login. Seu nome será registrado no histórico.'}</p>
+      {checklist.assigned_to_name && <p className="rounded-lg border border-blue-200 bg-white p-3 text-sm"><b>Responsável designado: {checklist.assigned_to_name}</b>{checklist.assigned_by_name ? ` · por ${checklist.assigned_by_name}` : ''}{checklist.assigned_at ? ` em ${new Date(checklist.assigned_at).toLocaleString('pt-BR')}` : ''}.{checklist.assignment_reason ? ` Motivo: ${checklist.assignment_reason}` : ''}{!admin && readOnly && checklist.status === 'open' ? ' Somente o responsável designado pode salvar e finalizar esta conferência.' : ''}</p>}
       {checklist.completed_by_name && <p className="text-sm font-semibold text-emerald-800">Conferência concluída por {checklist.completed_by_name}{checklist.completed_at ? ` em ${new Date(checklist.completed_at).toLocaleString('pt-BR')}` : ''}.</p>}
       {checklist.source_obsolete && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">A origem foi marcada como obsoleta. Consulte o coordenador antes de utilizar este checklist.</p>}
       {checklist.source_review_pending && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-950">Lista importada do documento do equipamento. Confira os itens físicos e registre diferenças; a lista não é uma aprovação técnica do procedimento.</p>}
-      {!items.length && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">Este checklist está sem itens. O coordenador precisa vincular a lista do equipamento antes da conferência.</p>}
+      {!items.length && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{readOnly ? 'Este checklist está sem itens. O coordenador precisa vincular a lista do equipamento antes da conferência.' : 'Este checklist está sem itens. Adicione os itens conferidos com “Adicionar item” antes de salvar.'}</p>}
       <fieldset disabled={readOnly || busy} className="min-w-0 space-y-3">
         <label className="block text-sm">Título<input className="check-input" value={title} maxLength={180} onChange={e => { setTitle(e.target.value); setDirty(true); }} /></label>
         <label className="block text-sm">Identificação deste equipamento (opcional)<input className="check-input" value={identification} maxLength={160} placeholder="Número de série ou patrimônio desta unidade" onChange={e => { setIdentification(e.target.value); setDirty(true); }} /></label>
@@ -153,10 +161,23 @@ export function OrderChecklistEditor({ checklist, admin, closed, onClose, onSave
   </Dialog>;
 }
 
-type OrderData = { order: { checker_count: number }; checklists: OrderChecklist[]; models: { id: string; name: string; template_title: string | null }[];
-  history: { id: number; action: string; name: string; created_at: string }[] };
-export function OrderChecklists({ orderId, admin, closed, cancelled = false, demo, onChanged }: { orderId: string; admin: boolean; closed: boolean; cancelled?: boolean; demo: boolean; onChanged?: () => Promise<void> }) {
-  const [data, setData] = useState<OrderData | null>(null), [error, setError] = useState(''), [selected, setSelected] = useState<OrderChecklist | null>(null);
+type OrderData = { order: { checker_count: number }; checklists: ServerChecklist[]; models: { id: string; name: string; template_title: string | null }[];
+  history: { id: number; action: string; name: string; created_at: string; detail?: string | null }[]; assignees?: Assignee[] };
+export function OrderChecklists({ orderId, admin, closed, cancelled = false, running = false, demo, onChanged }: { orderId: string; admin: boolean; closed: boolean; cancelled?: boolean; running?: boolean; demo: boolean; onChanged?: () => Promise<void> }) {
+  const [data, setData] = useState<OrderData | null>(null), [error, setError] = useState(''), [selected, setSelected] = useState<ServerChecklist | null>(null);
+  const [assigning, setAssigning] = useState<ServerChecklist | null>(null), [assigneeId, setAssigneeId] = useState(''), [assignReason, setAssignReason] = useState(''), [assignError, setAssignError] = useState('');
+  async function assign() {
+    if (!assigning || busy || demo) return;
+    const issue = assignmentIssue(assigneeId, assignReason, assigning.assigned_to);
+    if (issue) { setAssignError(issue); return; }
+    setBusy(true); setAssignError('');
+    try {
+      await submitChecklist({ action: 'assign', id: assigning.id, version: assigning.version, assignee_id: assigneeId, reason: assignReason.trim() });
+      const name = data?.assignees?.find(a => a.id === assigneeId)?.name || 'O colaborador';
+      setAssigning(null); setRevision(n => n + 1); await onChanged?.();
+      toast.success(`${name} agora é responsável pela conferência de ${assigning.model_name}. O motivo ficou no histórico.`);
+    } catch (e) { setAssignError((e as Error).message); setRevision(n => n + 1); } finally { setBusy(false); }
+  }
   const [revision, setRevision] = useState(0), [busy, setBusy] = useState(false);
   const [templateModel, setTemplateModel] = useState('');
   const [waiving,setWaiving]=useState<OrderChecklist|null>(null),[waiveReason,setWaiveReason]=useState(''),[waiveError,setWaiveError]=useState(''),[waiveConfirmed,setWaiveConfirmed]=useState(false);
@@ -189,7 +210,7 @@ export function OrderChecklists({ orderId, admin, closed, cancelled = false, dem
     <h3 className="flex items-center gap-2 font-semibold"><ClipboardList size={18} />Checklists dos equipamentos</h3>
     {admin && cancelled && <p className="rounded-lg bg-amber-50 p-3 text-sm">Nesta OS cancelada, você pode dispensar um checklist pendente com justificativa. A dispensa não confirma a devolução dos equipamentos e não resolve pontos ou viagens em aberto.</p>}
     <p className="text-sm text-slate-600">{admin ? 'Acompanhe a conferência feita pelos colaboradores designados. Você pode consultar, imprimir e reabrir para correção.' : 'Um colaborador da equipe confere os equipamentos na saída e no retorno. O sistema registra quem salvou e quem concluiu.'}</p>
-    {admin && !closed && !cancelled && data?.order.checker_count === 0 && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Esta OS não tem colaborador designado para conferir. Use “Editar OS” e inclua alguém com perfil de colaborador na equipe. O acesso de coordenador é somente para acompanhamento.</p>}
+    {admin && !closed && !cancelled && data?.order.checker_count === 0 && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">{running && data.assignees ? 'Nenhum colaborador ativo da equipe pode conferir. Use “Designar responsável” no checklist pendente para que um colaborador ativo assuma a conferência. A OS só pode ser concluída depois de finalizar os checklists.' : 'Esta OS não tem colaborador designado para conferir. Use “Editar OS” e inclua alguém com perfil de colaborador na equipe. O acesso de coordenador é somente para acompanhamento.'}</p>}
     {!closed && data?.checklists.some(c => !c.detached && c.status === 'open') && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{cancelled ? 'Confira a devolução do que saiu. Para itens não utilizados, marque “Não se aplica” e justifique. Listas nunca iniciadas não geram pendência no cancelamento.' : 'Conclua os checklists vinculados antes de encerrar a OS. Diferenças de quantidade precisam de observação.'}</p>}
     {error && <p role="alert" className="text-sm text-red-700">{error}<button className="ml-2 underline" onClick={() => setRevision(n => n + 1)}>Tentar novamente</button></p>}
     {!data && !error && <p role="status" className="text-sm">Carregando checklists…</p>}
@@ -198,14 +219,16 @@ export function OrderChecklists({ orderId, admin, closed, cancelled = false, dem
       {c.status === 'waived' && <p className="mt-2 text-sm text-amber-900">Justificativa: {c.waived_reason}</p>}
       {c.source_review_pending && <p className="mt-2 text-xs text-amber-900">Lista importada do documento do equipamento · confira os itens.</p>}
       <p className="mt-1 text-xs text-slate-500">Última alteração: {c.updated_by_name} · {new Date(c.updated_at).toLocaleString('pt-BR')}</p>
+      {c.assigned_to_name && <p className="mt-2 text-sm"><b>Responsável: {c.assigned_to_name}</b>{c.assigned_by_name ? ` · designado por ${c.assigned_by_name}` : ''}{c.assigned_at ? ` em ${new Date(c.assigned_at).toLocaleString('pt-BR')}` : ''}{c.assignment_reason ? <span className="block text-xs text-slate-600">Motivo: {c.assignment_reason}</span> : null}</p>}
       {c.completed_by_name && <p className="mt-2 text-sm font-medium text-emerald-800">Conferido por {c.completed_by_name}</p>}
-      <Button className="mt-3" variant="outline" onClick={() => setSelected(c)}>{admin || closed || c.detached || c.status !== 'open' ? 'Consultar e imprimir' : 'Conferir equipamentos'}</Button>
+      <Button className="mt-3" variant="outline" onClick={() => setSelected(c)}>{checklistReadOnly(c, admin, closed) ? 'Consultar e imprimir' : 'Conferir equipamentos'}</Button>
+      {!closed && !cancelled && canAssignChecklist({ admin, running, checklist: c, assignees: data.assignees }) && <Button className="mt-3 sm:ml-2" variant="outline" disabled={busy} onClick={() => { setAssigning(c); setAssigneeId(''); setAssignReason(''); setAssignError(''); }}>{c.assigned_to ? 'Trocar responsável' : 'Designar responsável'}</Button>}
       {admin && cancelled && !closed && !c.detached && c.status === 'open' && <Button className="mt-3 sm:ml-2" variant="outline" disabled={busy} onClick={()=>{setWaiving(c);setWaiveReason('');setWaiveError('');setWaiveConfirmed(false);}}>Dispensar checklist</Button>}
       {admin && !closed && !cancelled && !c.detached && !c.items.length && <Button disabled={busy} className="ml-2 mt-3" onClick={() => data.models.find(m => m.id === c.model_id)?.template_title ? void attach() : setTemplateModel(c.model_id)}>Preparar e vincular itens</Button>}
     </div>; })}
     {data?.models.filter(m => !data.checklists.some(c => c.model_id === m.id)).map(m => <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm" key={m.id}><b>{m.name}</b><p className="mt-1">{cancelled ? 'Nenhum checklist foi vinculado antes do cancelamento.' : m.template_title ? 'Existe uma lista de itens do equipamento disponível para vincular.' : 'Sem lista de itens disponível. O coordenador precisa preparar o checklist para a equipe.'}</p>{admin && !closed && !cancelled && <Button disabled={busy} className="mt-2" variant="outline" onClick={() => m.template_title ? void attach() : setTemplateModel(m.id)}>{m.template_title ? 'Vincular itens do equipamento' : 'Preparar lista de itens'}</Button>}</div>)}
     {data && !data.models.length && !data.checklists.length && <p className="text-sm text-slate-500">Selecione um modelo do catálogo ao cadastrar ou editar a OS para vincular seu checklist.</p>}
-    {!!data?.history.length && <details className="border-t pt-2 text-xs"><summary className="cursor-pointer py-2 font-semibold">Histórico de conferências</summary>{data.history.map(h => <p className="mb-2" key={h.id}>{h.action} · {h.name} · {new Date(h.created_at).toLocaleString('pt-BR')}</p>)}</details>}
+    {!!data?.history.length && <details className="border-t pt-2 text-xs"><summary className="cursor-pointer py-2 font-semibold">Histórico de conferências</summary>{data.history.map(h => <p className="mb-2" key={h.id}>{h.action} · {h.name} · {new Date(h.created_at).toLocaleString('pt-BR')}{h.detail ? <span className="block text-slate-600">Motivo: {h.detail}</span> : null}</p>)}</details>}
     {selected && <OrderChecklistEditor checklist={selected} admin={admin} closed={closed} onClose={() => setSelected(null)} onSaved={() => { setRevision(n => n + 1); void onChanged?.(); }} />}
     {templateModel && <ChecklistTemplateEditor modelId={templateModel} onClose={() => setTemplateModel('')} onSaved={() => void attach()} />}
     {waiving && <Dialog open onOpenChange={open=>{if(!open&&!busy)setWaiving(null);}}><DialogContent className="max-h-[90dvh] overflow-y-auto"><DialogHeader><DialogTitle>Dispensar checklist · {waiving.model_name}</DialogTitle><DialogDescription>Somente para OS cancelada. Os itens e as conferências anteriores serão preservados. O checklist deixará de bloquear as pendências, sem ser marcado como concluído.</DialogDescription></DialogHeader>
@@ -213,6 +236,21 @@ export function OrderChecklists({ orderId, admin, closed, cancelled = false, dem
       <label className="flex items-start gap-3 text-sm"><input type="checkbox" className="mt-1 size-4 shrink-0" disabled={busy} checked={waiveConfirmed} onChange={e=>setWaiveConfirmed(e.target.checked)} />Estou ciente de que dispensar não comprova a devolução dos equipamentos. Meu nome e a justificativa ficarão no histórico.</label>
       {waiveError&&<p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{waiveError}</p>}
       <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={busy} onClick={()=>setWaiving(null)}>Voltar sem dispensar</Button><Button disabled={busy||!waiveConfirmed||waiveReason.trim().length<10} onClick={()=>void waive()}>{busy?'Dispensando…':'Confirmar dispensa'}</Button></div>
+    </DialogContent></Dialog>}
+    {assigning && data?.assignees && <Dialog open onOpenChange={open => { if (!open && !busy) setAssigning(null); }}><DialogContent className="max-h-[90dvh] overflow-y-auto"><DialogHeader><DialogTitle>{assigning.assigned_to ? 'Trocar responsável' : 'Designar responsável'} · {assigning.model_name}</DialogTitle><DialogDescription>Um colaborador ativo assume esta conferência. A partir daí, somente ele salva e finaliza este checklist. A OS continua sem poder ser concluída até o checklist ser finalizado.</DialogDescription></DialogHeader>
+      <form className="space-y-4" noValidate onSubmit={e => { e.preventDefault(); void assign(); }}>
+        {assigning.assigned_to_name && <p className="rounded-lg bg-slate-50 p-3 text-sm">Responsável atual: <b>{assigning.assigned_to_name}</b></p>}
+        <label className="block text-sm font-medium">Colaborador responsável<select className="check-input" disabled={busy} value={assigneeId} onChange={e => setAssigneeId(e.target.value)} aria-describedby="assign-help">
+          <option value="">Selecione um colaborador ativo</option>
+          {assignmentCandidates(data.assignees, assigning.assigned_to).map(a => <option key={a.id} value={a.id}>{a.name}{a.access_code ? ` · ${a.access_code}` : ''} · {a.in_team ? 'na equipe' : 'fora da equipe'}</option>)}
+        </select></label>
+        {!assignmentCandidates(data.assignees, assigning.assigned_to).length && <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-950">Não há outro colaborador ativo disponível. Cadastre ou reative alguém em Colaboradores.</p>}
+        <p id="assign-help" className="text-xs text-slate-600">Quem está fora da equipe vê apenas esta OS e este checklist. Não passa a integrar a equipe e não recebe ponto, reserva de agenda nem lembretes de horas.</p>
+        <label className="block text-sm font-medium">Motivo (mínimo de 10 caracteres)<textarea className="check-input min-h-24" disabled={busy} maxLength={ASSIGNMENT_REASON_MAX} value={assignReason} onChange={e => setAssignReason(e.target.value)} placeholder="Ex.: conferente original desligado; Ana assume a volta dos equipamentos." /></label>
+        <p className="text-xs text-slate-600">{assignReason.trim().length}/{ASSIGNMENT_REASON_MAX} · seu nome, o motivo e o horário ficam no histórico do checklist.</p>
+        {assignError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{assignError}</p>}
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button type="button" variant="outline" className="max-sm:w-full" disabled={busy} onClick={() => setAssigning(null)}>Voltar sem alterar</Button><Button type="submit" className="max-sm:w-full" disabled={busy}>{busy ? <LoaderCircle className="animate-spin" size={18} /> : null}{busy ? 'Designando…' : 'Designar responsável'}</Button></div>
+      </form>
     </DialogContent></Dialog>}
   </section>;
 }

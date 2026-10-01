@@ -149,8 +149,10 @@ export async function PATCH(req: Request) {
         })
         .parse(await payload(req)),
       sql = db();
-    const r =
-      await sql`WITH old AS (SELECT * FROM horacerta.entries WHERE id=${p.id} AND version=${p.version} AND deleted_at IS NULL FOR UPDATE), changed AS (UPDATE horacerta.entries e SET status=${p.status},version=e.version+1,updated_at=now() FROM old WHERE e.id=old.id AND (${p.status !== "Aprovado"} OR e."end" IS NOT NULL) RETURNING e.*) INSERT INTO horacerta.audit(actor_id,entry_id,action,before_value,after_value) SELECT ${me.id}::uuid,changed.id,'status',to_jsonb(old),to_jsonb(changed) FROM changed JOIN old USING(id) RETURNING entry_id`;
+    const [, r] = await sql.transaction([
+      sql`SELECT pg_advisory_xact_lock(2849061701)`,
+      sql`WITH old AS (SELECT * FROM horacerta.entries WHERE id=${p.id} AND version=${p.version} AND deleted_at IS NULL FOR UPDATE), changed AS (UPDATE horacerta.entries e SET status=${p.status},version=e.version+1,updated_at=now() FROM old WHERE e.id=old.id AND (${p.status !== "Aprovado"} OR e."end" IS NOT NULL) RETURNING e.*) INSERT INTO horacerta.audit(actor_id,entry_id,action,before_value,after_value) SELECT ${me.id}::uuid,changed.id,'status',to_jsonb(old),to_jsonb(changed) FROM changed JOIN old USING(id) RETURNING entry_id`,
+    ]);
     if (!r.length)
       throw new ApiError(
         409,

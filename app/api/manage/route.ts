@@ -10,11 +10,11 @@ import {
   failure,
   ApiError,
 } from "@/lib/server";
-import { DEFAULT_INITIAL_PIN, hashPin } from "@/lib/pin";
+import { randomTemporaryPin, TEMPORARY_PIN_HOURS, hashPin, verifyPin } from "@/lib/pin";
 import { compensationSchema, DEFAULT_MONTHLY_HOURS } from '@/lib/compensation';
 export async function POST(req: Request) {
   try {
-    const me = await member(),
+    const me = await member({ allowPinChange: true }),
       body = z
         .object({
           entity: z.enum([
@@ -28,6 +28,8 @@ export async function POST(req: Request) {
         })
         .parse(await payload(req)),
       sql = db();
+    if (me.pin_change_required && (body.entity !== "profile" || !body.data.pin))
+      throw new ApiError(403, "Troque seu PIN temporário antes de continuar.", "PIN_CHANGE_REQUIRED");
     if (body.entity === "pin_prompt") {
       await sql`UPDATE horacerta.users SET pin_change_prompted=true WHERE id=${me.id}`;
       return Response.json({ ok: true });
@@ -40,18 +42,24 @@ export async function POST(req: Request) {
         throw new ApiError(400, 'Informe seu salário mensal para atualizar o cálculo.');
       const pay = hasSalary ? compensationSchema.parse(body.data) : null;
       const p = personSchema.parse({
+        name: me.name,
+        job: me.job,
+        phone: me.phone,
         ...body.data,
         id: me.id,
         email: me.email,
         username: me.username || undefined,
       });
       const pin = p.pin ? await hashPin(p.pin) : null;
-      await sql.transaction([
-        sql`UPDATE horacerta.users SET name=${p.name},job=${p.job},phone=${p.phone},monthly_salary=CASE WHEN ${!!pay} THEN ${pay?.monthly_salary ?? null} ELSE monthly_salary END,monthly_hours=CASE WHEN ${!!pay} THEN ${pay?.monthly_hours ?? DEFAULT_MONTHLY_HOURS} ELSE monthly_hours END,pin_hash=coalesce(${pin},pin_hash),login_attempts=CASE WHEN ${!!pin} THEN 0 ELSE login_attempts END,pin_change_required=CASE WHEN ${!!pin} THEN false ELSE pin_change_required END,pin_change_prompted=CASE WHEN ${!!pin} THEN true ELSE pin_change_prompted END WHERE id=${me.id}`,
-        ...(pin
-          ? [sql`DELETE FROM horacerta.sessions WHERE user_id=${me.id}`]
-          : []),
-      ]);
+      if (p.pin) {
+        if (p.pin === "123456") throw new ApiError(400, "Escolha um PIN diferente do PIN inicial antigo.");
+        const [credential] = await sql`SELECT pin_hash FROM horacerta.users WHERE id=${me.id} AND credential_version=${me.credential_version}`;
+        if (!credential) throw new ApiError(401, "Sua credencial mudou. Entre novamente.");
+        if (await verifyPin(p.pin, credential.pin_hash)) throw new ApiError(400, "Escolha um PIN diferente do atual.");
+      }
+      // The database trigger increments the credential version and revokes sessions atomically.
+      const changed = await sql`UPDATE horacerta.users SET name=${p.name},job=${p.job},phone=${p.phone},monthly_salary=CASE WHEN ${!!pay} THEN ${pay?.monthly_salary ?? null} ELSE monthly_salary END,monthly_hours=CASE WHEN ${!!pay} THEN ${pay?.monthly_hours ?? DEFAULT_MONTHLY_HOURS} ELSE monthly_hours END,pin_hash=coalesce(${pin},pin_hash),login_attempts=CASE WHEN ${!!pin} THEN 0 ELSE login_attempts END,attempt_window=CASE WHEN ${!!pin} THEN NULL ELSE attempt_window END,pin_change_required=CASE WHEN ${!!pin} THEN false ELSE pin_change_required END,pin_change_prompted=CASE WHEN ${!!pin} THEN true ELSE pin_change_prompted END,temporary_pin_expires_at=CASE WHEN ${!!pin} THEN NULL ELSE temporary_pin_expires_at END,temporary_pin_used_at=CASE WHEN ${!!pin} THEN NULL ELSE temporary_pin_used_at END WHERE id=${me.id} AND active=true AND credential_version=${me.credential_version} RETURNING id`;
+      if (!changed.length) throw new ApiError(401, "Sua credencial mudou. Entre novamente.");
       return Response.json({ ok: true });
     }
     coordinator(me);
@@ -69,18 +77,16 @@ export async function POST(req: Request) {
       });
       if (old?.role === "coordinator" && !p.active)
         throw new ApiError(400, "O coordenador deve permanecer ativo.");
-      const pin = p.pin ? await hashPin(p.pin) : null;
+      const reset = !p.id || body.data.reset_pin === true || !!p.pin;
+      const temporaryPin = reset ? randomTemporaryPin() : null;
+      const pin = temporaryPin ? await hashPin(temporaryPin) : null;
+      let person;
       if (p.id) {
-        await sql.transaction([
-          sql`UPDATE horacerta.users SET name=${p.name},username=${p.username || old?.username || null},job=${p.job},phone=${p.phone},active=${p.active},can_edit=${p.can_edit},pin_hash=coalesce(${pin},pin_hash),login_attempts=CASE WHEN ${!!pin} THEN 0 ELSE login_attempts END,pin_change_required=CASE WHEN ${!!pin} THEN true ELSE pin_change_required END,pin_change_prompted=CASE WHEN ${!!pin} THEN false ELSE pin_change_prompted END WHERE id=${p.id}`,
-          ...(pin || !p.active
-            ? [sql`DELETE FROM horacerta.sessions WHERE user_id=${p.id}`]
-            : []),
-        ]);
+        [person] = await sql`UPDATE horacerta.users SET name=${p.name},username=${p.username || old?.username || null},job=${p.job},phone=${p.phone},active=${p.active},can_edit=${p.can_edit},pin_hash=coalesce(${pin},pin_hash),login_attempts=CASE WHEN ${!!pin} THEN 0 ELSE login_attempts END,attempt_window=CASE WHEN ${!!pin} THEN NULL ELSE attempt_window END,pin_change_required=CASE WHEN ${!!pin} THEN true ELSE pin_change_required END,pin_change_prompted=CASE WHEN ${!!pin} THEN false ELSE pin_change_prompted END,temporary_pin_expires_at=CASE WHEN ${!!pin} THEN now()+(${TEMPORARY_PIN_HOURS}*interval '1 hour') ELSE temporary_pin_expires_at END,temporary_pin_used_at=CASE WHEN ${!!pin} THEN NULL ELSE temporary_pin_used_at END WHERE id=${p.id} RETURNING id,name,access_code,job,temporary_pin_expires_at`;
       } else {
-        const initialPin = pin || (await hashPin(DEFAULT_INITIAL_PIN));
-        await sql`INSERT INTO horacerta.users(name,username,email,role,job,phone,hourly_rate,active,can_edit,pin_hash,pin_change_required,pin_change_prompted) VALUES(${p.name},${p.username || null},${p.email},'employee',${p.job},${p.phone},0,${p.active},${p.can_edit},${initialPin},true,false)`;
+        [person] = await sql`INSERT INTO horacerta.users(name,username,email,role,job,phone,hourly_rate,active,can_edit,pin_hash,pin_change_required,pin_change_prompted,temporary_pin_expires_at) VALUES(${p.name},${p.username || null},${p.email},'employee',${p.job},${p.phone},0,${p.active},${p.can_edit},${pin},true,false,now()+(${TEMPORARY_PIN_HOURS}*interval '1 hour')) RETURNING id,name,access_code,job,temporary_pin_expires_at`;
       }
+      if (temporaryPin) return Response.json({ ok: true, person: { id: person.id, name: person.name, access_code: person.access_code, job: person.job }, temporary_pin: temporaryPin, temporary_pin_expires_at: person.temporary_pin_expires_at }, { headers: { "Cache-Control": "no-store" } });
     } else if (body.entity === "client") {
       const p = clientSchema.parse(body.data);
       if (p.id)

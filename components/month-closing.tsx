@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { CheckCheck, Lock, LockOpen, LoaderCircle } from "lucide-react";
+import { CheckCheck, Lock, LockOpen, LoaderCircle, CircleCheck, Circle, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { api } from "./editors";
@@ -37,6 +37,13 @@ export function MonthClosing({
     pendingScoped = scoped.filter((e) => e.end && e.status !== "Aprovado").length;
   const monthEnded = month < today().slice(0, 7);
   const person = state.users.find((u) => u.id === userId)?.name;
+  const zeroRate = inMonth.filter(e => Number(e.rate) === 0).length;
+  const reviewed = scoped.filter(e => e.end && e.status === 'Revisado').length;
+  const readiness = [
+    { label: 'Período encerrado', done: monthEnded, detail: monthEnded ? 'O último dia do mês já passou.' : 'Disponível após o último dia do mês.' },
+    { label: 'Horários completos', done: inMonth.length > 0 && open === 0, detail: !inMonth.length ? 'Nenhum registro neste mês.' : open ? `${open} registro(s) sem saída.` : `${inMonth.length} registro(s) com saída.` },
+    { label: 'Registros aprovados', done: inMonth.length > 0 && pendingAll === 0, detail: pendingAll ? `${pendingAll} aguardando decisão.` : inMonth.length ? 'Todos os registros foram aprovados.' : 'Aguardando registros.' },
+  ];
 
   async function run(action: "approve" | "close" | "reopen") {
     if (demo) {
@@ -91,7 +98,7 @@ export function MonthClosing({
           </p>
           {!closing && (
             <p className="muted mt-1 text-xs">
-              Para fechar: todos os registros com saída e aprovados, depois do último dia do mês. Fechar trava o período para o pagamento das extras.
+              O fechamento protege os registros de toda a equipe, mesmo quando a tela está filtrada por uma pessoa. Os valores apresentados são estimativas.
             </p>
           )}
         </div>
@@ -106,7 +113,7 @@ export function MonthClosing({
                 variant="outline"
                 disabled={busy || !pendingScoped}
                 onClick={() => {
-                  if (window.confirm(`Aprovar ${pendingScoped} registro(s) com saída de ${person ?? "toda a equipe"} em ${monthLabel(month)}? Registros sem saída não são aprovados.`))
+                  if (window.confirm(`Aprovar ${pendingScoped} registro(s) com saída de ${person ?? "toda a equipe"} em ${monthLabel(month)}? Registros sem saída não são aprovados.${reviewed ? ` Inclui ${reviewed} registro(s) marcado(s) como Revisado, que passarão a Aprovado.` : ''}`))
                     void run("approve");
                 }}
               >
@@ -116,7 +123,7 @@ export function MonthClosing({
               <Button
                 disabled={busy || !monthEnded || open > 0 || pendingAll > 0 || !inMonth.length}
                 onClick={() => {
-                  if (window.confirm(`Fechar ${monthLabel(month)}? Os registros de toda a equipe ficarão somente para consulta até uma reabertura justificada.`))
+                  if (window.confirm(`Fechar ${monthLabel(month)}? Os registros de toda a equipe ficarão somente para consulta até uma reabertura justificada. Confira se todos os serviços realizados tiveram suas horas registradas.${zeroRate ? ` Atenção: ${zeroRate} registro(s) têm valor-hora zero. Configurar o salário depois não altera esses registros.` : ''}`))
                     void run("close");
                 }}
               >
@@ -126,6 +133,20 @@ export function MonthClosing({
           )}
         </div>
       </div>
+      {!closing && (
+        <div className="mt-5 space-y-3">
+          <ol className="grid gap-3 md:grid-cols-3" aria-label="Conferência para fechar o mês">
+            {readiness.map((step, index) => (
+              <li key={step.label} className={`flex gap-3 rounded-xl border p-3 ${step.done ? 'border-emerald-200 bg-emerald-50/60' : 'border-slate-200 bg-slate-50'}`}>
+                {step.done ? <CircleCheck size={18} className="mt-0.5 shrink-0 text-emerald-700" aria-hidden="true" /> : <Circle size={18} className="mt-0.5 shrink-0 text-slate-400" aria-hidden="true" />}
+                <div><p className="text-sm font-semibold">{index + 1}. {step.label}<span className="sr-only"> — {step.done ? 'Concluído' : 'Pendente'}</span></p><p className="mt-1 text-xs text-slate-600">{step.detail}</p></div>
+              </li>
+            ))}
+          </ol>
+          <p className="text-xs text-slate-600">Antes de fechar, confira também as OS: esta verificação considera os pontos existentes e não confirma se todos os colaboradores já lançaram suas horas.</p>
+          {zeroRate > 0 && <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950" role="note"><AlertTriangle size={18} className="mt-0.5 shrink-0" /><p><strong>{zeroRate} registro(s) com valor-hora zero.</strong> Confira os valores antes de usar o relatório. Alterar o salário atual não recalcula pontos antigos.</p></div>}
+        </div>
+      )}
       {reopening && (
         <div className="mt-4 space-y-2">
           <label className="block text-sm">

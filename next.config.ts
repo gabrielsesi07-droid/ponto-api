@@ -26,4 +26,11 @@ const nextConfig: NextConfig = isVercelBuild
       // The Cloudflare/Vinext build keeps its native runtime binding.
     };
 
+// Keep an explicitly requested local QA server separate from the normal preview.
+if (process.env.HORACERTA_LOCAL_TEST === "1" && process.env.NODE_ENV !== "production") {
+  nextConfig.distDir = ".next-qa";
+  // Share the QA preload's Neon configuration with the server runtime.
+  nextConfig.serverExternalPackages = ["@neondatabase/serverless"];
+}
+
 export default nextConfig;

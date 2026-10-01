@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState } from 'react';
 import { availablePointOrders, pointOrderNumber, type PointOrder } from '@/lib/point-orders';
-import { today } from '@/lib/domain';
+import { demoOperations, demoState } from '@/lib/demo';
+import { localDateTime } from '@/lib/orders';
 import { Button } from './ui/button';
 
 export function PointOrderPicker({ value, onChange, date, live = false, enabled = true, demo = false, entryId, existingOrderId, disabled = false }: {
@@ -16,7 +17,11 @@ export function PointOrderPicker({ value, onChange, date, live = false, enabled 
     async function load() {
       try {
         if (demo) {
-          setOrders([{id:'demo-order',number:1,title:'Manutenção programada',client_name:'Indústria Nova Era',status:'Agendada',start_date:today(),assigned:true}]);
+          const me = demoState().me;
+          setOrders(demoOperations(me).orders.map(order => ({
+            id: order.id, number: order.number, title: order.title, client_name: order.client_name,
+            status: order.status, start_date: localDateTime(order.starts_at).slice(0, 10), assigned: order.members.includes(me.id),
+          })));
           return;
         }
         const response = await fetch('/api/clock' + (entryId ? `?entry_id=${encodeURIComponent(entryId)}` : ''), { signal: controller.signal });

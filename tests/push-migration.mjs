@@ -2,7 +2,14 @@ import {readFile} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 import assert from 'node:assert/strict';
 import {neon} from '@neondatabase/serverless';
-const sql=neon(process.env.TEST_DATABASE_URL || process.env.DATABASE_URL),schema='qa_push_'+randomUUID().replaceAll('-','');
+const target=process.env.TEST_DATABASE_URL;
+if (process.env.HORACERTA_LOCAL_NEON_TEST!=='1' || !target || process.env.NODE_ENV==='production' || process.env.VERCEL_ENV==='production')
+  throw new Error('Push migration tests require explicit local QA configuration; DATABASE_URL is never a fallback.');
+const address=new URL(target);
+if (!['postgres:', 'postgresql:'].includes(address.protocol) || !['127.0.0.1','localhost'].includes(address.hostname) || address.pathname!=='/horacerta_qa' || !address.port)
+  throw new Error('Push migration tests only accept the dedicated loopback horacerta_qa database.');
+if (process.env.DATABASE_URL && process.env.DATABASE_URL!==target) throw new Error('QA DATABASE_URL must match TEST_DATABASE_URL when present.');
+const sql=neon(target),schema='qa_push_'+randomUUID().replaceAll('-','');
 const read=name=>readFile(new URL('../sql/'+name,import.meta.url),'utf8');
 const statements=(await read('001-schema.sql')).split(';').filter(s=>s.trim());
 statements.push('CREATE TABLE horacerta.timers(user_id uuid)', 'CREATE TABLE horacerta.sessions(token_hash text PRIMARY KEY,user_id uuid,expires_at timestamptz)');
