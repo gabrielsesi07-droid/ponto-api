@@ -16,6 +16,8 @@ for (let i=0;i<2;i++) statements.push(...(await read('018-checklist-waiver.sql')
 statements.push(`CREATE TABLE horacerta.sessions (token_hash text PRIMARY KEY,user_id uuid NOT NULL REFERENCES horacerta.users(id),expires_at timestamptz NOT NULL,created_at timestamptz NOT NULL DEFAULT now())`);
 statements.push(...(await read('017-push-notifications.sql')).split(/\r?\n-- statement-break\r?\n/).filter(s=>s.trim()));
 for (let i=0;i<2;i++) statements.push(...(await read('019-flow-fixes.sql')).split(/\r?\n-- statement-break\r?\n/).filter(s=>s.trim()));
+statements.push(`CREATE TABLE horacerta.schema_migrations(name text PRIMARY KEY,applied_at timestamptz NOT NULL DEFAULT now())`);
+statements.push(...(await read('021-checklist-assignment.sql')).split(/\r?\n-- statement-break\r?\n/).filter(s=>s.trim()));
 // Apply twice to verify the additive salary migration can be rerun safely.
 for (let i=0; i<2; i++) statements.push(...(await read('014-monthly-salary.sql')).split(/\r?\n-- statement-break\r?\n/).filter(s=>s.trim()));
 statements.push(`DO $$

@@ -10,3 +10,6 @@ for (const file of ['019-flow-fixes.sql']) {
 statements.push(sql.query(await readFile(new URL('../sql/004-order-actions.sql',import.meta.url),'utf8')));
 await sql.transaction(statements);
 console.log('Revisão do fluxo aplicada: intervalo por dia, fechamento mensal e lembrete de horas. Nenhum registro existente foi recalculado.');
+await import('./migrate-security.mjs');
+await import('./migrate-checklist-assignment.mjs');
+await import('./migrate-push-reliability.mjs');

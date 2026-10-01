@@ -60,6 +60,8 @@ export type Order = {
   pending_checklists?: number;
   active_points?: number;
   my_point_active?: boolean;
+  /** Colaborador fora da equipe designado para um checklist: acesso só de consulta à OS e ao checklist atribuído. */
+  checklist_only?: boolean;
   /** Pessoas com horas registradas nesta OS (para colaboradores, somente a própria). */
   logged_members?: string[];
   acknowledgements: { user_id: string; version: number }[];

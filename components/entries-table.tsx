@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Blank, Status } from "./controls";
 import { pointOrderNumber } from '@/lib/point-orders';
+import { entryEditExplanation } from '@/lib/entry-access';
 import {
   duration,
   money,
@@ -57,7 +58,11 @@ export function EntriesTable({
     </span>
   ) : (
     <div className="flex gap-1">
-      {(admin || (state.me.can_edit && e.status !== "Aprovado")) && (
+      {entryEditExplanation(state.me, e, false) ? (
+        <span className="max-w-64 text-xs leading-relaxed text-slate-600">
+          <Lock size={14} className="mr-1 inline" />{entryEditExplanation(state.me, e, false)}
+        </span>
+      ) : (
         <Button
           disabled={busy}
           size="icon"
@@ -77,7 +82,7 @@ export function EntriesTable({
             size="icon"
             variant="ghost"
             aria-label="Aprovar lançamento"
-            title="Aprovar"
+            title={!e.end ? 'Preencha a saída antes de aprovar' : e.status === 'Aprovado' ? 'Este lançamento já está aprovado' : 'Aprovar lançamento'}
             onClick={() => onStatus(e, "Aprovado")}
             className="action text-emerald-700"
           >
@@ -111,7 +116,7 @@ export function EntriesTable({
   );
   if (!rows.length)
     return (
-      <Blank description="Ajuste os filtros ou registre uma nova jornada." />
+      <Blank description={admin ? 'Nenhum lançamento neste recorte. Ajuste o período, a pessoa ou o status para conferir os pontos da equipe.' : 'Nenhum lançamento neste recorte. Ajuste os filtros ou registre as horas realizadas em uma OS designada para você.'} />
     );
   return (
     <>

@@ -10,6 +10,7 @@ import {
 } from "@/lib/server";
 import { orderSchema, vehicleSchema, serviceClientSchema } from "@/lib/orders";
 import { checklistPayload } from '@/lib/checklist-server';
+import { checklistOnlyOrder } from '@/lib/checklist-access';
 export const dynamic = "force-dynamic";
 export const maxDuration=60;
 export async function GET() {
@@ -19,6 +20,11 @@ export async function GET() {
       admin = me.role === "coordinator";
     const [orders, vehicles, clients, people] = await Promise.all([
       sql`SELECT o.*,
+        NOT (${admin} OR ${me.id}::uuid=ANY(o.members)) checklist_only,
+        coalesce((SELECT array_agg(c.model_id) FROM horacerta.order_checklists c WHERE c.order_id=o.id AND c.assigned_to=${me.id}::uuid),'{}') assigned_model_ids,
+        coalesce((SELECT jsonb_agg(jsonb_build_object('id',m.id,'name',m.name,'family',m.family) ORDER BY m.name) FROM horacerta.equipment_models m
+          WHERE EXISTS(SELECT 1 FROM horacerta.order_checklists c WHERE c.order_id=o.id AND c.model_id=m.id AND c.assigned_to=${me.id}::uuid)),'[]') assigned_equipment_models,
+        (SELECT count(*)::int FROM horacerta.order_checklists c WHERE c.order_id=o.id AND c.assigned_to=${me.id}::uuid AND c.status='open' AND c.model_id=ANY(o.model_ids)) assigned_pending_checklists,
         horacerta.order_can_delete(o.id) can_delete,
         horacerta.order_pending_checklists(o.id) pending_checklists,
         ((SELECT count(*)::int FROM horacerta.timers t WHERE t.order_id=o.id) +
@@ -31,7 +37,8 @@ export async function GET() {
         coalesce((SELECT jsonb_agg(to_jsonb(a)) FROM horacerta.order_acknowledgements a WHERE a.order_id=o.id),'[]') acknowledgements,
         coalesce((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.departed_at DESC) FROM horacerta.vehicle_trips t WHERE t.order_id=o.id),'[]') trips,
         coalesce((SELECT jsonb_agg(to_jsonb(e) ORDER BY e.created_at DESC) FROM (SELECT e.id,u.name,e.action,e.detail,e.created_at FROM horacerta.order_events e JOIN horacerta.users u ON u.id=e.actor_id WHERE e.order_id=o.id ORDER BY e.created_at DESC LIMIT 100) e),'[]') events
-        FROM horacerta.orders o WHERE (${admin} OR ${me.id}::uuid=ANY(o.members)) ORDER BY o.starts_at DESC`,
+        FROM horacerta.orders o WHERE (${admin} OR ${me.id}::uuid=ANY(o.members) OR EXISTS(
+          SELECT 1 FROM horacerta.order_checklists c WHERE c.order_id=o.id AND c.assigned_to=${me.id}::uuid)) ORDER BY o.starts_at DESC`,
       sql`SELECT v.* FROM horacerta.vehicles v WHERE ${admin} OR EXISTS(SELECT 1 FROM horacerta.orders o WHERE o.vehicle_id=v.id AND ${me.id}::uuid=ANY(o.members)) ORDER BY plate`,
       admin
         ? sql`SELECT id,name,address,contact,phone,notes,active,horacerta.client_has_history(id) has_history FROM horacerta.clients ORDER BY name`
@@ -41,7 +48,7 @@ export async function GET() {
         : Promise.resolve([]),
     ]);
     return Response.json(
-      { orders, vehicles, clients, people },
+      { orders: orders.map(o => o.checklist_only ? checklistOnlyOrder(o) : o), vehicles, clients, people },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (e) {

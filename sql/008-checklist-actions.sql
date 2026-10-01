@@ -5,7 +5,7 @@ DECLARE
  target uuid := (p->>'id')::uuid;added integer;event text;
 BEGIN
  PERFORM pg_advisory_xact_lock(2849061701);
- SELECT * INTO u FROM horacerta.users WHERE id=actor AND active;
+ SELECT * INTO u FROM horacerta.users WHERE id=actor AND active FOR SHARE;
  IF NOT FOUND THEN RAISE EXCEPTION 'Conta indisponível.'; END IF;
  IF action='save_template' THEN
   IF u.role<>'coordinator' THEN RAISE EXCEPTION 'Somente o coordenador configura modelos.'; END IF;
@@ -36,7 +36,7 @@ BEGIN
   SELECT * INTO o FROM horacerta.orders WHERE id=c.order_id FOR UPDATE;
  END IF;
  IF o.id IS NULL THEN RAISE EXCEPTION 'OS não encontrada.'; END IF;
- IF u.role<>'coordinator' AND NOT actor=ANY(o.members) THEN RAISE EXCEPTION 'Você não está designado para esta OS.'; END IF;
+ IF u.role<>'coordinator' AND NOT actor=ANY(o.members) AND c.assigned_to IS DISTINCT FROM actor THEN RAISE EXCEPTION 'Você não está designado para esta OS.'; END IF;
  IF o.status='Concluída' OR (o.status='Cancelada' AND action NOT IN ('save','complete','reopen')) THEN RAISE EXCEPTION 'OS encerrada: não é possível vincular novos itens. Em OS cancelada, confira a devolução na lista existente.'; END IF;
  IF action='sync' THEN
   added := horacerta.attach_order_checklists(o.id,actor);
@@ -58,7 +58,7 @@ BEGIN
    UPDATE horacerta.order_checklists SET status='open',completed_at=NULL,completed_by=NULL,version=version+1,updated_at=now(),updated_by=actor WHERE id=c.id RETURNING * INTO c;
    event := 'Checklist reaberto: '||(p->>'reason');
   ELSIF action IN ('save','complete') THEN
-   IF u.role<>'employee' OR NOT actor=ANY(o.members) THEN RAISE EXCEPTION 'A conferência deve ser realizada por um colaborador designado para esta OS.'; END IF;
+   IF u.role<>'employee' OR (c.assigned_to IS NULL AND NOT actor=ANY(o.members)) OR (c.assigned_to IS NOT NULL AND c.assigned_to<>actor) THEN RAISE EXCEPTION 'A conferência deve ser realizada pelo colaborador responsável por este checklist.'; END IF;
    IF c.status<>'open' THEN RAISE EXCEPTION 'Checklist concluído. Peça a reabertura ao coordenador.'; END IF;
    IF coalesce(jsonb_array_length(p->'items'),0)=0 THEN RAISE EXCEPTION 'Mantenha ao menos um item no checklist.'; END IF;
    UPDATE horacerta.order_checklists SET title=p->>'title',items=p->'items',notes=p->>'notes',identification=p->>'identification',
