@@ -281,7 +281,7 @@ export function ServiceOrders({
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <p className="muted text-sm">
               {history ? 'Consulte as OS concluídas e canceladas, sem misturar com a agenda e os atendimentos em andamento.' : admin
-                ? "Planeje os atendimentos e acompanhe a equipe. Cada nova OS recebe um número sequencial, que não muda ao editar."
+                ? "Planeje os atendimentos e acompanhe a equipe. Informe o número oficial do documento; a referência interna é preservada."
                 : "Seus atendimentos, equipe, trajetos e instruções."}
             </p>
             <div className="flex flex-wrap gap-2">
