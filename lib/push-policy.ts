@@ -1,3 +1,4 @@
+import { orderLabel } from "./order-label.mjs";
 export const PUSH_MAX_AGE_HOURS = 24;
 export const PUSH_MAX_ATTEMPTS = 4;
 export const PUSH_LEASE_SECONDS = 120;
@@ -10,7 +11,7 @@ export type PushJob = {
 };
 export type PushKeys = { public_key: string; private_key: string };
 export type PushRecipient = {
-  endpoint: string; p256dh: string; auth: string; updated_at: string; number: number; status: string;
+  endpoint: string; p256dh: string; auth: string; updated_at: string; number: number; official_number?: string | null; status: string;
 };
 export type PushEligibility = { recipient: PushRecipient; reason?: never } | { recipient?: never; reason: string };
 export type PushFinalization = { status: 'sent' | 'pending' | 'failed' | 'skipped'; reason: string; code: number | null };
@@ -40,8 +41,8 @@ export function pushFailure(code: number, attempts: number): PushFinalization {
     reason: attempts >= PUSH_MAX_ATTEMPTS ? 'attempt_limit' : 'provider_retry', code };
 }
 
-export function pushPayload(job: Pick<PushJob, 'kind' | 'order_id'>, recipient: Pick<PushRecipient, 'number' | 'status'>) {
-  const number = `OS-${String(recipient.number).padStart(6, '0')}`;
+export function pushPayload(job: Pick<PushJob, 'kind' | 'order_id'>, recipient: Pick<PushRecipient, 'number' | 'official_number' | 'status'>) {
+  const number = orderLabel(recipient.number, recipient.official_number);
   return JSON.stringify({
     ...(job.kind === 'hours'
       ? { title: 'Registre suas horas', body: `A ${number} foi ${recipient.status === 'Cancelada' ? 'cancelada' : 'concluída'} e ainda não há horas suas nela.`, tag: `horas-${job.order_id}` }

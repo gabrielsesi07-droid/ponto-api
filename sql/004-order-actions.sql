@@ -22,7 +22,7 @@ BEGIN
  PERFORM pg_advisory_xact_lock(2849061701);
  SELECT * INTO u FROM horacerta.users WHERE id=actor AND active;
  IF NOT FOUND THEN RAISE EXCEPTION 'Conta indisponível.'; END IF;
- IF action IN ('save_order','save_vehicle','save_client','delete_order','delete_client','archive_client','restore_client') AND u.role<>'coordinator' THEN
+ IF action IN ('set_order_number','save_order','save_vehicle','save_client','delete_order','delete_client','archive_client','restore_client') AND u.role<>'coordinator' THEN
    RAISE EXCEPTION 'Somente o coordenador pode realizar este cadastro.';
  END IF;
  IF action IN ('delete_client','archive_client','restore_client') THEN
@@ -59,6 +59,20 @@ BEGIN
    RETURN jsonb_build_object('ok',true,'id',target);
  END IF;
  SELECT * INTO o FROM horacerta.orders WHERE id=target FOR UPDATE;
+ IF action='set_order_number' THEN
+   IF o.id IS NULL THEN RAISE EXCEPTION 'OS não encontrada.'; END IF;
+   IF (p->>'version')::int IS DISTINCT FROM o.version THEN RAISE EXCEPTION 'A OS foi atualizada. Reabra antes de alterar o número.'; END IF;
+   IF length(trim(coalesce(p->>'official_number','')))>80 THEN RAISE EXCEPTION 'Use até 80 caracteres para o número oficial.'; END IF;
+   IF o.official_number IS DISTINCT FROM nullif(trim(p->>'official_number'),'') THEN
+     UPDATE horacerta.orders SET official_number=nullif(trim(p->>'official_number'),''),version=version+1 WHERE id=target;
+     INSERT INTO horacerta.order_events(order_id,actor_id,action,detail) VALUES(target,actor,'Número oficial alterado',
+       coalesce(o.official_number,'(não informado)') || ' → ' || coalesce(nullif(trim(p->>'official_number'),''),'(não informado)'));
+     INSERT INTO horacerta.audit(actor_id,action,before_value,after_value) VALUES(actor,'Número oficial da OS alterado',
+       jsonb_build_object('order_id',target,'official_number',o.official_number),
+       jsonb_build_object('order_id',target,'official_number',nullif(trim(p->>'official_number'),'')));
+   END IF;
+   RETURN jsonb_build_object('ok',true,'id',target);
+ END IF;
  IF action='delete_order' THEN
    IF o.id IS NULL THEN RAISE EXCEPTION 'OS não encontrada ou já excluída.'; END IF;
    IF (p->>'version')::int IS DISTINCT FROM o.version THEN RAISE EXCEPTION 'A OS foi atualizada. Reabra antes de excluir.'; END IF;
@@ -107,15 +121,15 @@ BEGIN
      RAISE EXCEPTION 'Um colaborador ou veículo já está reservado nesse horário.';
    END IF;
    IF o.id IS NULL THEN
-     INSERT INTO horacerta.orders(id,title,client_id,client_name,address,place_id,contact,phone,starts_at,ends_at,members,vehicle_id,equipment,instructions,priority,created_by)
-     VALUES(target,p->>'title',selected_client,client_label,p->>'address',p->>'place_id',p->>'contact',p->>'phone',(p->>'starts_at')::timestamptz,(p->>'ends_at')::timestamptz,team,(p->>'vehicle_id')::uuid,p->>'equipment',p->>'instructions',p->>'priority',actor);
+     INSERT INTO horacerta.orders(id,official_number,title,client_id,client_name,address,place_id,contact,phone,starts_at,ends_at,members,vehicle_id,equipment,instructions,priority,created_by)
+     VALUES(target,nullif(trim(p->>'official_number'),''),p->>'title',selected_client,client_label,p->>'address',p->>'place_id',p->>'contact',p->>'phone',(p->>'starts_at')::timestamptz,(p->>'ends_at')::timestamptz,team,(p->>'vehicle_id')::uuid,p->>'equipment',p->>'instructions',p->>'priority',actor);
    ELSE
      -- UPDATE must not consume the identity sequence as INSERT ON CONFLICT does.
-     UPDATE horacerta.orders SET title=p->>'title',client_id=selected_client,client_name=client_label,address=p->>'address',place_id=p->>'place_id',
+     UPDATE horacerta.orders SET official_number=CASE WHEN p ? 'official_number' THEN nullif(trim(p->>'official_number'),'') ELSE o.official_number END,title=p->>'title',client_id=selected_client,client_name=client_label,address=p->>'address',place_id=p->>'place_id',
        contact=p->>'contact',phone=p->>'phone',starts_at=(p->>'starts_at')::timestamptz,ends_at=(p->>'ends_at')::timestamptz,members=team,
        vehicle_id=(p->>'vehicle_id')::uuid,equipment=p->>'equipment',instructions=p->>'instructions',priority=p->>'priority',version=version+1 WHERE id=target;
    END IF;
-   INSERT INTO horacerta.order_events(order_id,actor_id,action,detail) VALUES(target,actor,CASE WHEN o.id IS NULL THEN 'OS criada' ELSE 'OS reprogramada' END,p->>'title');
+   INSERT INTO horacerta.order_events(order_id,actor_id,action,detail) VALUES(target,actor,CASE WHEN o.id IS NULL THEN 'OS criada' ELSE 'OS reprogramada' END,(p->>'title') || CASE WHEN p ? 'official_number' THEN ' · Número oficial: ' || coalesce(o.official_number,'(não informado)') || ' → ' || coalesce(nullif(trim(p->>'official_number'),''),'(não informado)') ELSE '' END);
    UPDATE horacerta.orders SET model_ids=selected_models WHERE id=target;
    PERFORM horacerta.attach_order_checklists(target,actor);
    IF o.id IS NULL THEN

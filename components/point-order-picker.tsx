@@ -42,7 +42,7 @@ export function PointOrderPicker({ value, onChange, date, live = false, enabled 
       <select className="mt-1 w-full" required={!entryId} aria-label="Ordem de serviço (OS)" value={value} disabled={disabled || loading || !!error || locked}
         onChange={e => onChange(orders.find(o => o.id === e.target.value) || null)}>
         <option value="">{loading ? 'Carregando suas OS…' : entryId && !existingOrderId ? 'Registro antigo sem OS · manter histórico' : 'Selecione a OS deste trabalho'}</option>
-        {options.map(o => <option key={o.id} value={o.id}>{pointOrderNumber(o.number)} · {o.client_name} · {o.title} · {o.status}</option>)}
+        {options.map(o => <option key={o.id} value={o.id}>{pointOrderNumber(o.number, o.official_number)} · {o.client_name} · {o.title} · {o.status}</option>)}
       </select>
     </label>
     {error ? <div role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{error} <Button type="button" variant="outline" onClick={() => { setLoading(true); setError(''); setAttempt(n => n + 1); }}>Tentar novamente</Button></div>

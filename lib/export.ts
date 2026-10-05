@@ -1,3 +1,4 @@
+import { orderLabel } from "./order-label.mjs";
 import type { Calculated, State } from "./domain";
 import { duration } from "./domain";
 export async function exportReport(
@@ -25,7 +26,7 @@ export async function exportReport(
   ];
   const data = rows.map((e) => [
     e.date,
-    e.order_number ? `OS-${String(e.order_number).padStart(6, '0')}` : 'Histórico anterior · sem OS',
+    e.order_number ? orderLabel(e.order_number, e.order_official_number) : 'Histórico anterior · sem OS',
     state.users.find((u) => u.id === e.user_id)?.name || "",
     e.company || "Não informada",
     e.service || "Serviço técnico",

@@ -149,6 +149,7 @@ export function OrderEditor({
   onSaved: (id: string) => Promise<void>;
 }) {
   const [form, setForm] = useState(() => ({
+    official_number: order?.official_number || "",
     title: order?.title || "",
     client_id: order?.client_id || "",
     client_name: order?.client_name || "",
@@ -243,6 +244,11 @@ export function OrderEditor({
             </p>
           )}
           <fieldset disabled={busy || !!savedId} className="contents">
+            <label className="full">
+              Número oficial da OS
+              <input maxLength={80} value={form.official_number} onChange={e => change("official_number", e.target.value)} placeholder="Ex.: 4831 ou OS 4831" />
+              <span className="text-xs muted">Informe o número do PDF. Sem preenchimento, será usada a referência interna. O anexo não é lido automaticamente.</span>
+            </label>
             <label className="full">
               Serviço / título
               <input

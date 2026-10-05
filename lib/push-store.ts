@@ -46,7 +46,7 @@ export function createPushStore(sql: NeonQueryFunction<false, false>): PushStore
     },
     async recipient(job) {
       // Keep PostgreSQL's full timestamp precision for renewal-safe revocation; JS dates truncate microseconds.
-      const [row] = await sql`SELECT s.endpoint,s.p256dh,s.auth,s.updated_at::text updated_at,o.number,o.status,
+      const [row] = await sql`SELECT s.endpoint,s.p256dh,s.auth,s.updated_at::text updated_at,o.number,o.official_number,o.status,
         u.active,u.pin_change_required,s.user_id=ANY(o.members) assigned,
         EXISTS(SELECT 1 FROM horacerta.entries e WHERE e.order_id=o.id AND e.user_id=s.user_id AND e.deleted_at IS NULL) hours_recorded
         FROM horacerta.push_subscriptions s JOIN horacerta.users u ON u.id=s.user_id
@@ -59,7 +59,7 @@ export function createPushStore(sql: NeonQueryFunction<false, false>): PushStore
       if (job.kind === 'assigned' && !['Agendada', 'Em andamento'].includes(row.status)) return { reason: 'order_closed' };
       if (job.kind === 'hours' && !['Concluída', 'Cancelada'].includes(row.status)) return { reason: 'order_open' };
       if (job.kind === 'hours' && row.hours_recorded) return { reason: 'hours_recorded' };
-      return { recipient: { endpoint: row.endpoint, p256dh: row.p256dh, auth: row.auth, updated_at: row.updated_at, number: row.number, status: row.status } };
+      return { recipient: { endpoint: row.endpoint, p256dh: row.p256dh, auth: row.auth, updated_at: row.updated_at, number: row.number, official_number: row.official_number, status: row.status } };
     },
     async finalize(job, result) {
       const updated = await sql`UPDATE horacerta.push_jobs SET status=${result.status},last_reason=${result.reason},last_code=${result.code},

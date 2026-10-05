@@ -62,6 +62,7 @@ export async function POST(req: Request) {
       action = z
         .enum([
           "save_order",
+          "set_order_number",
           "save_client",
           "save_vehicle",
           "ack",
@@ -77,8 +78,9 @@ export async function POST(req: Request) {
         ])
         .parse(body.action);
     let data;
-    if (action.startsWith("save_") || action === "cancel" || action.startsWith('delete_') || action === 'archive_client' || action === 'restore_client') coordinator(me);
+    if (action === "set_order_number" || action.startsWith("save_") || action === "cancel" || action.startsWith('delete_') || action === 'archive_client' || action === 'restore_client') coordinator(me);
     if (action === "save_order") data = orderSchema.parse(body.data);
+    else if (action === "set_order_number") data = z.object({ id: z.string().uuid(), version: z.number().int().positive(), official_number: z.string().trim().max(80).nullable() }).parse(body.data);
     else if (action === "save_client")
       data = serviceClientSchema.parse(body.data);
     else if (action === "save_vehicle") data = vehicleSchema.parse(body.data);

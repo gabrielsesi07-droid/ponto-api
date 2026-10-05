@@ -1,4 +1,5 @@
 "use client";
+import { orderLabel } from "@/lib/order-label.mjs";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   Clock3,
@@ -442,7 +443,7 @@ export function Workspace() {
                 e.date,
                 e.date.split("-").reverse().join("/"),
                 e.company,
-                e.order_number ? `OS-${String(e.order_number).padStart(6,'0')}` : '',
+                e.order_number ? orderLabel(e.order_number, e.order_official_number) : '',
                 e.service,
                 e.notes,
               ]

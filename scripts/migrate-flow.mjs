@@ -2,6 +2,8 @@ import {readFile} from 'node:fs/promises';
 import {neon} from '@neondatabase/serverless';
 const sql=neon(process.env.DATABASE_URL);
 const statements=[];
+// Standalone upgrades must add the field before publishing the new order_action.
+statements.push(sql.query((await readFile(new URL('../sql/023-official-order-number.sql',import.meta.url),'utf8')).split(/\r?\n-- statement-break\r?\n/)[0]));
 for (const file of ['019-flow-fixes.sql']) {
  const source=await readFile(new URL('../sql/'+file,import.meta.url),'utf8');
  statements.push(...source.split(/\r?\n-- statement-break\r?\n/).filter(s=>s.trim()).map(s=>sql.query(s)));
@@ -13,3 +15,5 @@ console.log('Revisão do fluxo aplicada: intervalo por dia, fechamento mensal e 
 await import('./migrate-security.mjs');
 await import('./migrate-checklist-assignment.mjs');
 await import('./migrate-push-reliability.mjs');
+
+await import('./migrate-official-order-number.mjs');

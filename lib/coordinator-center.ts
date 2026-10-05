@@ -7,6 +7,7 @@ import type { Calculated, Person } from "./domain";
 export type CenterOrder = {
   id: string;
   number: number;
+  official_number?: string | null;
   title: string;
   client_name: string;
   status: "Agendada" | "Em andamento" | "Concluída" | "Cancelada";
@@ -55,7 +56,8 @@ export const shortDate = (date: string) =>
   date.slice(8, 10) + "/" + date.slice(5, 7);
 export const monthLabel = (month: string) =>
   month.slice(5, 7) + "/" + month.slice(0, 4);
-export const osLabel = (n: number) => "OS-" + String(n).padStart(6, "0");
+import { orderLabel as osLabel } from "./order-label.mjs";
+export { osLabel };
 export function previousMonth(month: string) {
   const [y, m] = month.split("-").map(Number);
   return new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 7);
@@ -277,7 +279,7 @@ export function coordinatorQueue(input: {
     tasks.push({
       id: "overdue-" + o.id,
       severity: "urgent",
-      title: `${osLabel(o.number)} passou da previsão sem conclusão`,
+      title: `${osLabel(o.number, o.official_number)} passou da previsão sem conclusão`,
       detail: `${o.client_name} · previsão ${shortDate(brtDate(o.ends_at))}${blockers.length ? " · " + blockers.join(", ") : o.status === "Agendada" ? " · ainda sem horas ou saída de veículo" : " · pronta para registrar o resultado"}.`,
       cta: "Abrir OS",
       action: { kind: "order", orderId: o.id },
@@ -322,7 +324,7 @@ export function coordinatorQueue(input: {
     tasks.push({
       id: "cancelled-" + o.id,
       severity: "attention",
-      title: `${osLabel(o.number)} cancelada com pendências`,
+      title: `${osLabel(o.number, o.official_number)} cancelada com pendências`,
       detail: `${o.client_name} · ${orderBlockers(o).join(", ")}.`,
       cta: "Abrir OS",
       action: { kind: "order", orderId: o.id },
@@ -331,7 +333,7 @@ export function coordinatorQueue(input: {
     tasks.push({
       id: "missing-" + order.id,
       severity: "attention",
-      title: `${osLabel(order.number)} concluída sem horas de ${plural(people.length, "integrante", "integrantes")}`,
+      title: `${osLabel(order.number, order.official_number)} concluída sem horas de ${plural(people.length, "integrante", "integrantes")}`,
       detail: `${names(people.map((p) => p.name))} ainda não registrou horas · ${order.client_name}.`,
       cta: "Abrir OS",
       action: { kind: "order", orderId: order.id },
