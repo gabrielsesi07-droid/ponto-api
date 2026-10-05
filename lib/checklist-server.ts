@@ -17,7 +17,7 @@ export async function checklistPayload(req: Request) {
 }
 export async function orderForChecklist(id: string, me: Person) {
   z.string().uuid().parse(id);
-  const [o] = await db()`SELECT o.id,o.number,o.title,o.client_name,o.address,o.starts_at,o.ends_at,o.status,o.model_ids,
+  const [o] = await db()`SELECT o.id,o.number,o.official_number,o.title,o.client_name,o.address,o.starts_at,o.ends_at,o.status,o.model_ids,
     NOT (${me.role === 'coordinator'} OR ${me.id}::uuid=ANY(o.members)) checklist_only,
     coalesce((SELECT string_agg(name,', ' ORDER BY name) FROM horacerta.users WHERE id=ANY(o.members)),'') team_names,
     (SELECT plate||' · '||model FROM horacerta.vehicles WHERE id=o.vehicle_id) vehicle,

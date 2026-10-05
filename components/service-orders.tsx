@@ -210,7 +210,7 @@ export function ServiceOrders({
           matchesOrderScope(o, scope) &&
           matchesOrderAttention(o, attentionFilter, today(), checkedAt, admin) &&
           (!history || !historyMonth || localDateTime(o.starts_at).slice(0, 7) === historyMonth) &&
-          [orderNumber(o.number), o.client_name, o.title, o.address]
+          [orderNumber(o.number, o.official_number), orderNumber(o.number), o.client_name, o.title, o.address]
             .join(" ")
             .toLowerCase()
             .includes(currentSearch.trim().toLowerCase()),
@@ -244,7 +244,7 @@ export function ServiceOrders({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <b className="flex items-center gap-2 text-violet-950"><ClipboardList size={20} />{assignedChecklists.length === 1 ? 'Checklist designado para você' : 'Checklists designados para você'}</b>
-              <p className="mt-1 text-sm text-violet-900">{assignedChecklists.map(o => `${orderNumber(o.number)} · ${o.client_name}`).join(' / ')}</p>
+              <p className="mt-1 text-sm text-violet-900">{assignedChecklists.map(o => `${orderNumber(o.number, o.official_number)} · ${o.client_name}`).join(' / ')}</p>
             </div>
             <Button onClick={() => setSelected(assignedChecklists[0].id)}>Abrir conferência</Button>
           </div>
@@ -260,7 +260,7 @@ export function ServiceOrders({
               </b>
               <p className="mt-1 text-sm text-blue-800">
                 {due
-                  .map((o) => `${orderNumber(o.number)} · ${o.client_name}`)
+                  .map((o) => `${orderNumber(o.number, o.official_number)} · ${o.client_name}`)
                   .join(" / ")}
               </p>
             </div>
@@ -281,7 +281,7 @@ export function ServiceOrders({
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <p className="muted text-sm">
               {history ? 'Consulte as OS concluídas e canceladas, sem misturar com a agenda e os atendimentos em andamento.' : admin
-                ? "Planeje os atendimentos e acompanhe a equipe. Cada nova OS recebe um número sequencial, que não muda ao editar."
+                ? "Planeje os atendimentos e acompanhe a equipe. Informe o número oficial do documento; a referência interna é preservada."
                 : "Seus atendimentos, equipe, trajetos e instruções."}
             </p>
             <div className="flex flex-wrap gap-2">
@@ -365,7 +365,7 @@ export function ServiceOrders({
               return (
               <article className="panel min-w-0 p-5" key={o.id}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <b className="text-blue-700">{orderNumber(o.number)}</b>
+                  <b className="text-blue-700">{orderNumber(o.number, o.official_number)}</b>
                   <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold">
                     {o.status} · {o.priority}
                   </span>
@@ -431,7 +431,7 @@ export function ServiceOrders({
             {data.vehicles.map((v) => {
               const trips = data.orders
                   .flatMap((o) =>
-                    o.trips.map((t) => ({ ...t, number: o.number })),
+                    o.trips.map((t) => ({ ...t, number: o.number, official_number: o.official_number })),
                   )
                   .filter((t) => t.vehicle_id === v.id)
                   .sort((a, b) => b.departed_at.localeCompare(a.departed_at)),
@@ -462,7 +462,7 @@ export function ServiceOrders({
                     {!v.active
                       ? "Inativo"
                       : active
-                        ? `Em viagem · ${orderNumber(active.number)}`
+                        ? `Em viagem · ${orderNumber(active.number, active.official_number)}`
                         : "Sem viagem em aberto"}
                   </p>
                   {v.maintenance_km !== null && (
@@ -489,7 +489,7 @@ export function ServiceOrders({
                             className="font-semibold text-blue-700 underline"
                             onClick={() => setSelected(t.order_id)}
                           >
-                            {orderNumber(t.number)}
+                            {orderNumber(t.number, t.official_number)}
                           </button>
                           <p>{dateLabel(t.departed_at)}</p>
                           <p>
@@ -640,6 +640,9 @@ function OrderDetail({
   onNavigate: (view: string) => void;
   checkedAt: number;
 }) {
+  const [numberDraft, setNumberDraft] = useState({ version: o.version, value: o.official_number || "" });
+  const officialNumber = numberDraft.version === o.version ? numberDraft.value : (o.official_number || "");
+  const setOfficialNumber = (value: string) => setNumberDraft({ version: o.version, value });
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [km, setKm] = useState(""),
@@ -695,7 +698,7 @@ function OrderDetail({
       await api('/api/operations', { action: 'delete_order', data: { id: o.id, version: o.version, confirmation } });
       setConfirmDelete(false);
       onClose();
-      toast.success(`${orderNumber(o.number)} excluída. O registro da exclusão foi mantido na auditoria.`);
+      toast.success(`${orderNumber(o.number, o.official_number)} excluída. O registro da exclusão foi mantido na auditoria.`);
       await onChanged();
     } catch (e) { setDeleteError((e as Error).message); }
     finally { setBusy(false); }
@@ -752,13 +755,29 @@ function OrderDetail({
       <DialogContent className="ops-dialog max-h-[92svh] overflow-y-auto bg-white sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>
-            {orderNumber(o.number)} · {o.title}
+            {orderNumber(o.number, o.official_number)} · {o.title}
           </DialogTitle>
           <DialogDescription>
             {o.client_name} · {o.status} · Prioridade {o.priority}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-5">
+          <p className="text-xs muted">Referência interna: {orderNumber(o.number)}</p>
+          {admin && <form className="rounded-xl border p-4 space-y-2" onSubmit={async e => {
+            e.preventDefault();
+            if (demo) { setError("Entre para alterar o número oficial."); return; }
+            setBusy(true); setError("");
+            try {
+              await api("/api/operations", { action: "set_order_number", data: { id: o.id, version: o.version, official_number: officialNumber } });
+              await onChanged(); toast.success("Número oficial da OS atualizado.");
+            } catch (err) { setError((err as Error).message); await onChanged(); }
+            finally { setBusy(false); }
+          }}>
+            <label className="block text-sm font-medium" htmlFor="official-order-number">Número oficial da OS</label>
+            <input id="official-order-number" className="input w-full" maxLength={80} value={officialNumber} onChange={e => setOfficialNumber(e.target.value)} placeholder="Ex.: 4831 ou OS 4831" disabled={busy} />
+            <p className="text-xs muted">Use o número do PDF. Esta alteração preserva pontos, equipe e histórico. Vazio mantém a referência interna.</p>
+            <Button type="submit" variant="outline" disabled={busy || officialNumber.trim() === (o.official_number || "")}>Salvar número oficial</Button>
+          </form>}
           {demo && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-950">Cenário fictício para consulta. Viagens, checklists e horas mostram as etapas do fluxo; as ações não salvam alterações.</p>}
           {checklistOnly && <section className="rounded-xl border border-violet-200 bg-violet-50 p-4 text-sm text-violet-950" aria-label="Sua tarefa nesta OS">
             <h3 className="font-semibold">Checklist designado para você</h3>
@@ -840,10 +859,10 @@ function OrderDetail({
               <AlertDialogTrigger asChild><Button variant="destructive" disabled={busy || o.can_delete === false}><Trash2 />Excluir OS</Button></AlertDialogTrigger>
               <AlertDialogContent className="max-h-[90dvh] overflow-y-auto bg-white">
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Excluir {orderNumber(o.number)}?</AlertDialogTitle>
+                  <AlertDialogTitle>Excluir {orderNumber(o.number, o.official_number)}?</AlertDialogTitle>
                   <AlertDialogDescription>Cliente: {o.client_name}. Esta ação remove a OS, seu PDF e as listas ainda não conferidas e não pode ser desfeita. Equipamentos do catálogo, veículos e clientes não serão apagados. OS com execução, pontos, viagens ou conferências não podem ser excluídas; use Cancelar OS se ainda estiverem abertas.</AlertDialogDescription>
                 </AlertDialogHeader>
-                <label className="block text-sm font-medium">Digite {orderNumber(o.number)} para confirmar
+                <label className="block text-sm font-medium">Digite a referência interna {orderNumber(o.number)} para confirmar
                   <input className="mt-2 w-full rounded-lg border p-3" autoComplete="off" value={confirmation} onChange={e => setConfirmation(e.target.value)} disabled={busy} />
                 </label>
                 {deleteError && <div role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{deleteError}{open && <Button className="mt-2" variant="outline" onClick={() => { setConfirmDelete(false); setConfirmCancel(true); }}>Cancelar atendimento, preservando histórico</Button>}</div>}
@@ -858,7 +877,7 @@ function OrderDetail({
             {admin && open && <AlertDialog open={confirmCancel} onOpenChange={value => { if (!busy) { setConfirmCancel(value); setCancelError(''); } }}>
               <AlertDialogTrigger asChild><Button variant="outline" className="border-amber-300 bg-amber-50 text-amber-950" disabled={busy}><Ban />Cancelar OS</Button></AlertDialogTrigger>
               <AlertDialogContent className="max-h-[90dvh] overflow-y-auto bg-white">
-                <AlertDialogHeader><AlertDialogTitle>Cancelar atendimento · {orderNumber(o.number)}</AlertDialogTitle><AlertDialogDescription>O cliente pode cancelar mesmo com a equipe a caminho. O histórico será mantido. O ponto de cada pessoa continua até ela encerrá-lo em Meu ponto; registre o km de retorno e confira a devolução dos equipamentos. Não serão permitidos novos pontos ou saídas nesta OS.</AlertDialogDescription></AlertDialogHeader>
+                <AlertDialogHeader><AlertDialogTitle>Cancelar atendimento · {orderNumber(o.number, o.official_number)}</AlertDialogTitle><AlertDialogDescription>O cliente pode cancelar mesmo com a equipe a caminho. O histórico será mantido. O ponto de cada pessoa continua até ela encerrá-lo em Meu ponto; registre o km de retorno e confira a devolução dos equipamentos. Não serão permitidos novos pontos ou saídas nesta OS.</AlertDialogDescription></AlertDialogHeader>
                 <label className="block text-sm font-medium">Motivo do cancelamento<textarea className="mt-2 min-h-24 w-full rounded-lg border p-3" value={cancelReason} maxLength={5000} disabled={busy} onChange={e => setCancelReason(e.target.value)} placeholder="Ex.: cliente cancelou durante o deslocamento." /></label>
                 {cancelError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{cancelError}</p>}
                 <AlertDialogFooter><AlertDialogCancel disabled={busy}>Voltar</AlertDialogCancel><AlertDialogAction disabled={busy || cancelReason.trim().length < 3} onClick={e => { e.preventDefault(); void cancelOrder(); }}>{busy && <LoaderCircle className="animate-spin" />}Confirmar cancelamento</AlertDialogAction></AlertDialogFooter>

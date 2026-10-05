@@ -540,7 +540,7 @@ function ApprovalPanel({
                     </p>
                     <p className="muted text-xs mt-0.5 truncate">
                       {shortDate(e.date)} · {e.start.slice(0, 5)}–{e.end?.slice(0, 5)} ·{" "}
-                      {e.order_number ? osLabel(e.order_number) + " · " : ""}
+                      {e.order_number ? osLabel(e.order_number, e.order_official_number) + " · " : ""}
                       {e.company || e.service}
                     </p>
                   </div>
@@ -628,7 +628,7 @@ function AgendaPanel({
                 <button
                   type="button"
                   onClick={() => onAction({ kind: "order", orderId: o.id })}
-                  aria-label={`Abrir ${osLabel(o.number)}, ${o.client_name}`}
+                  aria-label={`Abrir ${osLabel(o.number, o.official_number)}, ${o.client_name}`}
                 >
                   <span className="cc-agenda-time num">
                     {brtTime(o.starts_at)}
@@ -636,7 +636,7 @@ function AgendaPanel({
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-2">
-                      <b className="text-sm text-blue-800">{osLabel(o.number)}</b>
+                      <b className="text-sm text-blue-800">{osLabel(o.number, o.official_number)}</b>
                       <span className={"badge " + (o.status === "Em andamento" ? "approved" : "")}>{o.status}</span>
                       {o.priority && o.priority !== "Normal" && (
                         <span className="badge pending">{o.priority}</span>
