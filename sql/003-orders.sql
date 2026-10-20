@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS horacerta.vehicles (
 -- statement-break
 CREATE TABLE IF NOT EXISTS horacerta.orders (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), number bigint GENERATED ALWAYS AS IDENTITY UNIQUE,
+ official_number text CHECK (official_number IS NULL OR (length(official_number) BETWEEN 1 AND 80 AND official_number=btrim(official_number))),
  title text NOT NULL, client_id uuid NOT NULL REFERENCES horacerta.clients(id), client_name text NOT NULL,
  address text NOT NULL, place_id text NOT NULL DEFAULT '', contact text NOT NULL DEFAULT '', phone text NOT NULL DEFAULT '',
  starts_at timestamptz NOT NULL, ends_at timestamptz NOT NULL CHECK(ends_at>starts_at),
@@ -23,6 +24,8 @@ CREATE TABLE IF NOT EXISTS horacerta.orders (
 );
 -- statement-break
 CREATE INDEX IF NOT EXISTS orders_schedule ON horacerta.orders(starts_at,ends_at);
+-- statement-break
+ALTER TABLE horacerta.orders ADD COLUMN IF NOT EXISTS official_number text CHECK (official_number IS NULL OR (length(official_number) BETWEEN 1 AND 80 AND official_number=btrim(official_number)));
 -- statement-break
 CREATE INDEX IF NOT EXISTS orders_members ON horacerta.orders USING gin(members);
 -- statement-break

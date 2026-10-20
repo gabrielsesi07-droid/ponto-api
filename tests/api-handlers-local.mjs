@@ -63,7 +63,7 @@ try {
     if (statement.includes('Notificações passam')) break;
     if (statement.trim()) await sql.query(statement);
   }
-  await migration('020-work-rules.sql');
+  await migration('024-work-rules.sql');
   const boss = randomUUID(), worker = randomUUID(), colleague = randomUUID();
   await sql`INSERT INTO horacerta.users(id,name,email,role,hourly_rate) VALUES(${boss}::uuid,'Coordenador','boss@example.invalid','coordinator',40),(${worker}::uuid,'Pessoa Um','worker@example.invalid','employee',30),(${colleague}::uuid,'Pessoa Dois','other@example.invalid','employee',20)`;
   const base = new Date(today() + 'T12:00:00Z');
@@ -221,7 +221,7 @@ try {
   await scenario('reaplicar migração preserva regras configuradas, pontos e snapshots', async () => {
     const before = await stored(workId);
     await sql`UPDATE horacerta.settings SET rules=jsonb_set(rules,'{day_policies,weekday,normal_minutes}','420') WHERE id=1`;
-    await migration('020-work-rules.sql');
+    await migration('024-work-rules.sql');
     assert.equal((await sql`SELECT rules FROM horacerta.settings WHERE id=1`)[0].rules.day_policies.weekday.normal_minutes, 420);
     assert.deepEqual(await stored(workId), before);
   });

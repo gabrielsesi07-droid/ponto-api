@@ -55,6 +55,8 @@ import {
   type Trip,
 } from "@/lib/orders";
 import { today, type Person } from "@/lib/domain";
+import { demoOperations, demoChecklists } from '@/lib/demo';
+import { orderAttention, matchesOrderAttention, matchesOrderScope, orderAttentionFilters } from '@/lib/order-attention';
 import { closeoutSteps, membersWithoutHours, hasCancelledPending, matchesOrderSection, orderStatusFilters } from '@/lib/order-lifecycle';
 
 const dateLabel = (v: string) =>
@@ -70,60 +72,6 @@ const emptyData: OperationsData = {
   clients: [],
   people: [],
 };
-function demoOperations(me: Person): OperationsData {
-  const vehicle: Vehicle = {
-    id: "demo-vehicle",
-    plate: "ABC1D23",
-    model: "Fiorino · Equipe técnica",
-    odometer: 42850,
-    maintenance_km: 45000,
-    active: true,
-    notes: "Conferir ferramentas antes da saída.",
-    version: 1,
-  };
-  const client: ServiceClient = {
-    id: "demo-client",
-    name: "Indústria Nova Era",
-    address: "Avenida Paulista, 1578, São Paulo - SP",
-    contact: "Recepção técnica",
-    phone: "",
-    notes: "",
-    active: true,
-  };
-  const order: Order = {
-    id: "demo-order",
-    number: 1,
-    title: "Manutenção preventiva",
-    client_id: client.id,
-    client_name: client.name,
-    address: client.address,
-    place_id: "",
-    contact: client.contact,
-    phone: "",
-    starts_at: today() + "T08:00:00-03:00",
-    ends_at: today() + "T18:00:00-03:00",
-    members: [me.id],
-    team: [{ id: me.id, name: me.name }],
-    vehicle_id: vehicle.id,
-    equipment: "1 multímetro\n1 maleta de ferramentas\nEPIs da equipe",
-    instructions:
-      "Apresentar a OS na portaria. Conferir os equipamentos antes de sair.",
-    priority: "Normal",
-    status: "Agendada",
-    completion: "",
-    version: 1,
-    pdf_name: null,
-    acknowledgements: [],
-    trips: [],
-    events: [],
-  };
-  return {
-    orders: [order],
-    vehicles: [vehicle],
-    clients: [client],
-    people: [{ id: me.id, name: me.name, active: true }],
-  };
-}
 export function ServiceOrders({
   me,
   view,
@@ -152,6 +100,9 @@ export function ServiceOrders({
     } | null>(null);
   const [filter, setFilter] = useState("Todas"),
     [search, setSearch] = useState("");
+  const [scope, setScope] = useState({ client: '', person: '', from: '', to: '' });
+  const [attentionFilter, setAttentionFilter] = useState('Todas');
+  const [checkedAt, setCheckedAt] = useState(() => Date.now());
   const [clientFilter, setClientFilter] = useState('Ativos'), [clientSearch, setClientSearch] = useState('');
   const [historyFilter, setHistoryFilter] = useState('Todas'), [historySearch, setHistorySearch] = useState(''), [historyMonth, setHistoryMonth] = useState('');
   const history = view === 'order-history';
@@ -163,7 +114,7 @@ export function ServiceOrders({
   const admin = me.role === "coordinator";
   const openedFromPush=useRef<string | null>(null);
   useEffect(()=>{
-    if (loading || blocked || demo) return;
+    if (loading || blocked) return;
     const target=new URLSearchParams(window.location.search).get('order');
     if (!target || openedFromPush.current===target) return;
     const found=data.orders.find(order=>order.id===target);
@@ -173,7 +124,21 @@ export function ServiceOrders({
       else toast.error('Esta OS não está mais disponível para o seu acesso.');
     },0);
     return()=>clearTimeout(timer);
-  },[loading,blocked,demo,data.orders]);
+  },[loading,blocked,data.orders]);
+  function closeOrder() {
+    setSelected(null);
+    const query = new URLSearchParams(window.location.search);
+    if (query.has('order')) {
+      query.delete('order');
+      window.history.replaceState({}, '', `/?${query}`);
+    }
+    openedFromPush.current = null;
+  }
+  function clearFilters() {
+    setScope({ client: '', person: '', from: '', to: '' }); setAttentionFilter('Todas');
+    if (history) { setHistoryMonth(''); setHistorySearch(''); setHistoryFilter('Todas'); }
+    else { setSearch(''); setFilter('Todas'); }
+  }
   const reload = useCallback(async () => {
     const version = ++request.current;
     try {
@@ -182,6 +147,7 @@ export function ServiceOrders({
         : await api<OperationsData>("/api/operations");
       if (version === request.current) {
         setData(result);
+        setCheckedAt(Date.now());
         setError("");
       }
     } catch (e) {
@@ -210,6 +176,7 @@ export function ServiceOrders({
     if (current)
       dismissed.current.add(`${today()}:${current.id}:${current.version}`);
   }, [selected, data.orders]);
+  const assignedChecklists = data.orders.filter(o => o.checklist_only && o.status === 'Em andamento');
   const due = data.orders.filter(
     (o) =>
       o.members.includes(me.id) &&
@@ -242,14 +209,19 @@ export function ServiceOrders({
       data.orders.filter(
         (o) =>
           matchesOrderSection(o, history, currentFilter) &&
+          matchesOrderScope(o, scope) &&
+          matchesOrderAttention(o, attentionFilter, today(), checkedAt, admin) &&
           (!history || !historyMonth || localDateTime(o.starts_at).slice(0, 7) === historyMonth) &&
-          [orderNumber(o.number), o.client_name, o.title, o.address]
+          [orderNumber(o.number, o.official_number), orderNumber(o.number), o.client_name, o.title, o.address]
             .join(" ")
             .toLowerCase()
             .includes(currentSearch.trim().toLowerCase()),
       ),
-    [data.orders, history, currentFilter, historyMonth, currentSearch],
+    [data.orders, history, currentFilter, historyMonth, currentSearch, scope, attentionFilter, admin, checkedAt],
   );
+  const hasFilters = !!(currentSearch.trim() || currentFilter !== 'Todas' || (history && historyMonth) || scope.client || scope.person || scope.from || scope.to || attentionFilter !== 'Todas');
+  const sectionCount = data.orders.filter(o => matchesOrderSection(o, history, 'Todas')).length;
+  const clientNames = [...new Set(data.orders.map(o => o.client_name))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   const order = data.orders.find((o) => o.id === selected);
   const shown = ["orders", "order-history", "vehicles", "clients"].includes(view);
   return (
@@ -269,6 +241,17 @@ export function ServiceOrders({
           </Button>
         </div>
       )}
+      {!shown && !!assignedChecklists.length && (
+        <div className="mb-6 rounded-2xl border border-violet-200 bg-violet-50 p-5" role="status">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <b className="flex items-center gap-2 text-violet-950"><ClipboardList size={20} />{assignedChecklists.length === 1 ? 'Checklist designado para você' : 'Checklists designados para você'}</b>
+              <p className="mt-1 text-sm text-violet-900">{assignedChecklists.map(o => `${orderNumber(o.number, o.official_number)} · ${o.client_name}`).join(' / ')}</p>
+            </div>
+            <Button onClick={() => setSelected(assignedChecklists[0].id)}>Abrir conferência</Button>
+          </div>
+        </div>
+      )}
       {!shown && !!due.length && (
         <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -279,7 +262,7 @@ export function ServiceOrders({
               </b>
               <p className="mt-1 text-sm text-blue-800">
                 {due
-                  .map((o) => `${orderNumber(o.number)} · ${o.client_name}`)
+                  .map((o) => `${orderNumber(o.number, o.official_number)} · ${o.client_name}`)
                   .join(" / ")}
               </p>
             </div>
@@ -300,7 +283,7 @@ export function ServiceOrders({
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <p className="muted text-sm">
               {history ? 'Consulte as OS concluídas e canceladas, sem misturar com a agenda e os atendimentos em andamento.' : admin
-                ? "Planeje os atendimentos e acompanhe a equipe. Cada nova OS recebe um número sequencial, que não muda ao editar."
+                ? "Planeje os atendimentos e acompanhe a equipe. Informe o número oficial do documento; a referência interna é preservada."
                 : "Seus atendimentos, equipe, trajetos e instruções."}
             </p>
             <div className="flex flex-wrap gap-2">
@@ -357,6 +340,11 @@ export function ServiceOrders({
                 placeholder="Número, cliente, serviço ou endereço"
               />
             </label>
+            <label>Cliente<select value={scope.client} onChange={e => setScope({ ...scope, client: e.target.value })}><option value="">Todos os clientes</option>{clientNames.map(name => <option key={name} value={name}>{name}</option>)}</select></label>
+            {admin && <label>Pessoa da equipe<select value={scope.person} onChange={e => setScope({ ...scope, person: e.target.value })}><option value="">Toda a equipe</option>{data.people.map(person => <option key={person.id} value={person.id}>{person.name}{!person.active ? ' · Inativo' : ''}</option>)}</select></label>}
+            <label>Atenção<select value={attentionFilter} onChange={e => setAttentionFilter(e.target.value)}>{orderAttentionFilters.filter(value => admin || value !== 'Sem horas registradas').map(value => <option key={value}>{value}</option>)}</select></label>
+            <label>Início previsto · de<input type="date" value={scope.from} onChange={e => setScope({ ...scope, from: e.target.value })} /></label>
+            <label>Início previsto · até<input type="date" value={scope.to} min={scope.from || undefined} onChange={e => setScope({ ...scope, to: e.target.value })} /></label>
             <label>
               Situação
               <select
@@ -369,19 +357,24 @@ export function ServiceOrders({
               </select>
             </label>
             {history && <label>Mês do atendimento (início previsto)<input type="month" value={historyMonth} onChange={e => setHistoryMonth(e.target.value)} /></label>}
-            {history && (historyMonth || historySearch || historyFilter !== 'Todas') && <Button variant="outline" className="self-end" onClick={() => { setHistoryMonth(''); setHistorySearch(''); setHistoryFilter('Todas'); }}>Limpar filtros do histórico</Button>}
+            {hasFilters && <Button variant="outline" className="self-end" onClick={clearFilters}>Limpar filtros</Button>}
           </div>
+          {scope.from && scope.to && scope.from > scope.to && <p role="alert" className="mb-3 text-sm text-amber-800">A data final precisa ser igual ou posterior à data inicial.</p>}
+          {!loading && !error && <p className="muted mb-4 text-sm" role="status">{rows.length} de {sectionCount} OS {history ? 'no histórico' : 'em aberto'}{hasFilters ? ' · filtros aplicados' : ''}</p>}
           <div className="grid gap-4 lg:grid-cols-2">
-            {rows.map((o) => (
+            {rows.map((o) => {
+              const attention = orderAttention(o, today(), checkedAt, admin);
+              return (
               <article className="panel min-w-0 p-5" key={o.id}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <b className="text-blue-700">{orderNumber(o.number)}</b>
+                  <b className="text-blue-700">{orderNumber(o.number, o.official_number)}</b>
                   <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold">
                     {o.status} · {o.priority}
                   </span>
                 </div>
                 <h2 className="mt-3 break-words">{o.title}</h2>
                 {hasCancelledPending(o) && <p className="mt-2 rounded-lg bg-amber-50 p-3 text-sm font-medium text-amber-900">Cancelada com pendências: confira ponto, retorno e equipamentos.</p>}
+                {o.checklist_only && <p className="mt-2 rounded-lg bg-violet-50 p-3 text-sm font-medium text-violet-950">Checklist designado para você · acesso somente à conferência.</p>}
                 <p className="mt-1 font-medium">{o.client_name}</p>
                 <p className="muted mt-3 flex gap-2 text-sm">
                   <CalendarDays size={17} className="shrink-0" />
@@ -392,8 +385,14 @@ export function ServiceOrders({
                   {o.address || "Endereço não informado"}
                 </p>
                 <p className="muted mt-3 text-sm">
-                  Equipe: {o.team.map((p) => p.name).join(", ")}
+                  {o.checklist_only ? 'Acesso restrito ao checklist designado.' : `Equipe: ${o.team.map((p) => p.name).join(", ")}`}
                 </p>
+                <div className="mt-4 space-y-2 rounded-xl border bg-slate-50 p-3 text-sm">
+                  {attention.overdue && <p className="font-medium text-amber-900">Prazo previsto vencido · confirme o andamento com a equipe.</p>}
+                  {!!attention.blockers.length && <ul className="space-y-1 text-amber-900" aria-label="Pendências de encerramento">{attention.blockers.map(item => <li key={item.id}>• {item.label}</li>)}</ul>}
+                  {o.status === 'Concluída' && !!attention.missingHours.length && <p>Horas ainda não registradas: <b>{attention.missingHours.map(person => person.name).join(', ')}</b>. A OS permanece concluída.</p>}
+                  <p><b>Próxima ação:</b> {attention.nextAction}</p>
+                </div>
                 <Button
                   className="mt-4 w-full"
                   variant="outline"
@@ -402,17 +401,19 @@ export function ServiceOrders({
                   Abrir ordem de serviço <ClipboardList />
                 </Button>
               </article>
-            ))}
+              );
+            })}
           </div>
-          {!loading && !rows.length && (
+          {!loading && !error && !rows.length && (
             <div className="panel p-10 text-center">
               <ClipboardList className="mx-auto mb-3 text-blue-600" />
-              <h2>Nenhuma OS neste filtro</h2>
+              <h2>{hasFilters ? 'Nenhuma OS corresponde aos filtros' : history ? 'Nenhuma OS encerrada' : 'Nenhuma OS em aberto'}</h2>
               <p className="muted mt-2">
-                {history ? 'As OS concluídas e canceladas aparecerão aqui. Se houver filtros selecionados, tente limpá-los.' : admin
+                {hasFilters ? 'Ajuste o cliente, a equipe, o período ou a atenção selecionada para encontrar o atendimento.' : history ? 'As OS concluídas e canceladas aparecerão aqui. Consulte as OS em aberto para acompanhar os atendimentos atuais.' : admin
                   ? "Use Gerar OS para programar um atendimento. Basta informar o nome do cliente, sem cadastro prévio."
                   : "As ordens designadas para você aparecerão aqui."}
               </p>
+              {hasFilters ? <Button className="mt-4" variant="outline" onClick={clearFilters}>Limpar filtros</Button> : admin && !history && <Button className="mt-4" onClick={() => setEditOrder('new')}><Plus />Gerar OS</Button>}
             </div>
           )}
         </>
@@ -432,7 +433,7 @@ export function ServiceOrders({
             {data.vehicles.map((v) => {
               const trips = data.orders
                   .flatMap((o) =>
-                    o.trips.map((t) => ({ ...t, number: o.number })),
+                    o.trips.map((t) => ({ ...t, number: o.number, official_number: o.official_number })),
                   )
                   .filter((t) => t.vehicle_id === v.id)
                   .sort((a, b) => b.departed_at.localeCompare(a.departed_at)),
@@ -463,7 +464,7 @@ export function ServiceOrders({
                     {!v.active
                       ? "Inativo"
                       : active
-                        ? `Em viagem · ${orderNumber(active.number)}`
+                        ? `Em viagem · ${orderNumber(active.number, active.official_number)}`
                         : "Sem viagem em aberto"}
                   </p>
                   {v.maintenance_km !== null && (
@@ -490,7 +491,7 @@ export function ServiceOrders({
                             className="font-semibold text-blue-700 underline"
                             onClick={() => setSelected(t.order_id)}
                           >
-                            {orderNumber(t.number)}
+                            {orderNumber(t.number, t.official_number)}
                           </button>
                           <p>{dateLabel(t.departed_at)}</p>
                           <p>
@@ -603,11 +604,13 @@ export function ServiceOrders({
           vehicle={data.vehicles.find((v) => v.id === order.vehicle_id)}
           me={me}
           demo={demo}
-          onClose={() => setSelected(null)}
+          onClose={closeOrder}
           onChanged={reload}
           onEdit={() => setEditOrder(order)}
           onPoint={onPoint}
           onRegister={onRegister}
+          onNavigate={onNavigate}
+          checkedAt={checkedAt}
         />
       )}
     </>
@@ -624,6 +627,8 @@ function OrderDetail({
   onEdit,
   onPoint,
   onRegister,
+  onNavigate,
+  checkedAt,
 }: {
   order: Order;
   vehicle?: Vehicle;
@@ -634,7 +639,12 @@ function OrderDetail({
   onEdit: () => void;
   onPoint: () => Promise<void>;
   onRegister: (order: Order) => void;
+  onNavigate: (view: string) => void;
+  checkedAt: number;
 }) {
+  const [numberDraft, setNumberDraft] = useState({ version: o.version, value: o.official_number || "" });
+  const officialNumber = numberDraft.version === o.version ? numberDraft.value : (o.official_number || "");
+  const setOfficialNumber = (value: string) => setNumberDraft({ version: o.version, value });
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [km, setKm] = useState(""),
@@ -650,6 +660,16 @@ function OrderDetail({
   // Colaboradores recebem apenas o próprio vínculo; a lista da equipe só é confiável para o coordenador.
   const withoutHours = me.role === 'coordinator' ? membersWithoutHours(o) : [];
   const myHoursLogged = !!o.logged_members?.includes(me.id);
+  const attention = orderAttention(o, today(), checkedAt, me.role === 'coordinator');
+  const sampleChecklists = demo ? demoChecklists(o.id) : [];
+  function goToPoints() {
+    if ((notes.trim() || km.trim()) && !window.confirm('Abrir o histórico de pontos sem salvar o resultado ou a quilometragem digitados?')) return;
+    onClose(); onNavigate('entries');
+  }
+  function focusSection(id: string) {
+    const section = document.getElementById(id);
+    section?.scrollIntoView({ block: 'center', behavior: 'smooth' }); section?.focus({ preventScroll: true });
+  }
   function closeWindow() {
     if ((!notes.trim() && !km.trim()) || window.confirm('Fechar a janela sem salvar o resultado ou a quilometragem digitados?')) onClose();
   }
@@ -659,7 +679,8 @@ function OrderDetail({
   const open = ["Agendada", "Em andamento"].includes(o.status),
     admin = me.role === "coordinator",
     assigned = o.members.includes(me.id),
-    trip = o.trips.find((t) => t.return_km === null);
+    trip = o.trips.find((t) => t.return_km === null),
+    checklistOnly = !admin && !!o.checklist_only;
   const acknowledged = o.acknowledgements.some(
     (a) => a.user_id === me.id && a.version === o.version,
   );
@@ -681,7 +702,7 @@ function OrderDetail({
       await api('/api/operations', { action: 'delete_order', data: { id: o.id, version: o.version, confirmation } });
       setConfirmDelete(false);
       onClose();
-      toast.success(`${orderNumber(o.number)} excluída. O registro da exclusão foi mantido na auditoria.`);
+      toast.success(`${orderNumber(o.number, o.official_number)} excluída. O registro da exclusão foi mantido na auditoria.`);
       await onChanged();
     } catch (e) { setDeleteError((e as Error).message); }
     finally { setBusy(false); }
@@ -738,14 +759,45 @@ function OrderDetail({
       <DialogContent className="ops-dialog max-h-[92svh] overflow-y-auto bg-white sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>
-            {orderNumber(o.number)} · {o.title}
+            {orderNumber(o.number, o.official_number)} · {o.title}
           </DialogTitle>
           <DialogDescription>
             {o.client_name} · {o.status} · Prioridade {o.priority}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-5">
-          {open && <section className="rounded-xl border border-blue-200 bg-blue-50 p-4" aria-label="Etapas para concluir a OS">
+          <p className="text-xs muted">Referência interna: {orderNumber(o.number)}</p>
+          {admin && <form className="rounded-xl border p-4 space-y-2" onSubmit={async e => {
+            e.preventDefault();
+            if (demo) { setError("Entre para alterar o número oficial."); return; }
+            setBusy(true); setError("");
+            try {
+              await api("/api/operations", { action: "set_order_number", data: { id: o.id, version: o.version, official_number: officialNumber } });
+              await onChanged(); toast.success("Número oficial da OS atualizado.");
+            } catch (err) { setError((err as Error).message); await onChanged(); }
+            finally { setBusy(false); }
+          }}>
+            <label className="block text-sm font-medium" htmlFor="official-order-number">Número oficial da OS</label>
+            <input id="official-order-number" className="input w-full" maxLength={80} value={officialNumber} onChange={e => setOfficialNumber(e.target.value)} placeholder="Ex.: 4831 ou OS 4831" disabled={busy} />
+            <p className="text-xs muted">Use o número do PDF. Esta alteração preserva pontos, equipe e histórico. Vazio mantém a referência interna.</p>
+            <Button type="submit" variant="outline" disabled={busy || officialNumber.trim() === (o.official_number || "")}>Salvar número oficial</Button>
+          </form>}
+          {demo && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-950">Cenário fictício para consulta. Viagens, checklists e horas mostram as etapas do fluxo; as ações não salvam alterações.</p>}
+          {checklistOnly && <section className="rounded-xl border border-violet-200 bg-violet-50 p-4 text-sm text-violet-950" aria-label="Sua tarefa nesta OS">
+            <h3 className="font-semibold">Checklist designado para você</h3>
+            <p className="mt-1">O coordenador designou você para conferir equipamento(s) desta OS. Seu acesso é somente à conferência atribuída: ponto, viagem, ciência da OS e conclusão continuam com a equipe.</p>
+            <Button className="mt-3" variant="outline" onClick={() => focusSection('order-checklists')}>Ir à conferência</Button>
+          </section>}
+          {!checklistOnly && (open || hasCancelledPending(o)) && <section className="rounded-xl border bg-slate-50 p-4" aria-label="Próxima ação desta OS">
+            <h3 className="font-semibold">Próxima ação</h3><p className="mt-2 text-sm">{attention.nextAction}</p>
+            {!!attention.blockers.length && <div className="mt-3 space-y-2 text-sm">{attention.blockers.map(item => <p key={item.id}><b>{item.label}:</b> {item.action}</p>)}</div>}
+            <div className="mt-3 flex flex-wrap gap-2">
+              {Number(o.active_points) > 0 && <Button variant="outline" onClick={goToPoints}>Abrir histórico de pontos</Button>}
+              {o.trips.some(trip => trip.return_km === null) && vehicle && <Button variant="outline" onClick={() => focusSection('order-vehicle')}>Ir ao retorno do veículo</Button>}
+              {Number(o.pending_checklists) > 0 && <Button variant="outline" onClick={() => focusSection('order-checklists')}>Ir aos checklists</Button>}
+            </div>
+          </section>}
+          {open && !checklistOnly && <section className="rounded-xl border border-blue-200 bg-blue-50 p-4" aria-label="Etapas para concluir a OS">
             <h3 className="font-semibold">O que falta para concluir esta OS?</h3>
             <p className="mt-1 text-sm">Registrar horas, finalizar um checklist e concluir a OS são ações diferentes. As horas podem ser informadas depois do trabalho, inclusive após concluir a OS.</p>
             <ol className="mt-3 space-y-3 text-sm">{steps.map(step => <li key={step.id}>
@@ -812,10 +864,10 @@ function OrderDetail({
               <AlertDialogTrigger asChild><Button variant="destructive" disabled={busy || o.can_delete === false}><Trash2 />Excluir OS</Button></AlertDialogTrigger>
               <AlertDialogContent className="max-h-[90dvh] overflow-y-auto bg-white">
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Excluir {orderNumber(o.number)}?</AlertDialogTitle>
+                  <AlertDialogTitle>Excluir {orderNumber(o.number, o.official_number)}?</AlertDialogTitle>
                   <AlertDialogDescription>Cliente: {o.client_name}. Esta ação remove a OS, seu PDF e as listas ainda não conferidas e não pode ser desfeita. Equipamentos do catálogo, veículos e clientes não serão apagados. OS com execução, pontos, viagens ou conferências não podem ser excluídas; use Cancelar OS se ainda estiverem abertas.</AlertDialogDescription>
                 </AlertDialogHeader>
-                <label className="block text-sm font-medium">Digite {orderNumber(o.number)} para confirmar
+                <label className="block text-sm font-medium">Digite a referência interna {orderNumber(o.number)} para confirmar
                   <input className="mt-2 w-full rounded-lg border p-3" autoComplete="off" value={confirmation} onChange={e => setConfirmation(e.target.value)} disabled={busy} />
                 </label>
                 {deleteError && <div role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{deleteError}{open && <Button className="mt-2" variant="outline" onClick={() => { setConfirmDelete(false); setConfirmCancel(true); }}>Cancelar atendimento, preservando histórico</Button>}</div>}
@@ -830,7 +882,7 @@ function OrderDetail({
             {admin && open && <AlertDialog open={confirmCancel} onOpenChange={value => { if (!busy) { setConfirmCancel(value); setCancelError(''); } }}>
               <AlertDialogTrigger asChild><Button variant="outline" className="border-amber-300 bg-amber-50 text-amber-950" disabled={busy}><Ban />Cancelar OS</Button></AlertDialogTrigger>
               <AlertDialogContent className="max-h-[90dvh] overflow-y-auto bg-white">
-                <AlertDialogHeader><AlertDialogTitle>Cancelar atendimento · {orderNumber(o.number)}</AlertDialogTitle><AlertDialogDescription>O cliente pode cancelar mesmo com a equipe a caminho. O histórico será mantido. O ponto de cada pessoa continua até ela encerrá-lo em Meu ponto; registre o km de retorno e confira a devolução dos equipamentos. Não serão permitidos novos pontos ou saídas nesta OS.</AlertDialogDescription></AlertDialogHeader>
+                <AlertDialogHeader><AlertDialogTitle>Cancelar atendimento · {orderNumber(o.number, o.official_number)}</AlertDialogTitle><AlertDialogDescription>O cliente pode cancelar mesmo com a equipe a caminho. O histórico será mantido. O ponto de cada pessoa continua até ela encerrá-lo em Meu ponto; registre o km de retorno e confira a devolução dos equipamentos. Não serão permitidos novos pontos ou saídas nesta OS.</AlertDialogDescription></AlertDialogHeader>
                 <label className="block text-sm font-medium">Motivo do cancelamento<textarea className="mt-2 min-h-24 w-full rounded-lg border p-3" value={cancelReason} maxLength={5000} disabled={busy} onChange={e => setCancelReason(e.target.value)} placeholder="Ex.: cliente cancelou durante o deslocamento." /></label>
                 {cancelError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{cancelError}</p>}
                 <AlertDialogFooter><AlertDialogCancel disabled={busy}>Voltar</AlertDialogCancel><AlertDialogAction disabled={busy || cancelReason.trim().length < 3} onClick={e => { e.preventDefault(); void cancelOrder(); }}>{busy && <LoaderCircle className="animate-spin" />}Confirmar cancelamento</AlertDialogAction></AlertDialogFooter>
@@ -839,9 +891,9 @@ function OrderDetail({
           </div>
           {admin && o.can_delete === false && <p className="text-sm text-slate-600">Esta OS tem histórico de execução ou conferência e não pode ser apagada.{open ? ' Use Cancelar OS para interromper o atendimento sem perder os registros.' : ' Os registros permanecem disponíveis para consulta.'}</p>}
           {o.status === 'Cancelada' && <section className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"><h3 className="font-semibold">Atendimento cancelado · histórico preservado</h3><p>{hasCancelledPending(o) ? 'Resolva as pendências abaixo. Cancelar não encerra automaticamente o ponto nem registra o retorno.' : 'Sem pendências de ponto, viagem ou conferência registrada.'}</p><p>Pontos em andamento: {o.active_points || 0} · Viagens sem retorno: {o.trips.filter(t => t.return_km === null).length} · Checklists pendentes: {o.pending_checklists || 0}</p>{o.my_point_active && <Button variant="outline" className="h-auto min-h-11 whitespace-normal" onClick={() => { onClose(); void onPoint(); }}>Ir ao Meu ponto para encerrar</Button>}</section>}
-          {assigned && <OrderShiftPanel key={o.id} orderId={o.id} meId={me.id} admin={admin} demo={demo} />}
+          {!checklistOnly && assigned && <OrderShiftPanel key={o.id} orderId={o.id} meId={me.id} admin={admin} demo={demo} />}
           {admin && <TeamShiftPanel key={'team-'+o.id} orderId={o.id} meId={me.id} demo={demo} people={o.team}/>}
-          <section>
+          {!checklistOnly && <section>
             <h3 className="font-semibold">Equipe designada</h3>
             <div className="mt-2 flex flex-wrap gap-2">
               {o.team.map((p) => (
@@ -870,7 +922,7 @@ function OrderDetail({
                 Confirmar que li a OS
               </Button>
             )}
-          </section>
+          </section>}
           <section className="rounded-xl border p-4">
             <h3 className="flex items-center gap-2 font-semibold">
               <Wrench size={18} />
@@ -885,14 +937,29 @@ function OrderDetail({
             <p className="muted mt-3 whitespace-pre-wrap break-words text-sm">
               {o.instructions || "Sem orientações adicionais."}
             </p>
-            {!!o.model_ids?.length && <details className="mt-4 border-t pt-3">
+            {/* A biblioteca por OS segue a equipe; o responsável só pelo checklist consulta a Biblioteca técnica geral. */}
+            {checklistOnly && !!o.model_ids?.length && <p className="mt-4 border-t pt-3 text-sm text-slate-600">Para consultar manuais e catálogos, use a Biblioteca técnica no menu.</p>}
+            {!checklistOnly && !!o.model_ids?.length && <details className="mt-4 border-t pt-3">
               <summary className="cursor-pointer rounded-lg border bg-blue-50 p-3 text-sm font-semibold text-blue-800">Consultar documentos dos modelos desta OS</summary>
               <div className="mt-4"><TechnicalLibrary orderId={o.id} admin={admin} demo={demo} /></div>
             </details>}
           </section>
-          <OrderChecklists orderId={o.id} admin={admin} closed={o.status === 'Concluída'} cancelled={o.status === 'Cancelada'} demo={demo} onChanged={onChanged} />
+          <section id="order-checklists" tabIndex={-1} aria-label="Conferências de equipamentos">
+            {demo ? <div className="space-y-3 rounded-xl border p-4">
+              <h3 className="font-semibold">Checklists de ida e volta · demonstração</h3>
+              {!sampleChecklists.length && <p className="text-sm text-slate-600">Esta OS não tem checklist vinculado. Abra o atendimento em andamento ou a OS concluída para consultar as conferências fictícias.</p>}
+              {sampleChecklists.map(checklist => <article className="rounded-lg border p-3 text-sm" key={checklist.id}>
+                <h4 className="font-semibold">{checklist.model_name} · {checklist.status === 'completed' ? 'Finalizado' : 'Pendente'}</h4>
+                <p className="mt-1">{checklist.title} · {checklist.identification}</p>
+                <ul className="mt-3 space-y-2">{checklist.items.map(item => <li key={item.id} className="rounded-lg bg-slate-50 p-3">
+                  <b>{item.label}</b><p>Previsto: {item.planned ?? 'Não informado'} · Ida: {item.outgoing ? item.outgoing_qty : 'Pendente'} · Volta: {item.incoming ? item.incoming_qty : 'Pendente'}</p>
+                  {item.notes && <p className="mt-1 text-amber-900">{item.notes}</p>}
+                </li>)}</ul><p className="mt-3 text-slate-600">{checklist.notes}</p>
+              </article>)}
+            </div> : <OrderChecklists orderId={o.id} admin={admin} closed={o.status === 'Concluída'} cancelled={o.status === 'Cancelada'} running={o.status === 'Em andamento'} demo={demo} onChanged={onChanged} />}
+          </section>
           {vehicle && (
-            <section className="rounded-xl border p-4">
+            <section id="order-vehicle" tabIndex={-1} className="rounded-xl border p-4">
               <h3 className="flex items-center gap-2 font-semibold">
                 <Car size={18} />
                 {vehicle.plate} · {vehicle.model}
@@ -905,7 +972,7 @@ function OrderDetail({
                 A leitura é a do painel do carro. Uma pessoa registra por
                 viagem; toda a equipe acompanha.
               </p>
-              {(open || (o.status === 'Cancelada' && trip)) && (
+              {!checklistOnly && (open || (o.status === 'Cancelada' && trip)) && (
                 <form
                   className="ops-form mt-4"
                   onSubmit={(e: FormEvent) => {
@@ -943,7 +1010,7 @@ function OrderDetail({
               </div>
             </section>
           )}
-          {open && (
+          {open && !checklistOnly && (
             <section className="rounded-xl border border-blue-200 bg-blue-50 p-4">
               <h3 className="font-semibold">Atendimento e ponto</h3>
               <p className="mt-1 text-sm text-blue-900">

@@ -3,34 +3,48 @@ import { member, coordinator, db, failure, ApiError } from '@/lib/server';
 import { checklistItemsSchema, checklistProblems, plannedChecklistItems } from '@/lib/checklists';
 import { checklistPayload, orderForChecklist } from '@/lib/checklist-server';
 import { libraryHeaders } from '@/lib/library-server';
+import { checklistAssignmentSchema } from '@/lib/checklist-access';
 export const dynamic = 'force-dynamic';
 export async function GET(req: Request) {
   try {
     const me = await member(), sql = db();
     const id = z.string().uuid().parse(new URL(req.url).searchParams.get('order'));
     const order = await orderForChecklist(id, me);
-    const [checklists, models, history] = await Promise.all([
+    const [checklists, models, history, assignees] = await Promise.all([
       sql`SELECT c.*,u.name updated_by_name,fin.name completed_by_name,w.name waived_by_name,NOT c.model_id=ANY(${order.model_ids}::uuid[]) detached,
+        assigned.name assigned_to_name,assigner.name assigned_by_name,horacerta.checklist_can_edit(${me.id}::uuid,c.id) can_edit,
         coalesce(d.obsolete,false) source_obsolete FROM horacerta.order_checklists c
         JOIN horacerta.users u ON u.id=c.updated_by LEFT JOIN horacerta.users fin ON fin.id=c.completed_by
         LEFT JOIN horacerta.users w ON w.id=c.waived_by
-        LEFT JOIN horacerta.library_documents d ON d.id=c.source_document_id WHERE c.order_id=${id}::uuid ORDER BY c.model_name`,
+        LEFT JOIN horacerta.users assigned ON assigned.id=c.assigned_to LEFT JOIN horacerta.users assigner ON assigner.id=c.assigned_by
+        LEFT JOIN horacerta.library_documents d ON d.id=c.source_document_id WHERE c.order_id=${id}::uuid
+        AND (NOT ${order.checklist_only} OR c.assigned_to=${me.id}::uuid) ORDER BY c.model_name`,
       sql`SELECT m.id,m.name,CASE WHEN m.status<>'archived' AND NOT coalesce(d.obsolete,false) AND jsonb_array_length(t.items)>0
         AND (t.source_document_id IS NULL OR d.ready) AND (t.status<>'imported' OR t.source_document_id IS NOT NULL) THEN t.title END template_title FROM horacerta.equipment_models m
         LEFT JOIN horacerta.checklist_templates t ON t.model_id=m.id AND t.status IN ('active','imported')
         LEFT JOIN horacerta.library_documents d ON d.id=t.source_document_id
-        WHERE m.id=ANY(${order.model_ids}::uuid[]) ORDER BY m.name`,
-      sql`SELECT h.id,h.checklist_id,h.action,h.created_at,u.name FROM horacerta.checklist_history h
+        WHERE m.id=ANY(${order.model_ids}::uuid[]) AND (NOT ${order.checklist_only} OR EXISTS(
+          SELECT 1 FROM horacerta.order_checklists c WHERE c.order_id=${id}::uuid AND c.model_id=m.id AND c.assigned_to=${me.id}::uuid)) ORDER BY m.name`,
+      sql`SELECT h.id,h.checklist_id,h.action,h.created_at,u.name,coalesce(h.snapshot->>'reason','') detail FROM horacerta.checklist_history h
         JOIN horacerta.order_checklists c ON c.id=h.checklist_id LEFT JOIN horacerta.users u ON u.id=h.actor_id
-        WHERE c.order_id=${id}::uuid ORDER BY h.created_at DESC,h.id DESC LIMIT 30`,
+        WHERE c.order_id=${id}::uuid AND (NOT ${order.checklist_only} OR c.assigned_to=${me.id}::uuid)
+        ORDER BY h.created_at DESC,h.id DESC LIMIT 30`,
+      me.role === 'coordinator' ? sql`SELECT u.id,u.name,u.access_code,u.id=ANY(o.members) in_team FROM horacerta.users u
+        CROSS JOIN horacerta.orders o WHERE o.id=${id}::uuid AND u.active AND u.role='employee' ORDER BY u.name,u.access_code` : Promise.resolve(undefined),
     ]);
-    return Response.json({ order, checklists, models, history }, { headers: libraryHeaders });
+    return Response.json({ order, checklists, models, history, ...(assignees ? { assignees } : {}) }, { headers: libraryHeaders });
   } catch (e) { return failure(e); }
 }
 export async function POST(req: Request) {
   try {
     const me = await member();
     const raw = await checklistPayload(req);
+    if (raw.action === 'assign') {
+      coordinator(me);
+      const p = checklistAssignmentSchema.parse(raw);
+      const [out] = await db()`SELECT horacerta.assign_order_checklist(${me.id}::uuid,${p.id}::uuid,${p.version},${p.assignee_id}::uuid,${p.reason}) result`;
+      return Response.json(out.result, { headers: libraryHeaders });
+    }
     if (raw.action === 'waive') {
       coordinator(me);
       const p=z.object({id:z.string().uuid(),version:z.number().int().positive(),reason:z.string().trim().min(10,'Informe uma justificativa com pelo menos 10 caracteres.').max(500)}).parse(raw);

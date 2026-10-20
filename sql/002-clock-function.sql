@@ -3,7 +3,7 @@ RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
  t horacerta.timers%ROWTYPE;
  u horacerta.users%ROWTYPE;
- current_time_value timestamptz := clock_timestamp();
+ current_time_value timestamptz;
  current_rules jsonb;
  day_value date;
  first_day date;
@@ -16,6 +16,9 @@ DECLARE
  entry_id uuid;
  total_records integer := 0;
 BEGIN
+ -- Same order as manual entries/month_action: advisory lock before any user/entry row lock.
+ PERFORM pg_advisory_xact_lock(2849061701);
+ current_time_value := clock_timestamp();
  IF p_action='start' THEN
    RAISE EXCEPTION 'Selecione a OS deste trabalho. Não é possível iniciar um ponto avulso.';
  END IF;

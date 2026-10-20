@@ -3,6 +3,7 @@ import {useEffect,useState} from 'react';
 import {Bell,BellOff,LoaderCircle} from 'lucide-react';
 import {Button} from './ui/button';
 import {api} from './editors';
+import {pushDeviceState} from '@/lib/push-device';
 
 export function PushSettings({userId,demo,admin=false}:{userId:string;demo:boolean;admin?:boolean}) {
   const [key,setKey]=useState(''),[active,setActive]=useState(false),[busy,setBusy]=useState(false),[message,setMessage]=useState('Verificando notificações…'),[supported,setSupported]=useState(false);
@@ -14,16 +15,14 @@ export function PushSettings({userId,demo,admin=false}:{userId:string;demo:boole
       if(!cancelled)setSupported(available);
       if(!available){if(!cancelled)setMessage('Neste navegador não foi possível ativar. No iPhone, adicione à Tela de Início e abra pelo ícone. Use um navegador atualizado.');return;}
       try {
-        const config=await api<{publicKey:string|null}>('/api/push');
-        if(cancelled)return;
-        setKey(config.publicKey || '');
+        // Só consulta: a inscrição local não é reenviada aqui. Reativar exige o clique em "Ativar".
         const registration=await navigator.serviceWorker.getRegistration('/');
         const subscription=await registration?.pushManager.getSubscription();
-        if(subscription && Notification.permission==='granted') {
-          await api('/api/push',subscription.toJSON());
-          if(!cancelled){setActive(true);setMessage('Ativadas neste aparelho. Novas OS designadas a você poderão gerar avisos.');}
-        } else if(!cancelled)setMessage(Notification.permission==='denied'?'Notificações bloqueadas. Libere nas configurações do navegador/celular e tente novamente.':'Ative neste aparelho para receber novas OS.');
-        if(!config.publicKey && !cancelled)setMessage('As notificações ainda não foram configuradas no servidor.');
+        const config=await api<{publicKey:string|null;registered?:boolean}>('/api/push'+(subscription?'?endpoint='+encodeURIComponent(subscription.endpoint):''));
+        if(cancelled)return;
+        setKey(config.publicKey || '');
+        const state=pushDeviceState({supported:true,configured:!!config.publicKey,permission:Notification.permission,subscribed:!!subscription,registered:subscription?!!config.registered:undefined});
+        setActive(state.active);setMessage(state.message);
       } catch {if(!cancelled)setMessage('Não foi possível verificar. Atualize a página e tente novamente.');}
     }
     void load(); return()=>{cancelled=true;};
@@ -64,6 +63,6 @@ export function PushSettings({userId,demo,admin=false}:{userId:string;demo:boole
       setBusy(true);try{await api('/api/push',{action:'retry'});setMessage('Nova tentativa solicitada para os avisos pendentes das últimas 24 horas. Isso não confirma entrega nem leitura.');}
       catch{setMessage('Não foi possível solicitar nova tentativa.');}finally{setBusy(false);}
     }}>Tentar avisos pendentes novamente</Button>}
-    <p className="mt-3 text-xs muted">Ative em cada aparelho. Sair da conta interrompe novos envios para esta sessão. Permissão, conexão e ajustes do celular afetam a entrega; conferir a OS continua sendo necessário.</p>
+    <p className="mt-3 text-xs muted">Ative em cada aparelho. Se a sessão expirar, o aparelho continua ativo. “Sair” e “Desativar neste aparelho” interrompem os avisos nele. Troca ou redefinição do PIN e desativação da conta interrompem os avisos em todos os aparelhos; depois, é preciso ativar novamente. Permissão, conexão e ajustes do celular afetam a entrega, e não há garantia de horário; conferir a OS continua sendo necessário.</p>
   </section>;
 }

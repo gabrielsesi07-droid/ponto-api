@@ -134,7 +134,7 @@ END $$;
 -- statement-break
 DO $$ BEGIN
  PERFORM pg_advisory_xact_lock(2849061701);
- IF EXISTS(SELECT 1 FROM horacerta.schema_migrations WHERE name='020-work-rules') THEN RETURN; END IF;
+ IF EXISTS(SELECT 1 FROM horacerta.schema_migrations WHERE name='024-work-rules') THEN RETURN; END IF;
  UPDATE horacerta.settings SET rules=rules||jsonb_build_object(
   'calculation_version',2,'daily_minutes',480,'approval_required',false,'travel_mode','daily',
   'day_policies',jsonb_build_object(
@@ -143,5 +143,5 @@ DO $$ BEGIN
    'sunday',jsonb_build_object('normal_minutes',0,'tiers',jsonb_build_array(jsonb_build_object('up_to_minutes',NULL,'bonus',100))),
    'holiday',jsonb_build_object('normal_minutes',0,'tiers',jsonb_build_array(jsonb_build_object('up_to_minutes',NULL,'bonus',coalesce((rules->>'holiday_bonus')::numeric,100))))
   )) WHERE id=1 AND coalesce((rules->>'calculation_version')::int,1)<>2;
- INSERT INTO horacerta.schema_migrations(name) VALUES('020-work-rules');
+ INSERT INTO horacerta.schema_migrations(name) VALUES('024-work-rules');
 END $$;

@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { isolatedSql } from './isolated-sql-runtime.mjs';
 const sql = await isolatedSql();
 const schema = 'qa_dates_' + randomUUID().replaceAll('-', '');
-const source = await readFile(new URL('../sql/021-order-scheduling.sql', import.meta.url), 'utf8');
+const source = await readFile(new URL('../sql/025-order-scheduling.sql', import.meta.url), 'utf8');
 const statements = `
 CREATE SCHEMA horacerta;
 CREATE TABLE horacerta.users(id uuid PRIMARY KEY,active boolean DEFAULT true,role text);

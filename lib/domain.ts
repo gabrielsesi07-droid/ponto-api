@@ -50,6 +50,7 @@ export type Entry = {
   client_id: string | null;
   order_id?: string | null;
   order_number?: number | null;
+  order_official_number?: string | null;
   date: string;
   start: string;
   end: string | null;
@@ -95,6 +96,7 @@ export type State = {
   timer?: {
     order_id?: string | null;
     order_number?: number | null;
+  order_official_number?: string | null;
     user_id: string;
     started_at: string;
     paused_at: string | null;

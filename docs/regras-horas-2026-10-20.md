@@ -26,14 +26,21 @@ Previsões de OS abertas podem ser alteradas inclusive durante o atendimento; ve
 
 ## Aplicação e validação
 
-Aplicar 020 e 021 antes de usar esta versão. O fluxo completo `npm run db:migrate` inclui ambas. Para banco existente atualizado até 019:
+As migrações desta revisão são 024 (regras/turnos) e 025 (datas). Elas vêm depois das migrações 020 de identidade, 021 de designação de checklists, 022 de notificações e 023 de número oficial. O fluxo completo `npm run db:migrate` inclui todas; em instalações existentes, preserve o procedimento de segurança das migrações anteriores.
+
+Para produção já atualizada até 023, faça a troca em duas fases. A preparação aplica as estruturas 024 e 025 numa única transação, mantendo as regras atuais. Publique a aplicação nova depois dessa preparação e ative as regras somente após conferir a publicação:
 
 ```powershell
-node --env-file=.env scripts/migrate-work-rules.mjs
-node --env-file=.env scripts/migrate-order-scheduling.mjs
+node --env-file=.env scripts/release-work-rules.mjs --prepare
+# Publicar e conferir a aplicação nova antes da próxima etapa.
+node --env-file=.env scripts/release-work-rules.mjs --activate --actor=<UUID-do-coordenador> --reason="Ativação das regras revisadas e conferidas"
 ```
 
-A migração 020 é idempotente: promove configurações uma vez e acrescenta tabelas/funções, sem reescrever pontos. Reexecuções preservam configurações já personalizadas. Migração 021 acrescenta as funções de alteração de datas, sem mudar datas existentes.
+A ativação exige o UUID de um coordenador ativo e motivo; a configuração anterior e a nova ficam registradas na auditoria, sem imprimir credenciais ou dados pessoais. A migração 024 promove configurações uma vez e acrescenta tabelas/funções, sem reescrever pontos. Reexecuções preservam configurações já personalizadas. Migração 025 acrescenta as funções de alteração de datas, sem mudar datas existentes.
+
+O script individual `migrate-work-rules.mjs` também aceita `--prepare` (somente estrutura) e `--activate` (somente ativação). Sem argumento, aplica ambas, adequado à instalação inicial ou a uma janela controlada. Para produção em uso, prefira `release-work-rules.mjs`, que agrupa a preparação e audita a ativação. A versão antiga da aplicação não interpreta os snapshots v2; não ative enquanto ela ainda estiver atendendo usuários.
+
+Se a publicação falhar antes da ativação, restaure a versão anterior da aplicação e mantenha as estruturas aditivas e as configurações antigas. Depois da ativação, a configuração anterior pode ser recuperada do `before_value` da auditoria “Regras de horas ativadas”, com nova auditoria e a mesma trava transacional. Preserve pontos, turnos, tabelas, colunas e marcadores de migração. Havendo pontos v2, mantenha uma aplicação capaz de interpretá-los e faça uma correção da versão nova; voltar à versão antiga exibiria os cálculos incorretamente. Reverter recálculos de pontos é uma operação separada, por registro e versão, usando sua auditoria e preservando alterações posteriores.
 
 ```powershell
 npm test
@@ -49,6 +56,7 @@ npm install --prefix work/sql-runtime --cache work/npm-cache --no-package-lock -
 $env:LOCAL_SQL_TEST='1'
 node tests/work-rules-isolated.mjs
 node tests/order-date-changes-isolated.mjs
+node tests/work-rules-cutover-isolated.mjs
 node tests/api-handlers-local.mjs
 ```
 

@@ -35,6 +35,7 @@ export type Trip = {
 export type Order = {
   id: string;
   number: number;
+  official_number?: string | null;
   title: string;
   client_id: string | null;
   client_name: string;
@@ -60,6 +61,8 @@ export type Order = {
   pending_checklists?: number;
   active_points?: number;
   my_point_active?: boolean;
+  /** Colaborador fora da equipe designado para um checklist: acesso só de consulta à OS e ao checklist atribuído. */
+  checklist_only?: boolean;
   /** Pessoas com horas registradas nesta OS (para colaboradores, somente a própria). */
   logged_members?: string[];
   acknowledgements: { user_id: string; version: number }[];
@@ -84,6 +87,7 @@ export const orderSchema = z
   .object({
     id: z.string().uuid().optional(),
     version: z.number().int().positive().optional(),
+    official_number: z.string().trim().max(80, "Use até 80 caracteres para o número oficial.").nullable().optional(),
     title: short.min(2, "Descreva o serviço."),
     client_id: z.string().uuid().nullable().default(null),
     client_name: short.default(""),
@@ -168,4 +172,4 @@ export function localDateTime(value: string) {
     .format(new Date(value))
     .replace(" ", "T");
 }
-export const orderNumber = (n: number) => "OS-" + String(n).padStart(6, "0");
+export { orderLabel as orderNumber } from "./order-label.mjs";

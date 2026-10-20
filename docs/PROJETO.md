@@ -79,6 +79,8 @@ Enquanto a equipe está vazia, a tela pública permite criar o primeiro coordena
 
 ## Verificação e evolução
 
+As regras de horas e datas de 20/10/2026 usam as migrações `024-work-rules.sql` e `025-order-scheduling.sql`, após segurança/identidade, designação de checklists, notificações e número oficial (020–023). Para produção em uso, `scripts/release-work-rules.mjs --prepare` aplica ambas as estruturas numa transação sem ativar o cálculo novo; publique a aplicação e execute então `--activate --actor=<UUID do coordenador> --reason="Motivo da ativação"`. A configuração anterior é preservada na auditoria; pontos e turnos existentes permanecem intactos. Procedimento e recuperação em [revisão das horas](regras-horas-2026-10-20.md).
+
 Testes de cálculo cobrem dias úteis, finais de semana, feriado, intervalos, vários serviços/dia, contas diferentes e pontos abertos. Testes de API cobrem login/PIN, autorização, horas individuais, persistência, duplicidade, pausas, meia-noite, aprovação, concorrência e auditoria. Fixtures são removidos no finally e os testes recusam banco com equipe já cadastrada.
 
 Conferência visual inclui celular de 320 e 390px, calendário, navegação inferior e histórico em cartões. Exportações verificadas em CSV, Excel e PDF. Compilação e checagem de tipos complementam os testes.

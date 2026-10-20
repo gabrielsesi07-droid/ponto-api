@@ -37,6 +37,7 @@ import {
 type StartForm = {
   order_id: string;
   order_number?: number;
+  order_official_number?: string | null;
   date: string;
   time: string;
   company: string;
@@ -276,7 +277,7 @@ export function QuickClock({
         </p>
         {timer && (
           <div className="mx-auto mt-5 grid max-w-xl gap-2 rounded-xl border bg-slate-50 px-4 py-3 text-left text-sm sm:grid-cols-2">
-            <p className="sm:col-span-2 font-semibold text-blue-900">{timer.order_number ? `Ponto vinculado à ${pointOrderNumber(timer.order_number)}` : 'Serviço antigo sem OS · encerre normalmente para preservar suas horas.'}</p>
+            <p className="sm:col-span-2 font-semibold text-blue-900">{timer.order_number ? `Ponto vinculado à ${pointOrderNumber(timer.order_number, timer.order_official_number)}` : 'Serviço antigo sem OS · encerre normalmente para preservar suas horas.'}</p>
             <span className="flex items-center gap-2">
               <Building2 size={16} className="text-blue-600" />
               <span>

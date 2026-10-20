@@ -21,7 +21,7 @@ export default async function PrintChecklist({ params }: { params: Promise<{ id:
   if (!row) notFound();
   const c = row as OrderChecklist, o = await orderForChecklist(c.order_id, me);
   return <main className="check-print"><div className="print-toolbar"><ChecklistPrintButton /><p>Impressão dos dados salvos. No diálogo de impressão, escolha A4 e, se quiser um arquivo, “Salvar como PDF”.</p></div>
-    <header><div><b>HoraCerta · Conferência de equipamentos</b><h1>{c.title}</h1></div><div className="print-number">{orderNumber(o.number)}<small>Preenchimento rev. {c.version}</small></div></header>
+    <header><div><b>HoraCerta · Conferência de equipamentos</b><h1>{c.title}</h1></div><div className="print-number">{orderNumber(o.number, o.official_number)}<small>Preenchimento rev. {c.version}</small></div></header>
     <p className="print-status">{c.status === 'waived' ? 'CHECKLIST DISPENSADO — NÃO EQUIVALE A CONFERÊNCIA CONCLUÍDA' : c.status === 'completed' ? 'CONFERÊNCIA CONCLUÍDA' : 'EM PREENCHIMENTO — ITENS NÃO MARCADOS ESTÃO PENDENTES'}{c.detached ? ' · EQUIPAMENTO REMOVIDO DA OS — HISTÓRICO' : ''}{o.status === 'Cancelada' ? ' · OS CANCELADA' : ''}</p>
     {c.status === 'waived' && <p className="print-warning">Dispensado por {c.updated_by_name}{c.waived_at ? ` em ${when(c.waived_at)}` : ''}. Justificativa: {c.waived_reason}. Marcações preservadas do preenchimento anterior; não comprova devolução.</p>}
     {c.source_obsolete && <p className="print-warning">ATENÇÃO: documento de origem marcado como obsoleto. Consulte o coordenador antes de utilizar.</p>}

@@ -20,7 +20,6 @@ import {
   UserRound,
 } from "lucide-react";
 import { api } from "./editors";
-import { DEFAULT_INITIAL_PIN } from "@/lib/pin";
 import { CompensationFields } from './compensation-fields';
 import { DEFAULT_MONTHLY_HOURS } from '@/lib/compensation';
 
@@ -51,10 +50,14 @@ function readLastAccess(): AccessOption | null {
 }
 
 function saveLastAccess(person: AccessOption) {
-  localStorage.setItem(
-    LAST_ACCESS_KEY,
-    JSON.stringify({ version: 1, ...person }),
-  );
+  try {
+    localStorage.setItem(
+      LAST_ACCESS_KEY,
+      JSON.stringify({ version: 1, name: person.name, access_code: person.access_code, job: person.job }),
+    );
+  } catch {
+    // Remembering the identifier is optional; private browsing must not block login.
+  }
 }
 
 export function QuickLogin({
@@ -76,14 +79,13 @@ export function QuickLogin({
 }) {
   const [step, setStep] = useState<"name" | "pin">("name");
   const [searchName, setSearchName] = useState("");
-  const [people, setPeople] = useState<AccessOption[]>([]);
-  const [searched, setSearched] = useState(false);
-  const [searching, setSearching] = useState(false);
   const [selected, setSelected] = useState<AccessOption | null>(null);
   const [remembered, setRemembered] = useState<AccessOption | null>(null);
   const [showSearch, setShowSearch] = useState(true);
   const [pin, setPin] = useState("");
   const [name, setName] = useState("");
+  const [bootstrapToken, setBootstrapToken] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
   const [salary, setSalary] = useState('');
   const [monthlyHours, setMonthlyHours] = useState(String(DEFAULT_MONTHLY_HOURS));
   const [remember, setRemember] = useState(true);
@@ -112,39 +114,6 @@ export function QuickLogin({
     else if (showSearch && hasAdvanced.current) nameInput.current?.focus();
   }, [showSearch, step]);
 
-  useEffect(() => {
-    if (setup || step !== "name" || !showSearch) return;
-    const query = searchName.trim();
-    if (query.length < 2) return;
-    const controller = new AbortController();
-    const timer = window.setTimeout(async () => {
-      try {
-        const response = await fetch(
-          "/api/login?name=" + encodeURIComponent(query),
-          { signal: controller.signal, cache: "no-store" },
-        );
-        const result = (await response.json()) as {
-          people?: AccessOption[];
-          error?: string;
-        };
-        if (!response.ok)
-          throw new Error(result.error || "Não foi possível buscar agora.");
-        setPeople(result.people || []);
-        setSearched(true);
-        setSearching(false);
-        clearError();
-      } catch (searchError) {
-        if (controller.signal.aborted) return;
-        setSearching(false);
-        setIssue((searchError as Error).message);
-      }
-    }, 300);
-    return () => {
-      window.clearTimeout(timer);
-      controller.abort();
-    };
-  }, [clearError, searchName, setup, showSearch, step]);
-
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (busy || loading) return;
@@ -154,24 +123,26 @@ export function QuickLogin({
         choose(remembered);
         return;
       }
-      if (searchName.trim().length < 2) {
-        setIssue("Digite pelo menos 2 letras do seu nome.");
+      const code = searchName.trim().toUpperCase();
+      if (!/^HC-\d{6}$/.test(code)) {
+        setIssue("Informe seu código no formato HC-000000.");
         nameInput.current?.focus();
         return;
       }
-      if (people.length === 1) choose(people[0]);
-      else if (people.length > 1)
-        setIssue("Selecione seu nome na lista para continuar.");
-      else if (!searching)
-        setIssue("Nenhum colaborador encontrado com esse nome.");
+      choose({ name: "Seu acesso", access_code: code, job: "" });
       return;
     }
+    if (setup && pin !== confirmPin) {
+      setIssue("Os PINs precisam ser iguais.");
+      return;
+    }
+    clearError();
     setBusy(true);
     try {
       const result = await api<{ ok: boolean; person?: AccessOption }>(
         setup ? "/api/session" : "/api/login",
         setup
-          ? { name, monthly_salary: salary.trim() ? Number(salary) : null, monthly_hours: Number(monthlyHours) }
+          ? { name, pin, bootstrap_token: bootstrapToken, monthly_salary: salary.trim() ? Number(salary) : null, monthly_hours: Number(monthlyHours) }
           : { access_code: selected?.access_code, pin, remember },
       );
       const person = result.person || selected;
@@ -207,8 +178,6 @@ export function QuickLogin({
   function useAnotherPerson() {
     setShowSearch(true);
     setSearchName("");
-    setPeople([]);
-    setSearched(false);
     setIssue("");
     hasAdvanced.current = true;
   }
@@ -344,16 +313,16 @@ export function QuickLogin({
                   : step === "name"
                     ? remembered && !showSearch
                       ? "Bem-vindo de volta."
-                      : "Encontre seu cadastro."
+                      : "Acesse seu espaço."
                     : "Só falta o seu PIN."}
               </h2>
               <p>
                 {setup
-                  ? `Crie o acesso do coordenador. O PIN inicial será ${DEFAULT_INITIAL_PIN} e poderá ser trocado assim que você entrar.`
+                  ? "Use a chave de instalação para criar o coordenador e definir seu PIN pessoal."
                   : step === "name"
                     ? remembered && !showSearch
                       ? "Seu acesso já está pronto neste aparelho."
-                      : "Digite seu nome. As opções aparecem automaticamente."
+                      : "Informe o código individual recebido do coordenador."
                     : "Digite os 6 números para entrar no seu espaço."}
               </p>
             </div>
@@ -366,7 +335,7 @@ export function QuickLogin({
                   aria-current={step === "name" ? "step" : undefined}
                 >
                   <span>{step === "pin" ? <Check size={12} /> : "1"}</span> Seu
-                  nome
+                  código
                 </li>
                 <li className="login-step-line" aria-hidden="true" />
                 <li
@@ -440,90 +409,35 @@ export function QuickLogin({
                       ) : (
                         <>
                           <label className="login-field" htmlFor="login-name">
-                            Seu nome
+                            Código de acesso
                             <span className="login-input-wrap">
                               <UserRound size={19} aria-hidden="true" />
                               <input
                                 ref={nameInput}
                                 id="login-name"
-                                name="name-search"
+                                name="access_code"
                                 required
-                                minLength={2}
-                                maxLength={80}
-                                autoComplete="name"
+                                minLength={9}
+                                maxLength={9}
+                                pattern="HC-[0-9]{6}"
+                                autoComplete="username"
+                                autoCapitalize="characters"
+                                spellCheck={false}
                                 aria-describedby="login-name-hint"
-                                placeholder="Ex.: Gabriel Souza"
+                                placeholder="HC-000000"
                                 value={searchName}
                                 onChange={(e) => {
-                                  const value = e.target.value;
+                                  const value = e.target.value.toUpperCase().replace(/\s/g, "");
                                   setSearchName(value);
-                                  setPeople([]);
-                                  setSearched(false);
-                                  setSearching(value.trim().length >= 2);
                                   setIssue("");
                                 }}
                               />
                             </span>
                           </label>
                           <p className="login-field-hint" id="login-name-hint">
-                            Pode digitar o nome completo ou apenas uma parte
-                            dele.
+                            Seu coordenador fornece o código e um PIN temporário para o primeiro acesso.
                           </p>
-                          {searching && (
-                            <p className="login-search-status" role="status">
-                              <LoaderCircle
-                                size={15}
-                                className="login-spinner"
-                              />
-                              Procurando seu cadastro…
-                            </p>
-                          )}
-                          {searched && !searching && !people.length && (
-                            <p className="login-empty-result">
-                              Nenhum cadastro encontrado. Confira o nome ou
-                              fale com o coordenador.
-                            </p>
-                          )}
-                          {searched && !searching && people.length > 0 && (
-                            <div
-                              className="login-results"
-                              aria-label="Colaboradores encontrados"
-                            >
-                              <p>Selecione seu cadastro</p>
-                              <ul>
-                                {people.map((person) => (
-                                  <li key={person.access_code}>
-                                    <button
-                                      type="button"
-                                      onClick={() => choose(person)}
-                                    >
-                                      <span className="login-result-avatar">
-                                        {person.name
-                                          .split(" ")
-                                          .filter(Boolean)
-                                          .slice(0, 2)
-                                          .map((part) => part[0])
-                                          .join("")
-                                          .toUpperCase()}
-                                      </span>
-                                      <span className="login-result-person">
-                                        <b>{person.name}</b>
-                                        <small>
-                                          {person.job ||
-                                            "Integrante da equipe"}
-                                        </small>
-                                      </span>
-                                      <code>{person.access_code}</code>
-                                      <ArrowRight
-                                        size={16}
-                                        aria-hidden="true"
-                                      />
-                                    </button>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
+                          <button className="login-submit" type="submit">Continuar <ArrowRight size={18} /></button>
                         </>
                       )}
                     </div>
@@ -607,19 +521,23 @@ export function QuickLogin({
                         </div>
                       </div>
                       <p className="login-field-hint" id="login-pin-hint">
-                        <LockKeyhole size={12} /> No primeiro acesso, use o PIN
-                        padrão {DEFAULT_INITIAL_PIN}.
+                        <LockKeyhole size={12} /> No primeiro acesso, use o PIN temporário recebido do coordenador.
                       </p>
                     </div>
                   )}
 
                   {setup && (
-                    <div className="login-field-hint rounded-xl border border-blue-200 bg-blue-50 p-4 text-blue-900">
-                      <b className="block text-sm">PIN inicial</b>
-                      <code className="my-1 block text-lg font-bold tracking-[.25em]">
-                        {DEFAULT_INITIAL_PIN}
-                      </code>
-                      Você poderá criar um PIN pessoal logo após entrar.
+                    <div className="space-y-4">
+                      <label className="login-field" htmlFor="bootstrap-token">Chave de instalação
+                        <input id="bootstrap-token" type="password" autoComplete="off" required minLength={32} value={bootstrapToken} onChange={e => setBootstrapToken(e.target.value)} />
+                      </label>
+                      <p className="login-field-hint">Fornecida pelo responsável pela instalação. Usada somente para criar o primeiro coordenador.</p>
+                      <label className="login-field" htmlFor="setup-pin">Crie seu PIN pessoal
+                        <input id="setup-pin" type="password" inputMode="numeric" autoComplete="new-password" required pattern="[0-9]{6}" minLength={6} maxLength={6} value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0,6))} />
+                      </label>
+                      <label className="login-field" htmlFor="setup-confirm-pin">Confirme seu PIN
+                        <input id="setup-confirm-pin" type="password" inputMode="numeric" autoComplete="new-password" required pattern="[0-9]{6}" minLength={6} maxLength={6} value={confirmPin} onChange={e => setConfirmPin(e.target.value.replace(/\D/g, '').slice(0,6))} />
+                      </label>
                     </div>
                   )}
 

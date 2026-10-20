@@ -1,3 +1,4 @@
+import { orderLabel } from "./order-label.mjs";
 import type { Calculated, State } from "./domain";
 import { duration } from "./domain";
 export async function exportReport(
@@ -24,10 +25,11 @@ export async function exportReport(
     "Tipo de apontamento",
     "Faixas de extras",
     "Observações do cálculo",
+    "Conferência do valor",
   ];
   const data = rows.map((e) => [
     e.date,
-    e.order_number ? `OS-${String(e.order_number).padStart(6, '0')}` : 'Histórico anterior · sem OS',
+    e.order_number ? orderLabel(e.order_number, e.order_official_number) : 'Histórico anterior · sem OS',
     state.users.find((u) => u.id === e.user_id)?.name || "",
     e.company || "Não informada",
     e.service || "Serviço técnico",
@@ -43,6 +45,7 @@ export async function exportReport(
     e.work_type === "travel" ? "Deslocamento" : "Serviço",
     e.breakdown?.map((tier) => `${duration(tier.minutes)} com +${tier.bonus}%${e.missing_rate ? " · valor a calcular" : ` · ${tier.amount.toFixed(2)} ${e.rules.currency}`}`).join(" | ") || "",
     [e.extra > 0 && e.missing_rate ? "Valor-hora não informado; estimativa indisponível" : "", e.calculation_warning].filter(Boolean).join(" | "),
+    Number(e.rate) === 0 ? "Valor-hora registrado como zero: conferir antes de utilizar" : "Valor estimado",
   ]);
   const name = "horacerta-" + period.replace(/[^0-9-]/g, "") + "." + format;
   function download(blob: Blob) {

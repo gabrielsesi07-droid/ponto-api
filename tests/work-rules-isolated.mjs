@@ -40,20 +40,20 @@ BEGIN
  INSERT INTO horacerta.qa_snapshots SELECT 'timer',to_jsonb(t) FROM horacerta.timers t;
 END $$`);
 
-const migration = split(await read('020-work-rules.sql'));
+const migration = split(await read('024-work-rules.sql'));
 statements.push(...migration);
 statements.push(`DO $$
 DECLARE original jsonb; current_rows jsonb; current_rules jsonb;
 BEGIN
  SELECT value INTO original FROM horacerta.qa_snapshots WHERE name='entries';
  SELECT jsonb_object_agg(id::text,to_jsonb(e)-'work_type'-'shift'-'break_start') INTO current_rows FROM horacerta.entries e;
- ASSERT original=current_rows,'Migration 020 preserves all existing entry columns/snapshots';
+ ASSERT original=current_rows,'Migration 024 preserves all existing entry columns/snapshots';
  ASSERT (SELECT value=(SELECT to_jsonb(t) FROM horacerta.timers t) FROM horacerta.qa_snapshots WHERE name='timer'),'Migration preserves active timer rules/rate';
  SELECT rules INTO current_rules FROM horacerta.settings WHERE id=1;
  ASSERT current_rules->>'calculation_version'='2' AND current_rules->>'daily_minutes'='480' AND current_rules->>'approval_required'='false' AND current_rules->>'travel_mode'='daily','Migration enables v2 and automatic approval';
  ASSERT current_rules#>>'{day_policies,saturday,normal_minutes}'='480' AND current_rules#>>'{day_policies,saturday,tiers,0,up_to_minutes}'='180' AND current_rules#>>'{day_policies,saturday,tiers,0,bonus}'='60' AND current_rules#>>'{day_policies,saturday,tiers,1,bonus}'='100','Saturday quota and progressive tiers';
  ASSERT current_rules#>>'{day_policies,sunday,normal_minutes}'='0' AND current_rules#>>'{day_policies,sunday,tiers,0,bonus}'='100','Sunday is entirely extra';
- ASSERT (SELECT count(*)=1 FROM horacerta.schema_migrations WHERE name='020-work-rules'),'Migration marker recorded once';
+ ASSERT (SELECT count(*)=1 FROM horacerta.schema_migrations WHERE name='024-work-rules'),'Migration marker recorded once';
  UPDATE horacerta.settings SET rules=jsonb_set(rules,'{day_policies,weekday,tiers,0,bonus}','77') WHERE id=1;
  INSERT INTO horacerta.qa_snapshots SELECT 'customized_settings',rules FROM horacerta.settings WHERE id=1;
 END $$`);
@@ -61,7 +61,7 @@ END $$`);
 statements.push(...migration);
 statements.push(`DO $$ BEGIN
  ASSERT (SELECT rules=(SELECT value FROM horacerta.qa_snapshots WHERE name='customized_settings') FROM horacerta.settings WHERE id=1),'Idempotent migration preserves customized v2 settings';
- ASSERT (SELECT count(*)=1 FROM horacerta.schema_migrations WHERE name='020-work-rules'),'Idempotent migration keeps one marker';
+ ASSERT (SELECT count(*)=1 FROM horacerta.schema_migrations WHERE name='024-work-rules'),'Idempotent migration keeps one marker';
  ASSERT (SELECT value=(SELECT jsonb_object_agg(id::text,to_jsonb(e)-'work_type'-'shift'-'break_start') FROM horacerta.entries e) FROM horacerta.qa_snapshots WHERE name='entries'),'Reapplication preserves old points';
 END $$`);
 

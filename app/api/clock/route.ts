@@ -33,7 +33,7 @@ export async function GET(req: Request) {
       if (!entry) throw new ApiError(404, 'Marcação não encontrada.');
       userId = entry.user_id; existingOrderId = entry.order_id;
     }
-    const orders = await sql`SELECT id,number,title,client_name,status,(starts_at AT TIME ZONE 'America/Sao_Paulo')::date::text start_date,${userId}::uuid=ANY(members) assigned
+    const orders = await sql`SELECT id,number,official_number,title,client_name,status,(starts_at AT TIME ZONE 'America/Sao_Paulo')::date::text start_date,${userId}::uuid=ANY(members) assigned
       FROM horacerta.orders WHERE ${userId}::uuid=ANY(members) OR id=${existingOrderId}::uuid ORDER BY starts_at DESC,number DESC`;
     return Response.json({orders}, {headers:{'Cache-Control':'private, no-store'}});
   } catch (e) { return failure(e); }

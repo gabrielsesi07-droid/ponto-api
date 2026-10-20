@@ -18,6 +18,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Blank, Status } from "./controls";
 import { pointOrderNumber } from '@/lib/point-orders';
+import { canEditEntry, entryEditExplanation } from '@/lib/entry-access';
 import {
   duration,
   money,
@@ -72,7 +73,11 @@ export function EntriesTable({
     </span>
   ) : (
     <div className="flex items-center gap-1">
-      {(admin || (e.user_id === state.me.id && state.me.can_edit && (!approvalRequired || e.status !== "Aprovado"))) && (
+      {!canEditEntry(state.me, e, false, approvalRequired) ? (
+        <span className="max-w-64 whitespace-normal text-xs leading-relaxed text-slate-600">
+          <Lock size={14} className="mr-1 inline" />{entryEditExplanation(state.me, e, false, approvalRequired)}
+        </span>
+      ) : (
         <Button
           disabled={busy}
           size="sm"
@@ -96,7 +101,7 @@ export function EntriesTable({
           <DropdownMenuContent align="end">
             {approvalRequired && (
               <>
-                <DropdownMenuItem disabled={busy || !e.end || e.status === "Aprovado"} onSelect={() => onStatus(e, "Aprovado")}>
+                <DropdownMenuItem disabled={busy || !e.end || e.status === "Aprovado"} title={!e.end ? 'Preencha a saída antes de aprovar' : e.status === 'Aprovado' ? 'Este lançamento já está aprovado' : 'Aprovar lançamento'} onSelect={() => onStatus(e, "Aprovado")}>
                   <CheckCheck /> Aprovar lançamento
                 </DropdownMenuItem>
                 <DropdownMenuItem disabled={busy || e.status === "Revisado"} onSelect={() => onStatus(e, "Revisado")}>
@@ -114,7 +119,7 @@ export function EntriesTable({
   );
   if (!rows.length)
     return (
-      <Blank description="Ajuste os filtros ou registre uma nova jornada." />
+      <Blank description={admin ? 'Nenhum lançamento neste recorte. Ajuste o período, a pessoa ou o status para conferir os pontos da equipe.' : 'Nenhum lançamento neste recorte. Ajuste os filtros ou registre as horas realizadas em uma OS designada para você.'} />
     );
   if (groupedByPerson && admin) {
     const grouped = new Map<string, Calculated[]>();
@@ -174,7 +179,7 @@ export function EntriesTable({
               {time(e.start)} — {time(e.end)} · {e.break_minutes} min de pausa
             </p>
             <p className="mt-2 text-sm">
-              <span className="block text-xs font-semibold text-blue-800">{e.order_number ? pointOrderNumber(e.order_number) : 'Histórico anterior · sem OS'}</span>
+              <span className="block text-xs font-semibold text-blue-800">{e.order_number ? pointOrderNumber(e.order_number, e.order_official_number) : 'Histórico anterior · sem OS'}</span>
               <span className="block text-xs muted">{e.work_type === "travel" ? "Deslocamento" : "Serviço"}</span>
               <b>{e.company || "Empresa não informada"}</b>
               <span className="muted"> · {e.service}</span>
@@ -247,7 +252,7 @@ export function EntriesTable({
                     </span>
                   </TableCell>
                   <TableCell className="min-w-52">
-                    <span className="block text-xs font-semibold text-blue-800">{e.order_number ? pointOrderNumber(e.order_number) : 'Histórico anterior · sem OS'}</span>
+                    <span className="block text-xs font-semibold text-blue-800">{e.order_number ? pointOrderNumber(e.order_number, e.order_official_number) : 'Histórico anterior · sem OS'}</span>
                     <span className="block text-xs muted">{e.work_type === "travel" ? "Deslocamento" : "Serviço"}</span>
                     <b className="block">{e.company || "Não informada"}</b>
                     <span className="muted block max-w-64 truncate text-xs">
