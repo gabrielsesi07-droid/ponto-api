@@ -21,7 +21,7 @@ Rotas de interface: ?view=register, insights, entries, reports, profile, dashboa
 
 Colaborador: buscar nome → escolher seu código → informar PIN → configurar salário e horas mensais → abrir a OS do dia → viagem e checklist, quando houver → depois do trabalho, registrar entrada/saída/intervalo na OS → consultar Meu resumo ou Histórico. A pessoa é identificada pelo login; empresa e serviço vêm da OS. “Registrar ponto”, no Histórico, abre diretamente um calendário e formulário com OS obrigatória, entrada/saída, pausa, feriado e observação opcional, sem navegar para Meu ponto.
 
-Coordenador: criar primeiro acesso → cadastrar os colaboradores → gerar OS → acompanhar equipe → concluir OS (vê quem ainda não registrou horas) → aprovar o mês em lote → fechar o mês → exportar relatórios. Cada colaborador configura seu salário e carga mensal; o coordenador pode visualizar o valor-hora resultante, mas a edição do cadastro da equipe não o altera. Salário bruto e carga mensal são retornados somente para o próprio usuário, não na lista de pessoas.
+Coordenador: criar primeiro acesso → cadastrar os colaboradores → gerar OS → acompanhar equipe → concluir OS (vê quem ainda não registrou horas) → conferir resumos por pessoa → fechar o mês → exportar relatórios. Aprovação automática é o padrão; a aprovação em lote permanece para pendências antigas ou operação com aprovação manual. Cada colaborador configura seu salário e carga mensal; o coordenador pode visualizar o valor-hora resultante, mas a edição do cadastro da equipe não o altera. Salário bruto e carga mensal são retornados somente para o próprio usuário, não na lista de pessoas.
 
 No celular há navegação inferior fixa com Ponto, Resumo, Histórico e Meu acesso. O menu lateral reúne as áreas adicionais. Indicadores adaptam-se à largura; gráficos ocupam uma coluna em telas estreitas; o histórico vira cartões. O calendário permite selecionar uma data e conferir as marcações daquele dia. O resumo mensal compara seis meses de dados próprios.
 
@@ -32,14 +32,14 @@ Visual: azul-marinho, azul de ação, âmbar para extras e verde para aprovaçã
 - Valor-hora = salário bruto mensal ÷ horas mensais do contrato, arredondado em centavos. Base inicial de 200 horas ajustável (1 a 744, até duas casas decimais), não uma determinação legal do contrato. Salário de 0 a 1.000.000, até duas casas decimais. O servidor calcula; não aceita valor-hora editável. A configuração não é folha de pagamento.
 - Migração aditiva `014-monthly-salary.sql`: contas anteriores ficam com salário não informado e valor-hora inalterado. Não se deduz salário multiplicando a taxa antiga por 220. Atualizações valem para novos pontos; pontos existentes e relógios em andamento preservam seus valores.
 - Intervalo automático: um único por pessoa/dia. Se o dia (primeira entrada até a última saída, somando todos os registros) passa por 12h–13h, essa é a janela, mesmo que o almoço tenha ficado fora dos registros; senão, 19h–20h. Cada registro automático desconta só o trecho trabalhado dentro da janela. O banco recalcula os registros automáticos do dia a cada gravação/exclusão (`recompute_auto_breaks`), com auditoria; se um valor aprovado muda, volta a Pendente. Intervalo específico nunca é recalculado.
-- O sistema é usado somente em dias de campo; não existe dia misto com escritório. O deslocamento conta como trabalho: entrada = hora em que saiu de casa, saída = hora em que chegou em casa.
+- O sistema é usado em serviços técnicos, separado do ponto do escritório. Deslocamento conta como trabalho; registre trechos de viagem e serviço separadamente quando ambos ocorrerem no mesmo dia, sem sobreposição. A carga normal é compartilhada e a viagem, por padrão, não herda o turno no destino.
 - Trabalhadas = saída − entrada − pausas, em minutos. Relógio ao vivo mostra segundos; registros e pausas são consolidados na precisão do minuto.
-- Em dias úteis, até 540 minutos normais por pessoa/data; somente o excedente é extra.
-- Vários serviços compartilham a franquia diária. Calcular antes dos filtros evita conceder 9h novamente a cada registro.
-- Sábado: todas as horas com 60% de adicional. Domingo: 100%. Feriado marcado: padrão 100%.
+- Cálculo v2: carga inicial de 480 minutos nos dias úteis e sábados, com turno pessoal confirmado por OS. Minutos fora do turno são extras; os minutos dentro dele também respeitam a carga diária. Snapshots sem v2 preservam o cálculo anterior até recálculo explícito.
+- Vários serviços e deslocamentos compartilham a franquia diária por pessoa. O cálculo acontece antes dos filtros de OS, pessoa, tipo e status.
+- Sábado: mesma carga normal dos dias úteis; primeiras 3h extras com 60%, restante com 100%. Domingo integralmente extra a 100%. Cada tipo de dia permite carga e até 12 faixas próprias.
 - Adicional útil inicial: 50%, configurável, pois o briefing não especificou esse percentual.
-- Valor estimado = extras em horas × valor-hora × (1 + adicional/100), arredondado em centavos por marcação. Inclui a hora-base das extras.
-- Exemplo: 12h úteis a R$30/h → 9h normais e 3h extras → R$135 com adicional de 50%.
+- Valor estimado = soma das faixas de extras em horas × valor-hora × (1 + adicional/100). Inclui a hora-base. No v2, os centavos são acumulados por pessoa/data/moeda/tarifa/adicional para evitar diferença ao dividir registros. Tarifa ausente é sinalizada, sem inventar valor.
+- Exemplo: 07h–18h com 1h de intervalo e turno 08h–17h → 8h normais e 2h extras; a R$30/h com 50%, extras = R$90.
 - O relógio captura valor-hora e regras no início do serviço. Alterações posteriores não reprecificam o histórico nem o serviço já iniciado.
 - Serviços atravessando meia-noite são divididos por data no horário de Brasília. Ajustes manuais permitem 24:00 como fim do dia.
 - Marcações em aberto ficam fora dos totais e não podem ser aprovadas.
@@ -48,6 +48,7 @@ Visual: azul-marinho, azul de ação, âmbar para extras e verde para aprovaçã
 - O mês corrente é parcial; a comparação exibe os totais registrados, não uma projeção.
 - Fechamento mensal: exige mês encerrado, nenhum registro sem saída e todos aprovados (há aprovação em lote por mês e pessoa). Um gatilho no banco impede criar, editar, aprovar ou excluir registros de mês fechado por qualquer caminho. Reabrir exige motivo (10+ caracteres) e fica na auditoria.
 - Sem adicional noturno, folha salarial, banco de horas, feriados automáticos ou certificação como registrador oficial.
+- Datas previstas da OS aberta e datas reais da viagem são corrigíveis pelo coordenador, com motivo, versão/estado anterior, verificação de conflitos e auditoria. Ver [revisão de 20/10/2026](regras-horas-2026-10-20.md).
 
 ## Estrutura técnica
 

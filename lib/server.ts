@@ -109,15 +109,4 @@ export const clientSchema = z.object({
   notes: z.string().max(2000).default(""),
   active: z.boolean().default(true),
 });
-export const rulesSchema = z.object({
-  daily_minutes: z.coerce.number().int().min(1).max(1440),
-  weekday_bonus: z.coerce.number().min(0).max(1000),
-  saturday_bonus: z.coerce.number().min(0).max(1000),
-  sunday_bonus: z.coerce.number().min(0).max(1000),
-  holiday_bonus: z.coerce.number().min(0).max(1000),
-  allow_retro: z.boolean(),
-  approval_required: z.boolean(),
-  currency: z.enum(["BRL", "USD", "EUR"]),
-  date_format: z.enum(["dd/MM/yyyy", "yyyy-MM-dd"]),
-  time_format: z.enum(["24h", "12h"]),
-});
+export { rulesSchema } from './work-rules';

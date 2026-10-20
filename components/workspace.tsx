@@ -249,7 +249,8 @@ export function Workspace() {
       monthBounds(today().slice(0, 7)).from,
     ),
     [customTo, setCustomTo] = useState(today()),
-    [page, setPage] = useState(1);
+    [page, setPage] = useState(1),
+    [historyMode, setHistoryMode] = useState<"list" | "people">("people");
   const [editor, setEditor] = useState<Editor | null>(null),
     [deleting, setDeleting] = useState<Entry | null>(null),
     [busy, setBusy] = useState(false),
@@ -362,6 +363,10 @@ export function Workspace() {
     window.history.replaceState({}, "", "?" + p);
   }
   const all = useMemo(() => calculate(data?.entries || []), [data]);
+  const peopleById = useMemo(
+    () => new Map(data?.users.map((person) => [person.id, person]) || []),
+    [data?.users],
+  );
   const rows = useMemo(
     () =>
       all
@@ -376,6 +381,7 @@ export function Workspace() {
               [
                 e.date,
                 e.date.split("-").reverse().join("/"),
+                peopleById.get(e.user_id)?.name,
                 e.company,
                 e.order_number ? `OS-${String(e.order_number).padStart(6,'0')}` : '',
                 e.service,
@@ -386,7 +392,7 @@ export function Workspace() {
                 .includes(search.toLowerCase())),
         )
         .sort((a, b) => (b.date + b.start).localeCompare(a.date + a.start)),
-    [all, range.from, range.to, user, status, day, search],
+    [all, range.from, range.to, user, status, day, search, peopleById],
   );
   const prev = all.filter(
       (e) =>
@@ -513,15 +519,17 @@ export function Workspace() {
     } catch {}
     return () => life.abort();
   }, [data, go]);
+  const groupedHistory = !!admin && historyMode === "people";
   const entryTable = (compact = false) => (
     <EntriesTable
-      rows={compact ? rows.slice(0, 5) : rows.slice((page - 1) * 15, page * 15)}
+      rows={compact ? rows.slice(0, 5) : groupedHistory ? rows : rows.slice((page - 1) * 15, page * 15)}
       state={data!}
       onEdit={(e) => setEditor({ kind: "entry", data: e })}
       onDelete={setDeleting}
       onStatus={updateStatus}
       compact={compact}
       busy={busy}
+      groupedByPerson={!compact && groupedHistory}
     />
   );
   if (!data) {
@@ -735,7 +743,7 @@ export function Workspace() {
                     />
                   </label>
                   {admin && !["profile", "insights"].includes(view) && (
-                    <label className="min-w-52">
+                    <label className="min-w-60">
                       Colaborador
                       <Pick
                         label="Filtrar colaborador"
@@ -743,7 +751,7 @@ export function Workspace() {
                         onChange={setUser}
                         items={[
                           { value: "all", label: "Toda a equipe" },
-                          ...data.users.map((u) => ({
+                          ...[...data.users].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")).map((u) => ({
                             value: u.id,
                             label: u.name,
                           })),
@@ -824,7 +832,7 @@ export function Workspace() {
                       <label className="flex-1 min-w-44">
                         Buscar marcação
                         <input
-                          placeholder="Buscar por data, empresa ou serviço"
+                          placeholder={admin ? "Nome, data, OS, empresa ou serviço" : "Data, OS, empresa ou serviço"}
                           value={search}
                           onChange={(e) => setSearch(e.target.value)}
                         />
@@ -894,7 +902,23 @@ export function Workspace() {
                   )}
                   <div className="panel overflow-hidden">
                     <div className="px-6 py-5 flex flex-wrap gap-4 justify-between items-center">
-                      <h2>{rows.length} lançamentos encontrados</h2>
+                      <div>
+                        <h2>{rows.length} lançamentos encontrados</h2>
+                        <p className="muted mt-1 text-sm">
+                          {user === "all" ? admin ? "Toda a equipe" : "Meus pontos" : peopleById.get(user)?.name || "Colaborador selecionado"}
+                          {" · "}{duration(t.worked)} trabalhadas · {duration(t.extra)} extras
+                        </p>
+                      </div>
+                      {admin && (
+                        <div className="flex flex-wrap gap-1 rounded-xl border bg-slate-50 p-1" role="group" aria-label="Organizar histórico de pontos">
+                          <Button type="button" variant={historyMode === "people" ? "default" : "ghost"} size="sm" className="action" aria-pressed={historyMode === "people"} onClick={() => setHistoryMode("people")}>
+                            <Users size={16} /> Por colaborador
+                          </Button>
+                          <Button type="button" variant={historyMode === "list" ? "default" : "ghost"} size="sm" className="action" aria-pressed={historyMode === "list"} onClick={() => setHistoryMode("list")}>
+                            <ListChecks size={16} /> Lista por data
+                          </Button>
+                        </div>
+                      )}
                       <Button
                         disabled={exporting || !rows.length}
                         variant="outline"
@@ -908,11 +932,11 @@ export function Workspace() {
                     {entryTable()}
                     <div className="border-t p-4 flex flex-wrap justify-between gap-3 items-center text-sm">
                       <span className="muted">
-                        Página {page} de{" "}
-                        {Math.max(1, Math.ceil(rows.length / 15))} ·{" "}
-                        {duration(t.worked)} trabalhadas
+                        {groupedHistory
+                          ? "Totais de todos os lançamentos do período filtrado"
+                          : `Página ${page} de ${Math.max(1, Math.ceil(rows.length / 15))} · ${duration(t.worked)} trabalhadas`}
                       </span>
-                      <Pagination className="mx-0 w-auto">
+                      {!groupedHistory && <Pagination className="mx-0 w-auto">
                         <PaginationContent>
                           <PaginationItem>
                             <Button
@@ -939,7 +963,7 @@ export function Workspace() {
                             </Button>
                           </PaginationItem>
                         </PaginationContent>
-                      </Pagination>
+                      </Pagination>}
                     </div>
                   </div>
                   {rows.some((e) => e.worked > 840) && (

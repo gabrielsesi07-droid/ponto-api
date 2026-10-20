@@ -14,3 +14,8 @@ test('An existing point retains its historical order, even after a membership or
  assert.ok(availablePointOrders(orders,'2026-09-28',false,'another').some(o=>o.id==='another'));
  assert.equal(pointOrderNumber(104),'OS-000104');
 });
+test('travel can precede the planned service day, retaining membership and live-timer restrictions',()=>{
+ assert.ok(availablePointOrders(orders,'2026-09-28',false,null,'travel').some(o=>o.id==='future'));
+ assert.equal(availablePointOrders(orders,'2026-09-28',false,null,'travel').some(o=>o.id==='another'),false);
+ assert.equal(availablePointOrders(orders,'2026-09-28',true,null,'travel').length,0);
+});

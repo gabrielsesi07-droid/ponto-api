@@ -9,6 +9,7 @@ import {
 } from "@/lib/server";
 import { minutes, today, type Entry, type Rules } from "@/lib/domain";
 import { automaticBreakForDay } from '@/lib/manual-work';
+import { workTypeSchema, validateBreakPosition } from '@/lib/entry-validation';
 const schema = z.object({
   id: z.string().uuid().optional(),
   version: z.number().int().optional(),
@@ -23,6 +24,8 @@ const schema = z.object({
     .nullable(),
   break_minutes: z.coerce.number().int().min(0).max(1439),
   break_mode: z.enum(['automatic', 'custom']).default('custom'),
+  break_start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().optional(),
+  work_type: workTypeSchema.optional(),
   company: z.string().trim().max(160).default(''),
   service: z
     .string()
@@ -41,17 +44,17 @@ export async function POST(req: Request) {
       throw new ApiError(403, "Você só pode registrar a própria jornada.");
     if(!p.id&&p.user_id!==me.id)throw new ApiError(403,'Novas marcações pertencem sempre à pessoa conectada.');
     if (!p.end) throw new ApiError(400, 'Informe a saída real do trabalho. O registro deve conter entrada, saída e intervalo.');
-    if (p.break_mode === 'automatic') {
-      // Preview value; recompute_auto_breaks re-applies the same rule under the transaction lock.
-      const sameDay = await sql`SELECT start::text,"end"::text FROM horacerta.entries WHERE user_id=${p.user_id}::uuid AND date=${p.date}::date AND deleted_at IS NULL AND (${p.id ?? null}::uuid IS NULL OR id<>${p.id ?? null}::uuid)`;
-      p.break_minutes = automaticBreakForDay(p.start, p.end, sameDay as {start:string;end:string|null}[]);
-    }
     if (
       !Number.isFinite(new Date(p.date + "T12:00:00Z").getTime()) ||
       new Date(p.date + "T12:00:00Z").toISOString().slice(0, 10) !== p.date ||
       p.date > today()
     )
       throw new ApiError(400, "Informe uma data válida, até hoje.");
+    if (p.break_mode === 'automatic') {
+      // Preview only: the transaction re-applies this under its lifecycle lock.
+      const sameDay = await sql`SELECT start::text,"end"::text FROM horacerta.entries WHERE user_id=${p.user_id}::uuid AND date=${p.date}::date AND deleted_at IS NULL AND (${p.id ?? null}::uuid IS NULL OR id<>${p.id ?? null}::uuid)`;
+      p.break_minutes = automaticBreakForDay(p.start, p.end, sameDay as {start:string;end:string|null}[]);
+    }
     if (
       p.end &&
       (minutes(p.end) <= minutes(p.start) ||
@@ -89,7 +92,7 @@ export async function POST(req: Request) {
         );
       if (
         me.role !== "coordinator" &&
-        (old.user_id !== me.id || !me.can_edit || old.status === "Aprovado")
+        (old.user_id !== me.id || !me.can_edit || (settings.approval_required && old.status === "Aprovado"))
       )
         throw new ApiError(
           403,
@@ -103,16 +106,19 @@ export async function POST(req: Request) {
     const orderId = p.order_id === undefined ? old?.order_id || null : p.order_id;
     if (!old && !orderId) throw new ApiError(400, 'Selecione a OS deste trabalho. Não é possível criar uma marcação avulsa.');
     if (old?.order_id && orderId !== old.order_id) throw new ApiError(400, 'O vínculo desta marcação com a OS não pode ser removido ou trocado.');
-    const rate = old?.rate ?? person.hourly_rate,
-      rules = old?.rules ?? settings,
-      status = settings.approval_required || !p.end ? "Pendente" : "Aprovado",
+    const rules = old?.rules ?? settings,
       id = p.id || crypto.randomUUID();
-    const mutation = sql`WITH source AS MATERIALIZED (SELECT horacerta.point_entry_order(${p.user_id}::uuid,${orderId}::uuid,${p.date}::date,${p.end}::time,${old?.id || null}::uuid) data), changed AS (
- INSERT INTO horacerta.entries AS current(id,user_id,client_id,order_id,date,start,"end",break_minutes,break_mode,company,service,service_type,notes,holiday,status,rate,rules)
- SELECT ${id}::uuid,${p.user_id}::uuid,(data->>'client_id')::uuid,(data->>'order_id')::uuid,${p.date}::date,${p.start}::time,${p.end}::time,${p.break_minutes},${p.break_mode},data->>'company',data->>'service',${p.service_type},${p.notes},${p.holiday},${status},${rate},${JSON.stringify(rules)}::jsonb FROM source
+    const workType = p.work_type ?? old?.work_type ?? 'work';
+    const breakStart = p.break_mode === 'custom' && p.break_minutes > 0 ? p.break_start ?? old?.break_start?.slice(0,5) ?? null : null;
+    if (rules.calculation_version === 2 && p.break_mode === 'custom' && !validateBreakPosition(p.start, p.end, p.break_minutes, breakStart))
+      throw new ApiError(400, 'Informe o início real do intervalo dentro da jornada, ou use o intervalo automático.');
+    const mutation = sql`WITH context AS MATERIALIZED (SELECT horacerta.point_entry_context(${me.id}::uuid,${p.user_id}::uuid,${old?.id || null}::uuid,${p.date}::date,${p.start}::time,${p.end}::time,${p.break_minutes},${p.break_mode},${breakStart}::time) value), source AS MATERIALIZED (SELECT value,horacerta.point_entry_order_for_type(${p.user_id}::uuid,${orderId}::uuid,${p.date}::date,${p.end}::time,${old?.id || null}::uuid,${workType}) data,
+ horacerta.point_entry_shift(${p.user_id}::uuid,${orderId}::uuid,${workType},value->'rules',${old?.id || null}::uuid) shift FROM context), changed AS (
+ INSERT INTO horacerta.entries AS current(id,user_id,client_id,order_id,date,start,"end",break_minutes,break_mode,break_start,work_type,shift,company,service,service_type,notes,holiday,status,rate,rules)
+ SELECT ${id}::uuid,${p.user_id}::uuid,(data->>'client_id')::uuid,(data->>'order_id')::uuid,${p.date}::date,${p.start}::time,${p.end}::time,${p.break_minutes},${p.break_mode},${breakStart}::time,${workType},shift,data->>'company',data->>'service',${p.service_type},${p.notes},${p.holiday},value->>'status',(value->>'rate')::numeric,value->'rules' FROM source
  WHERE NOT EXISTS(SELECT 1 FROM horacerta.entries e WHERE e.user_id=${p.user_id}::uuid AND e.date=${p.date}::date AND e.deleted_at IS NULL AND e.id<>${id}::uuid AND e.start<coalesce(${p.end}::time,'24:00'::time) AND coalesce(e."end",'24:00'::time)>${p.start}::time)
  AND NOT EXISTS(SELECT 1 FROM horacerta.timers t WHERE t.user_id=${p.user_id}::uuid AND (t.started_at AT TIME ZONE 'America/Sao_Paulo')<(${p.date}::date+coalesce(${p.end}::time,'24:00'::time)))
- ON CONFLICT(id) DO UPDATE SET client_id=excluded.client_id,order_id=excluded.order_id,date=excluded.date,start=excluded.start,"end"=excluded."end",break_minutes=excluded.break_minutes,break_mode=excluded.break_mode,company=excluded.company,service=excluded.service,service_type=excluded.service_type,notes=excluded.notes,holiday=excluded.holiday,status=excluded.status,version=current.version+1,updated_at=now()
+ ON CONFLICT(id) DO UPDATE SET client_id=excluded.client_id,order_id=excluded.order_id,date=excluded.date,start=excluded.start,"end"=excluded."end",break_minutes=excluded.break_minutes,break_mode=excluded.break_mode,break_start=excluded.break_start,work_type=excluded.work_type,shift=excluded.shift,company=excluded.company,service=excluded.service,service_type=excluded.service_type,notes=excluded.notes,holiday=excluded.holiday,status=excluded.status,version=current.version+1,updated_at=now()
  WHERE current.version=${p.version ?? 0} AND current.deleted_at IS NULL
  RETURNING * ) INSERT INTO horacerta.audit(actor_id,entry_id,action,before_value,after_value) SELECT ${me.id}::uuid,id,${old ? "edit" : "create"},${old ? JSON.stringify(old) : null}::jsonb,to_jsonb(changed) FROM changed RETURNING entry_id`;
     const result = await sql.transaction([
@@ -149,8 +155,10 @@ export async function PATCH(req: Request) {
         })
         .parse(await payload(req)),
       sql = db();
-    const r =
-      await sql`WITH old AS (SELECT * FROM horacerta.entries WHERE id=${p.id} AND version=${p.version} AND deleted_at IS NULL FOR UPDATE), changed AS (UPDATE horacerta.entries e SET status=${p.status},version=e.version+1,updated_at=now() FROM old WHERE e.id=old.id AND (${p.status !== "Aprovado"} OR e."end" IS NOT NULL) RETURNING e.*) INSERT INTO horacerta.audit(actor_id,entry_id,action,before_value,after_value) SELECT ${me.id}::uuid,changed.id,'status',to_jsonb(old),to_jsonb(changed) FROM changed JOIN old USING(id) RETURNING entry_id`;
+    const [, r] = await sql.transaction([
+      sql`SELECT pg_advisory_xact_lock(2849061701)`,
+      sql`WITH old AS (SELECT * FROM horacerta.entries WHERE id=${p.id} AND version=${p.version} AND deleted_at IS NULL FOR UPDATE), changed AS (UPDATE horacerta.entries e SET status=${p.status},version=e.version+1,updated_at=now() FROM old WHERE e.id=old.id AND (${p.status !== "Aprovado"} OR e."end" IS NOT NULL) RETURNING e.*) INSERT INTO horacerta.audit(actor_id,entry_id,action,before_value,after_value) SELECT ${me.id}::uuid,changed.id,'status',to_jsonb(old),to_jsonb(changed) FROM changed JOIN old USING(id) RETURNING entry_id`,
+    ]);
     if (!r.length)
       throw new ApiError(
         409,

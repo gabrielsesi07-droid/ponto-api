@@ -4,9 +4,10 @@ import { availablePointOrders, pointOrderNumber, type PointOrder } from '@/lib/p
 import { today } from '@/lib/domain';
 import { Button } from './ui/button';
 
-export function PointOrderPicker({ value, onChange, date, live = false, enabled = true, demo = false, entryId, existingOrderId, disabled = false }: {
+export function PointOrderPicker({ value, onChange, date, live = false, enabled = true, demo = false, entryId, existingOrderId, disabled = false, workType = 'work' }: {
   value: string; onChange: (order: PointOrder | null) => void; date: string; live?: boolean; enabled?: boolean; demo?: boolean;
   entryId?: string; existingOrderId?: string | null; disabled?: boolean;
+  workType?: 'work' | 'travel';
 }) {
   const [orders, setOrders] = useState<PointOrder[]>([]), [loading, setLoading] = useState(true), [error, setError] = useState(''), [attempt, setAttempt] = useState(0);
   useEffect(() => {
@@ -30,7 +31,7 @@ export function PointOrderPicker({ value, onChange, date, live = false, enabled 
     void load();
     return () => { active = false; clearTimeout(timeout); controller.abort(); };
   }, [enabled, demo, entryId, attempt]);
-  const options = availablePointOrders(orders, date, live, existingOrderId);
+  const options = availablePointOrders(orders, date, live, existingOrderId,workType);
   const locked = !!existingOrderId;
   return <div className="full space-y-2">
     <label className="block">Ordem de serviço (OS)
@@ -42,7 +43,7 @@ export function PointOrderPicker({ value, onChange, date, live = false, enabled 
     </label>
     {error ? <div role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{error} <Button type="button" variant="outline" onClick={() => { setLoading(true); setError(''); setAttempt(n => n + 1); }}>Tentar novamente</Button></div>
       : !loading && !options.length ? <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Nenhuma OS disponível para esta data. Peça ao coordenador para criar a OS ou incluir você na equipe. Não é possível abrir um ponto avulso.</p>
-      : <p className="text-xs muted">{locked ? 'O vínculo desta marcação com a OS é preservado.' : live ? 'Selecione uma OS aberta atribuída a você. Cliente e serviço vêm da OS.' : 'Escolha a OS do trabalho. Mesmo encerrada, ela aceita suas horas realizadas, com entrada e saída.'}</p>}
+      : <p className="text-xs muted">{locked ? 'O vínculo desta marcação com a OS é preservado.' : live ? 'Selecione uma OS aberta atribuída a você. Cliente e serviço vêm da OS.' : workType === 'travel' ? 'O deslocamento pode acontecer antes do início previsto do atendimento. Selecione a OS e informe os horários reais da viagem.' : 'Escolha a OS do trabalho. Mesmo encerrada, ela aceita suas horas realizadas, com entrada e saída.'}</p>}
     {!loading && value && !options.some(o => o.id === value) && <p role="alert" className="text-sm text-red-800">Esta OS não está disponível para a data informada. Selecione outra OS ou ajuste a data.</p>}
   </div>;
 }

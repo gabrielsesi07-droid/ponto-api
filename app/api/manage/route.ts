@@ -47,6 +47,7 @@ export async function POST(req: Request) {
       });
       const pin = p.pin ? await hashPin(p.pin) : null;
       await sql.transaction([
+        sql`SELECT pg_advisory_xact_lock(2849061701)`,
         sql`UPDATE horacerta.users SET name=${p.name},job=${p.job},phone=${p.phone},monthly_salary=CASE WHEN ${!!pay} THEN ${pay?.monthly_salary ?? null} ELSE monthly_salary END,monthly_hours=CASE WHEN ${!!pay} THEN ${pay?.monthly_hours ?? DEFAULT_MONTHLY_HOURS} ELSE monthly_hours END,pin_hash=coalesce(${pin},pin_hash),login_attempts=CASE WHEN ${!!pin} THEN 0 ELSE login_attempts END,pin_change_required=CASE WHEN ${!!pin} THEN false ELSE pin_change_required END,pin_change_prompted=CASE WHEN ${!!pin} THEN true ELSE pin_change_prompted END WHERE id=${me.id}`,
         ...(pin
           ? [sql`DELETE FROM horacerta.sessions WHERE user_id=${me.id}`]
@@ -72,6 +73,7 @@ export async function POST(req: Request) {
       const pin = p.pin ? await hashPin(p.pin) : null;
       if (p.id) {
         await sql.transaction([
+          sql`SELECT pg_advisory_xact_lock(2849061701)`,
           sql`UPDATE horacerta.users SET name=${p.name},username=${p.username || old?.username || null},job=${p.job},phone=${p.phone},active=${p.active},can_edit=${p.can_edit},pin_hash=coalesce(${pin},pin_hash),login_attempts=CASE WHEN ${!!pin} THEN 0 ELSE login_attempts END,pin_change_required=CASE WHEN ${!!pin} THEN true ELSE pin_change_required END,pin_change_prompted=CASE WHEN ${!!pin} THEN false ELSE pin_change_prompted END WHERE id=${p.id}`,
           ...(pin || !p.active
             ? [sql`DELETE FROM horacerta.sessions WHERE user_id=${p.id}`]
@@ -99,7 +101,11 @@ export async function POST(req: Request) {
           400,
           "A moeda não pode mudar após o primeiro registro.",
         );
-      await sql`UPDATE horacerta.settings SET rules=${JSON.stringify(p)}::jsonb WHERE id=1`;
+      await sql.transaction([
+        sql`SELECT pg_advisory_xact_lock(2849061701)`,
+        sql`WITH old AS (SELECT rules FROM horacerta.settings WHERE id=1 FOR UPDATE), changed AS (UPDATE horacerta.settings SET rules=${JSON.stringify(p)}::jsonb WHERE id=1 RETURNING rules)
+          INSERT INTO horacerta.audit(actor_id,action,before_value,after_value) SELECT ${me.id}::uuid,'Regras de horas',old.rules,changed.rules FROM old CROSS JOIN changed`,
+      ]);
     }
     return Response.json({ ok: true });
   } catch (e) {

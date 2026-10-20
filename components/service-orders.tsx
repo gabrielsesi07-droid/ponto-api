@@ -42,7 +42,8 @@ import {
   DialogDescription,
 } from "./ui/dialog";
 import { api } from "./editors";
-import { OrderEditor, ResourceEditor, uploadOrderPdf } from "./order-editors";
+import { OrderDatesEditor, OrderEditor, ResourceEditor, uploadOrderPdf } from "./order-editors";
+import { OrderShiftPanel, TeamShiftPanel } from './order-shift-panel';
 import {
   localDateTime,
   mapsUrl,
@@ -51,6 +52,7 @@ import {
   type Order,
   type Vehicle,
   type ServiceClient,
+  type Trip,
 } from "@/lib/orders";
 import { today, type Person } from "@/lib/domain";
 import { closeoutSteps, membersWithoutHours, hasCancelledPending, matchesOrderSection, orderStatusFilters } from '@/lib/order-lifecycle';
@@ -639,6 +641,8 @@ function OrderDetail({
     [notes, setNotes] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false), [confirmation, setConfirmation] = useState(''), [deleteError, setDeleteError] = useState('');
   const [confirmCancel, setConfirmCancel] = useState(false), [cancelReason, setCancelReason] = useState(''), [cancelError, setCancelError] = useState('');
+  const [editDates, setEditDates] = useState(false);
+  const [editTrip, setEditTrip] = useState<Trip | null>(null);
   const feedback = useRef<HTMLParagraphElement>(null);
   const beforeScheduledDay = localDateTime(o.starts_at).slice(0, 10) > today();
   const steps = closeoutSteps(o, notes, !beforeScheduledDay);
@@ -771,6 +775,7 @@ function OrderDetail({
                   "Não informado. A navegação ficará disponível quando houver endereço."}
               </p>
             </div>
+            {admin && open && <div className="sm:col-span-2"><Button variant="outline" disabled={busy} onClick={() => setEditDates(true)}><CalendarDays />Alterar previsão</Button></div>}
           </div>
           <div className="flex flex-wrap gap-2">
             {o.address.trim() && (
@@ -834,6 +839,8 @@ function OrderDetail({
           </div>
           {admin && o.can_delete === false && <p className="text-sm text-slate-600">Esta OS tem histórico de execução ou conferência e não pode ser apagada.{open ? ' Use Cancelar OS para interromper o atendimento sem perder os registros.' : ' Os registros permanecem disponíveis para consulta.'}</p>}
           {o.status === 'Cancelada' && <section className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"><h3 className="font-semibold">Atendimento cancelado · histórico preservado</h3><p>{hasCancelledPending(o) ? 'Resolva as pendências abaixo. Cancelar não encerra automaticamente o ponto nem registra o retorno.' : 'Sem pendências de ponto, viagem ou conferência registrada.'}</p><p>Pontos em andamento: {o.active_points || 0} · Viagens sem retorno: {o.trips.filter(t => t.return_km === null).length} · Checklists pendentes: {o.pending_checklists || 0}</p>{o.my_point_active && <Button variant="outline" className="h-auto min-h-11 whitespace-normal" onClick={() => { onClose(); void onPoint(); }}>Ir ao Meu ponto para encerrar</Button>}</section>}
+          {assigned && <OrderShiftPanel key={o.id} orderId={o.id} meId={me.id} admin={admin} demo={demo} />}
+          {admin && <TeamShiftPanel key={'team-'+o.id} orderId={o.id} meId={me.id} demo={demo} people={o.team}/>}
           <section>
             <h3 className="font-semibold">Equipe designada</h3>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -927,12 +934,11 @@ function OrderDetail({
               )}
               <div className="mt-3 space-y-2">
                 {o.trips.map((t) => (
-                  <p key={t.id} className="rounded-lg bg-slate-50 p-3 text-sm">
-                    {dateLabel(t.departed_at)} · {kmLabel(t.departure_km)} →{" "}
-                    {t.return_km === null
-                      ? "Aguardando retorno"
-                      : kmLabel(t.return_km)}
-                  </p>
+                  <div key={t.id} className="rounded-lg bg-slate-50 p-3 text-sm">
+                    <p>Saída: {dateLabel(t.departed_at)} · {kmLabel(t.departure_km)}</p>
+                    <p className="mt-1">{t.return_km === null ? 'Aguardando retorno' : `Retorno: ${t.returned_at ? dateLabel(t.returned_at) + ' · ' : ''}${kmLabel(t.return_km)}`}</p>
+                    {admin && <Button className="mt-2" size="sm" variant="outline" disabled={busy} onClick={() => setEditTrip(t)}><Pencil />Corrigir datas</Button>}
+                  </div>
                 ))}
               </div>
             </section>
@@ -1054,6 +1060,7 @@ function OrderDetail({
             {busy ? <LoaderCircle className="animate-spin" /> : null}Fechar janela
           </Button>
         </div>
+        {(editDates || editTrip) && <OrderDatesEditor key={editTrip?.id || 'schedule'} order={o} trip={editTrip || undefined} demo={demo} onClose={() => { setEditDates(false); setEditTrip(null); }} onSaved={async () => { await onChanged(); toast.success(editTrip ? 'Datas da viagem corrigidas e registradas no histórico.' : 'Previsão da OS atualizada.'); }} />}
       </DialogContent>
     </Dialog>
   );

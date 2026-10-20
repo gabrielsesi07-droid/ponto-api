@@ -16,7 +16,6 @@ import {
   type Person,
   type Client,
   type Entry,
-  type Rules,
   type State,
 } from "@/lib/domain";
 import { toast } from "sonner";
@@ -27,6 +26,7 @@ import { PointDatePicker } from './point-date-picker';
 import { CompensationFields } from './compensation-fields';
 import { compensationSchema, DEFAULT_MONTHLY_HOURS } from '@/lib/compensation';
 import { automaticBreakForDay, workedMinutes } from '@/lib/manual-work';
+import { OrderShiftPanel } from './order-shift-panel';
 export type Editor =
   | { kind: "entry"; data?: Entry; order?: {id:string; date:string; company:string; service:string} }
   | { kind: "user"; data?: Person }
@@ -74,6 +74,8 @@ export function EditDialog({
           start: e?.start.slice(0, 5) || "",
           end: e?.end?.slice(0, 5) || "",
           break_minutes: e?.break_minutes ?? 0,
+          break_start: e?.break_start?.slice(0,5) || '',
+          work_type: e?.work_type || 'work',
           company: e?.company || editor.order?.company || "",
           service: e?.service || editor.order?.service || "",
           notes: e?.notes || "",
@@ -148,6 +150,7 @@ export function EditDialog({
           end: form.end || null,
           break_minutes: breakMinutes,
           break_mode: customBreak ? 'custom' : 'automatic',
+          break_start: customBreak && breakMinutes > 0 ? form.break_start || null : null,
           ...(e ? { id: e.id, version: e.version } : {}),
         });
       else {
@@ -219,10 +222,12 @@ export function EditDialog({
                 </b>
               </div>
               <PointDatePicker value={String(form.date)} onChange={date => change('date', date)} initiallyOpen={!e} disabled={busy} />
-              <PointOrderPicker value={String(form.order_id || '')} date={String(form.date)} demo={demo} disabled={busy} entryId={e?.id} existingOrderId={e?.order_id}
+              <PointOrderPicker value={String(form.order_id || '')} date={String(form.date)} demo={demo} disabled={busy} entryId={e?.id} existingOrderId={e?.order_id} workType={form.work_type === 'travel' ? 'travel' : 'work'}
                 onChange={order => setForm(f => ({...f,order_id:order?.id || '',company:order?.client_name || e?.company || '',service:order?.title || e?.service || ''}))} />
               {closedMonth && <p className="full rounded-lg bg-amber-50 p-3 text-sm text-amber-900" role="alert">O mês desta data está fechado. Registros e ajustes ficam bloqueados até o coordenador reabri-lo.</p>}
               {e && !e.order_id && <p className="full text-sm text-amber-900">Registro anterior à obrigatoriedade de OS. Você pode preservar o histórico ou vinculá-lo à OS correta; o sistema não escolherá uma por conta própria.</p>}
+              <label className="full">Tipo de jornada<Pick label="Tipo de jornada" value={String(form.work_type)} onChange={v => change('work_type',v)} items={[{value:'work',label:'Serviço no local'},{value:'travel',label:'Deslocamento'}]}/></label>
+              {form.order_id && (!e || e.rules.calculation_version === 2) && <OrderShiftPanel key={String(form.order_id) + form.work_type} orderId={String(form.order_id)} meId={state.me.id} userId={entryOwner} admin={state.me.role === 'coordinator'} demo={demo} workType={form.work_type === 'travel' ? 'travel' : 'work'}/>}
               {input("start", "Entrada", "time", true)}
               {input("end", "Saída (HH:MM)", "text", true, {
                 placeholder: "18:00 ou 24:00",
@@ -233,6 +238,7 @@ export function EditDialog({
                 <label className="flex-row! items-center gap-3! cursor-pointer"><input type="checkbox" className="h-5! w-5! shrink-0" checked={customBreak} disabled={busy} onChange={event => setCustomBreak(event.target.checked)} />Definir intervalo específico</label>
                 {customBreak ? <>
                   {input('break_minutes', 'Intervalo total (minutos)', 'number', true, {min:0,max:1439})}
+                  {Number(form.break_minutes) > 0 && input('break_start','Início real do intervalo','time',(!e ? state.settings : e.rules).calculation_version === 2)}
                   <p className="text-xs muted">Substitui o intervalo automático, não soma. Informe 0 se não houve intervalo.{e ? ' O valor salvo foi preservado; desmarque para recalcular pelo padrão.' : ''}</p>
                 </> : <p className="text-xs muted">Um único intervalo por dia, somando todos os seus registros da data: 12h–13h se o dia passa pelo almoço (mesmo que o almoço tenha ficado fora dos registros); caso contrário, 19h–20h. Das 10h às 22h, o desconto é de 60 minutos.{sameDay.length ? ` Considerando ${sameDay.length} outro(s) registro(s) seu(s) nesta data.` : ''}</p>}
                 <p className="text-sm" aria-live="polite">Intervalo {customBreak ? 'específico' : 'automático'}: {breakMinutes} minutos.</p>
@@ -368,143 +374,4 @@ export function EditDialog({
     </Dialog>
   );
 }
-export function SettingsForm({
-  rules,
-  onSaved,
-  demo,
-}: {
-  rules: Rules;
-  onSaved: () => Promise<void>;
-  demo: boolean;
-}) {
-  const [f, setF] = useState(rules),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
-  const change = (key: keyof Rules, value: string | number | boolean) =>
-    setF((v) => ({ ...v, [key]: value }));
-  async function save(ev: FormEvent) {
-    ev.preventDefault();
-    if (demo) {
-      toast.info("Configurações da demonstração não são salvas.");
-      return;
-    }
-    setBusy(true);
-    setError("");
-    try {
-      await api("/api/manage", { entity: "settings", data: f });
-      await onSaved();
-      toast.success("Regras atualizadas para os próximos lançamentos.");
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <form onSubmit={save} className="panel p-7 max-w-4xl">
-      <h2>Regras de jornada e pagamento</h2>
-      <p className="muted mt-2 mb-7 text-sm">
-        Mudanças valem para novos registros. Lançamentos existentes conservam
-        sua regra e valor-hora.
-      </p>
-      <div className="form-grid">
-        {(
-          [
-            ["daily_minutes", "Horas normais por dia de campo (minutos)"],
-            ["weekday_bonus", "Adicional de dia útil (%)"],
-            ["saturday_bonus", "Adicional de sábado (%)"],
-            ["sunday_bonus", "Adicional de domingo (%)"],
-            ["holiday_bonus", "Adicional de feriado (%)"],
-          ] as const
-        ).map(([key, label]) => (
-          <label key={key}>
-            {label}
-            <input
-              type="number"
-              required
-              min={key === "daily_minutes" ? 1 : 0}
-              max={key === "daily_minutes" ? 1440 : 1000}
-              step={key === "daily_minutes" ? 1 : 0.01}
-              value={f[key]}
-              onChange={(e) => change(key, Number(e.target.value))}
-            />
-          </label>
-        ))}
-        <label>
-          Moeda
-          <Pick
-            label="Moeda"
-            value={f.currency}
-            onChange={(v) => change("currency", v)}
-            items={[
-              { value: "BRL", label: "Real (BRL)" },
-              { value: "USD", label: "Dólar (USD)" },
-              { value: "EUR", label: "Euro (EUR)" },
-            ]}
-          />
-        </label>
-        <label>
-          Formato da data
-          <Pick
-            label="Formato de data"
-            value={f.date_format}
-            onChange={(v) => change("date_format", v)}
-            items={[
-              { value: "dd/MM/yyyy", label: "24/09/2026" },
-              { value: "yyyy-MM-dd", label: "2026-09-24" },
-            ]}
-          />
-        </label>
-        <label>
-          Formato da hora
-          <Pick
-            label="Formato de hora"
-            value={f.time_format}
-            onChange={(v) => change("time_format", v)}
-            items={[
-              { value: "24h", label: "24 horas" },
-              { value: "12h", label: "12 horas" },
-            ]}
-          />
-        </label>
-        <p className="full -mt-2 text-xs muted">
-          Em dia útil, o que passar de {Math.floor(Number(f.daily_minutes) / 60)}h{String(Number(f.daily_minutes) % 60).padStart(2, "0")} no dia é extra. Sábado, domingo e feriado: todas as horas são extras.
-        </p>
-        <label className="full flex-row! items-center justify-between border-t pt-5">
-          Permitir lançamentos e edições retroativas
-          <Switch
-            checked={f.allow_retro}
-            onCheckedChange={(v) => change("allow_retro", v)}
-            aria-label="Permitir retroativos"
-          />
-        </label>
-        {!f.allow_retro && (
-          <p className="full -mt-2 text-sm text-amber-900">
-            Sem retroativos, o colaborador só registra horas no próprio dia. Quem chega de madrugada ou só preenche no dia seguinte precisará do coordenador.
-          </p>
-        )}
-        <label className="full flex-row! items-center justify-between">
-          Exigir aprovação do coordenador
-          <Switch
-            checked={f.approval_required}
-            onCheckedChange={(v) => change("approval_required", v)}
-            aria-label="Exigir aprovação"
-          />
-        </label>
-      </div>
-      <p className="mt-6 rounded-lg bg-amber-50 p-4 text-sm text-amber-900">
-        O valor estimado inclui a hora base + o adicional: 1h a R$ 30,00 no
-        sábado (60%) = R$ 48,00. O adicional de dia útil começa em 50% por
-        padrão, pois não foi especificado no briefing.
-      </p>
-      {error && (
-        <p role="alert" className="mt-4 text-red-700">
-          {error}
-        </p>
-      )}
-      <Button disabled={busy} className="action mt-6">
-        {busy ? "Salvando…" : "Salvar configurações"}
-      </Button>
-    </form>
-  );
-}
+export { SettingsForm } from './work-rules-form';

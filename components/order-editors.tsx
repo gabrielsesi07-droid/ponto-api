@@ -16,7 +16,9 @@ import {
   type OperationsData,
   type ServiceClient,
   type Vehicle,
+  type Trip,
 } from "@/lib/orders";
+import { brasiliaInputToIso } from '@/lib/order-date-changes';
 import { today } from "@/lib/domain";
 import { ModelPicker } from "./technical-library";
 import { clientNameKey, searchClients, type ClientSuggestion } from '@/lib/client-search';
@@ -37,6 +39,76 @@ export async function uploadOrderPdf(id: string, file: File) {
       ((await res.json()) as { error?: string }).error ||
         "Não foi possível anexar o PDF.",
     );
+}
+
+/** Edição pontual das datas sem reenviar equipe, recursos ou dados já conferidos. */
+export function OrderDatesEditor({ order, trip, demo, onClose, onSaved }: {
+  order: Order;
+  trip?: Trip;
+  demo: boolean;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [start, setStart] = useState(() => localDateTime(trip?.departed_at || order.starts_at));
+  const [end, setEnd] = useState(() => trip ? (trip.returned_at ? localDateTime(trip.returned_at) : '') : localDateTime(order.ends_at));
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const hasReturn = !trip || trip.returned_at !== null;
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setError('');
+    if (demo) { setError('Entre com seu login de coordenador para salvar as datas.'); return; }
+    setBusy(true);
+    try {
+      const originalStart = trip?.departed_at || order.starts_at;
+      const originalEnd = trip ? trip.returned_at : order.ends_at;
+      // Preserve original seconds when a field was displayed but not edited.
+      const startIso = start === localDateTime(originalStart) ? originalStart : brasiliaInputToIso(start);
+      const endIso = hasReturn ? (originalEnd && end === localDateTime(originalEnd) ? originalEnd : brasiliaInputToIso(end)) : null;
+      if (endIso && new Date(endIso).getTime() < new Date(startIso).getTime()) throw new Error('O término ou retorno não pode ser anterior ao início ou à saída.');
+      await api('/api/operations', trip ? {
+        action: 'update_trip_dates', data: {
+          id: order.id, trip_id: trip.id,
+          expected_departed_at: trip.departed_at, expected_returned_at: trip.returned_at,
+          departed_at: startIso, returned_at: endIso, reason,
+        },
+      } : {
+        action: 'reschedule_order', data: { id: order.id, version: order.version, starts_at: startIso, ends_at: endIso, reason },
+      });
+      await onSaved();
+      onClose();
+    } catch (error) { setError((error as Error).message); }
+    finally { setBusy(false); }
+  }
+  return <Dialog open onOpenChange={value => { if (!value && !busy) onClose(); }}>
+    <DialogContent className="ops-dialog max-h-[92svh] overflow-y-auto bg-white sm:max-w-xl">
+      <DialogHeader>
+        <DialogTitle>{trip ? 'Corrigir datas da viagem' : 'Alterar previsão da OS'}</DialogTitle>
+        <DialogDescription>{trip ? 'Informe quando a saída e o retorno realmente aconteceram. A correção ficará no histórico, com sua justificativa.' : 'Atualize o período previsto, inclusive com a OS em andamento. A equipe deverá confirmar ciência da nova previsão.'} Horários de Brasília.</DialogDescription>
+      </DialogHeader>
+      <form className="ops-form" onSubmit={submit}>
+        <fieldset disabled={busy} className="contents">
+          <label>{trip ? 'Saída do veículo' : 'Início previsto'}
+            <input required type="datetime-local" value={start} max={trip ? localDateTime(new Date().toISOString()) : undefined} onChange={event => setStart(event.target.value)} />
+          </label>
+          {hasReturn && <label>{trip ? 'Retorno do veículo' : 'Término previsto'}
+            <input required type="datetime-local" value={end} min={start} max={trip ? localDateTime(new Date().toISOString()) : undefined} onChange={event => setEnd(event.target.value)} />
+          </label>}
+          {trip && !hasReturn && <p className="full text-sm muted">A viagem permanece aguardando retorno. Registre o retorno com a quilometragem quando o veículo voltar.</p>}
+          <label className="full">Motivo da alteração
+            <textarea required minLength={10} maxLength={1000} value={reason} onChange={event => setReason(event.target.value)} placeholder="Descreva o motivo em pelo menos 10 caracteres." />
+          </label>
+        </fieldset>
+        <p className="full text-xs muted">{trip ? 'Os horários anteriores, os novos horários e o motivo serão registrados. A quilometragem e os pontos dos colaboradores permanecem como foram lançados.' : 'As horas trabalhadas e as viagens já registradas mantêm suas datas. A disponibilidade da equipe e do veículo será conferida ao salvar.'}</p>
+        {error && <p role="alert" className="full rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+        <div className="full flex flex-wrap justify-end gap-3 border-t pt-4">
+          <Button type="button" variant="outline" disabled={busy} onClick={onClose}>Voltar</Button>
+          <Button type="submit" disabled={busy || reason.trim().length < 10}>{busy ? <LoaderCircle className="animate-spin" /> : <Save />}Salvar datas</Button>
+        </div>
+      </form>
+    </DialogContent>
+  </Dialog>;
 }
 
 function AddressInput({

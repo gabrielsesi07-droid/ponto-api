@@ -21,6 +21,9 @@ export async function exportReport(
     "Tipo de dia",
     "Valor extras",
     "Status",
+    "Tipo de apontamento",
+    "Faixas de extras",
+    "Observações do cálculo",
   ];
   const data = rows.map((e) => [
     e.date,
@@ -35,8 +38,11 @@ export async function exportReport(
     duration(e.normal),
     duration(e.extra),
     e.kind,
-    Number(e.amount.toFixed(2)),
+    e.extra > 0 && e.missing_rate ? "" : Number(e.amount.toFixed(2)),
     e.status,
+    e.work_type === "travel" ? "Deslocamento" : "Serviço",
+    e.breakdown?.map((tier) => `${duration(tier.minutes)} com +${tier.bonus}%${e.missing_rate ? " · valor a calcular" : ` · ${tier.amount.toFixed(2)} ${e.rules.currency}`}`).join(" | ") || "",
+    [e.extra > 0 && e.missing_rate ? "Valor-hora não informado; estimativa indisponível" : "", e.calculation_warning].filter(Boolean).join(" | "),
   ]);
   const name = "horacerta-" + period.replace(/[^0-9-]/g, "") + "." + format;
   function download(blob: Blob) {
@@ -79,7 +85,7 @@ export async function exportReport(
       (c, i) => (c.width = [2, 3, 4].includes(i) ? 28 : 18),
     );
     sheet.views = [{ state: "frozen", ySplit: 1 }];
-    sheet.autoFilter = { from: "A1", to: "N1" };
+    sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: headers.length } };
     download(
       new Blob([(await book.xlsx.writeBuffer()) as ArrayBuffer], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

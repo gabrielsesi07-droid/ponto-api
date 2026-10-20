@@ -9,6 +9,7 @@ import {
   ApiError,
 } from "@/lib/server";
 import { orderSchema, vehicleSchema, serviceClientSchema } from "@/lib/orders";
+import { orderScheduleSchema, tripDatesSchema } from '@/lib/order-date-changes';
 import { checklistPayload } from '@/lib/checklist-server';
 export const dynamic = "force-dynamic";
 export const maxDuration=60;
@@ -55,6 +56,8 @@ export async function POST(req: Request) {
       action = z
         .enum([
           "save_order",
+          "reschedule_order",
+          "update_trip_dates",
           "save_client",
           "save_vehicle",
           "ack",
@@ -70,8 +73,10 @@ export async function POST(req: Request) {
         ])
         .parse(body.action);
     let data;
-    if (action.startsWith("save_") || action === "cancel" || action.startsWith('delete_') || action === 'archive_client' || action === 'restore_client') coordinator(me);
+    if (action.startsWith("save_") || action === "reschedule_order" || action === "update_trip_dates" || action === "cancel" || action.startsWith('delete_') || action === 'archive_client' || action === 'restore_client') coordinator(me);
     if (action === "save_order") data = orderSchema.parse(body.data);
+    else if (action === "reschedule_order") data = orderScheduleSchema.parse(body.data);
+    else if (action === "update_trip_dates") data = tripDatesSchema.parse(body.data);
     else if (action === "save_client")
       data = serviceClientSchema.parse(body.data);
     else if (action === "save_vehicle") data = vehicleSchema.parse(body.data);
@@ -95,8 +100,12 @@ export async function POST(req: Request) {
       !("version" in data && data.version)
     )
       throw new ApiError(400, "Atualize a página antes de editar.");
-    const result =
-      await db()`SELECT horacerta.order_action(${me.id}::uuid,${action},${JSON.stringify(data)}::jsonb) result`;
+    const sql = db();
+    const result = action === 'reschedule_order'
+      ? await sql`SELECT horacerta.order_reschedule(${me.id}::uuid,${JSON.stringify(data)}::jsonb) result`
+      : action === 'update_trip_dates'
+        ? await sql`SELECT horacerta.trip_update_dates(${me.id}::uuid,${JSON.stringify(data)}::jsonb) result`
+        : await sql`SELECT horacerta.order_action(${me.id}::uuid,${action},${JSON.stringify(data)}::jsonb) result`;
     if (action==='save_order' || action==='finish' || action==='cancel') after(dispatchPushSafely);
     return Response.json(result[0].result);
   } catch (e) {

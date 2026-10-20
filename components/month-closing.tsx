@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { api } from "./editors";
 import { today, type Entry, type State } from "@/lib/domain";
+import { RecalculationPanel } from './recalculation-panel';
 
 const monthLabel = (month: string) => month.split("-").reverse().join("/");
 
@@ -91,7 +92,7 @@ export function MonthClosing({
           </p>
           {!closing && (
             <p className="muted mt-1 text-xs">
-              Para fechar: todos os registros com saída e aprovados, depois do último dia do mês. Fechar trava o período para o pagamento das extras.
+              {state.settings.approval_required ? 'Para fechar: todos os registros com saída e aprovados, depois do último dia do mês.' : 'Aprovação automática ativa. Confira os resumos e feche o período depois do último dia do mês; eventuais pendências antigas podem ser aprovadas em lote.'} Fechar trava o período para o pagamento das extras.
             </p>
           )}
         </div>
@@ -102,7 +103,7 @@ export function MonthClosing({
             </Button>
           ) : (
             <>
-              <Button
+              {(state.settings.approval_required || pendingScoped > 0) && <Button
                 variant="outline"
                 disabled={busy || !pendingScoped}
                 onClick={() => {
@@ -112,7 +113,7 @@ export function MonthClosing({
               >
                 {busy ? <LoaderCircle className="animate-spin" size={16} /> : <CheckCheck size={16} />}
                 Aprovar {pendingScoped} pendente(s){person ? ` de ${person}` : ""}
-              </Button>
+              </Button>}
               <Button
                 disabled={busy || !monthEnded || open > 0 || pendingAll > 0 || !inMonth.length}
                 onClick={() => {
@@ -126,6 +127,7 @@ export function MonthClosing({
           )}
         </div>
       </div>
+      {!closing && state.settings.calculation_version === 2 && <RecalculationPanel key={month + userId + JSON.stringify(state.settings)} month={month} userId={userId} currency={state.settings.currency} demo={demo} onChanged={onChanged}/>}
       {reopening && (
         <div className="mt-4 space-y-2">
           <label className="block text-sm">
