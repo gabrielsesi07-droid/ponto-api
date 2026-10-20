@@ -1,6 +1,8 @@
 -- Regras v2: os snapshots dos pontos e cronômetros antigos são preservados.
 ALTER TABLE horacerta.entries ADD COLUMN IF NOT EXISTS work_type text NOT NULL DEFAULT 'work';
+-- statement-break
 ALTER TABLE horacerta.entries ADD COLUMN IF NOT EXISTS shift jsonb;
+-- statement-break
 ALTER TABLE horacerta.entries ADD COLUMN IF NOT EXISTS break_start time;
 -- statement-break
 DO $$ BEGIN

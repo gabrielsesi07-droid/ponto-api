@@ -11,6 +11,10 @@ test('cutover separa estrutura de ativação sem acessar banco', async () => {
   assert.ok(prepare.some(s => s.includes('FUNCTION horacerta.order_reschedule')));
   assert.ok(prepare.some(s => s.includes('FUNCTION horacerta.trip_update_dates')));
   assert.ok(prepare.every(s => !s.includes('UPDATE horacerta.settings')));
+  // Neon sends each item as a prepared statement: separate top-level DDL commands.
+  const entryColumns = prepare.filter(s => /ADD COLUMN IF NOT EXISTS (work_type|shift|break_start)\b/.test(s));
+  assert.equal(entryColumns.length, 3);
+  assert.ok(entryColumns.every(s => (s.match(/ALTER TABLE/g) || []).length === 1));
   assert.equal(activate.length, 1);
   assert.ok(activate[0].includes('UPDATE horacerta.settings'));
   assert.ok(activate[0].includes("name='024-work-rules'"));
