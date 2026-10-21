@@ -16,29 +16,6 @@ function within(directory, relative) {
   return file;
 }
 
-/**
- * Next's Vercel adapter emits Build Output API v3 into <distDir>/output before
- * `next build` returns. Its root static page is `.html`, mapped to `./` by an
- * override; the CLI's equivalent output lives in .vercel/output.
- * See nextjs/adapter-vercel packages/adapter/src/{index,outputs}.ts.
- */
-async function publishedHome(root, dist) {
-  for (const output of [path.join(dist, 'output'), path.join(root, '.vercel/output')]) {
-    if (!existsSync(output)) continue;
-    const configFile = path.join(output, 'config.json');
-    const config = JSON.parse(await readFile(configFile, 'utf8'));
-    if (config.version !== 3) throw new Error('Formato de publicação Vercel não suportado: ' + path.relative(root, configFile));
-    const homes = Object.entries(config.overrides ?? {}).filter(([file, override]) =>
-      /\.html$/.test(file) && override && ['/', './', '.', ''].includes(override.path) &&
-      (!override.contentType || /^text\/html(?:;|$)/i.test(override.contentType)));
-    if (homes.length !== 1)
-      throw new Error('O output Vercel precisa identificar exatamente um HTML para a rota inicial em config.json.overrides.');
-    const staticDir = path.join(output, 'static');
-    return { htmlFile: within(staticDir, homes[0][0]), assetDir: staticDir, assetPrefix: '/' };
-  }
-  return { htmlFile: path.join(dist, 'server/app/index.html'), assetDir: dist, assetPrefix: '/_next/' };
-}
-
 /** Follow the home route's source imports without executing application code or opening a database. */
 async function authoredStyles(root) {
   const visited = new Set(), sources = new Map();
@@ -90,26 +67,24 @@ async function authoredStyles(root) {
   return sources;
 }
 
-/**
- * Verify the CSS actually linked by the built page. Scanning every chunk would let
- * an unreferenced fresh chunk conceal the stale linked stylesheet seen in production.
- */
-export async function verifyBuiltStyles({ root = projectRoot, distDir = '.next' } = {}) {
-  root = path.resolve(root);
-  const dist = path.resolve(root, distDir);
-  await readFile(path.join(dist, 'BUILD_ID'), 'utf8');
-  const publication = await publishedHome(root, dist);
-  const html = await readFile(publication.htmlFile, 'utf8');
-  const references = [...new Set([...html.matchAll(/href=["']([^"']+\.css(?:\?[^"']*)?)["']/g)].map(match => match[1]))];
+async function verifyStyles({ root, html, origin, readStylesheet }) {
+  const references = [...new Set([...html.matchAll(/<link\b[^>]*>/gi)].flatMap(([tag]) => {
+    const rel = tag.match(/\brel\s*=\s*["']([^"']+)["']/i)?.[1]?.toLowerCase();
+    const href = tag.match(/\bhref\s*=\s*["']([^"']+)["']/i)?.[1];
+    return href && rel?.toLowerCase().split(/\s+/).includes('stylesheet')
+      ? [href.replaceAll('&amp;', '&')] : [];
+  }))];
   if (!references.length) throw new Error('O HTML de produção não referencia nenhuma folha de estilos.');
   const actual = new Set();
   let fixedSkipLink = false;
-  for (const reference of references) {
-    const url = new URL(reference, 'https://build.invalid');
-    if (url.origin !== 'https://build.invalid' || !url.pathname.startsWith('/_next/static/'))
-      throw new Error('Referência CSS inesperada no HTML de produção: ' + reference);
-    const file = within(publication.assetDir, decodeURIComponent(url.pathname.slice(publication.assetPrefix.length)));
-    const tree = postcss.parse(await readFile(file, 'utf8'), { from: file });
+  const sheets = await Promise.all(references.map(async reference => {
+    const url = new URL(reference, origin);
+    if (url.origin !== origin || url.username || url.password || !url.pathname.startsWith('/_next/static/') || !url.pathname.endsWith('.css'))
+      throw new Error('Referência CSS inesperada no HTML de produção: ' + url.pathname);
+    return { url, source: await readStylesheet(url) };
+  }));
+  for (const { url, source } of sheets) {
+    const tree = postcss.parse(source, { from: url.pathname });
     tree.walkRules(rule => {
       classNames(rule.selector).forEach(name => actual.add(name));
       if (rule.selectors.some(selector => selector.trim() === '.skip-link'))
@@ -127,11 +102,47 @@ export async function verifyBuiltStyles({ root = projectRoot, distDir = '.next' 
   return { stylesheets: references.length, sources: sources.size, classes: new Set([...sources.values()].flatMap(classes => [...classes])).size };
 }
 
+/** Verify only CSS linked by the native build, never unrelated orphaned chunks. */
+export async function verifyBuiltStyles({ root = projectRoot, distDir = '.next' } = {}) {
+  root = path.resolve(root);
+  const dist = path.resolve(root, distDir);
+  await readFile(path.join(dist, 'BUILD_ID'), 'utf8');
+  const html = await readFile(path.join(dist, 'server/app/index.html'), 'utf8');
+  return verifyStyles({ root, html, origin: 'https://build.invalid',
+    readStylesheet: url => readFile(within(dist, decodeURIComponent(url.pathname.slice('/_next/'.length))), 'utf8') });
+}
+
+/** Verify the public home and its same-origin styles without cookies or platform internals. */
+export async function verifyPublishedStyles({ root = projectRoot, url, fetch: fetcher = globalThis.fetch } = {}) {
+  let home;
+  try { home = new URL(url); } catch { throw new Error('Informe a URL HTTPS da página inicial para verificar o CSS publicado.'); }
+  if (home.protocol !== 'https:' || home.username || home.password || home.href.includes('#') || home.pathname !== '/')
+    throw new Error('A verificação publicada exige HTTPS na página inicial, sem credenciais ou fragmento.');
+  async function fetchText(target, contentType, maxBytes) {
+    const response = await fetcher(target.href, { cache: 'no-store', credentials: 'omit', redirect: 'error',
+      headers: { accept: contentType, 'cache-control': 'no-cache', pragma: 'no-cache' }, signal: AbortSignal.timeout(20_000) });
+    if (!response.ok) throw new Error(`Falha HTTP ${response.status} ao verificar ${target.origin}${target.pathname}.`);
+    if (response.redirected || !response.url || new URL(response.url).origin !== home.origin)
+      throw new Error('A verificação publicada não aceita redirecionamentos ou respostas de outra origem.');
+    if (!new RegExp('^' + contentType + '(?:\\s*;|$)', 'i').test(response.headers.get('content-type') ?? ''))
+      throw new Error('Tipo de conteúdo inesperado ao verificar ' + target.pathname + '.');
+    const source = await response.text();
+    if (Buffer.byteLength(source) > maxBytes) throw new Error('Resposta acima do limite ao verificar ' + target.pathname + '.');
+    return source;
+  }
+  const html = await fetchText(home, 'text/html', 2 * 1024 * 1024);
+  return verifyStyles({ root: path.resolve(root), html, origin: home.origin,
+    readStylesheet: target => fetchText(target, 'text/css', 8 * 1024 * 1024) });
+}
+
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
   try {
     const args = process.argv.slice(2);
-    if (args.some(arg => !arg.startsWith('--dist-dir='))) throw new Error('Use somente --dist-dir=<diretório>, se necessário.');
-    const result = await verifyBuiltStyles({ distDir: args[0]?.slice('--dist-dir='.length) || '.next' });
+    if (args.length > 1 || args.some(arg => !arg.startsWith('--dist-dir=') && !arg.startsWith('--url=')))
+      throw new Error('Use --dist-dir=<diretório> ou --url=https://<domínio>, sem combinar opções.');
+    const result = args[0]?.startsWith('--url=')
+      ? await verifyPublishedStyles({ url: args[0].slice('--url='.length) })
+      : await verifyBuiltStyles({ distDir: args[0]?.slice('--dist-dir='.length) || '.next' });
     console.log(`CSS de produção verificado: ${result.stylesheets} arquivo(s) vinculado(s), ${result.sources} fonte(s) autoral(is), ${result.classes} classes e link de salto fora do fluxo.`);
   } catch (error) {
     console.error(error.message);

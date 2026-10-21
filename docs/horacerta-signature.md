@@ -11,7 +11,7 @@ Identidade aplicada ao aplicativo: verde floresta, superfícies claras e detalhe
 
 ## Verificação
 
-`npm run verify` executa lint, tipos, testes e build. O build também confere as folhas de estilos efetivamente vinculadas ao HTML, incluindo a posição do link de salto, para detectar artefatos CSS incompletos ou antigos. `npm run test:isolated` exercita regras e permissões em bancos descartáveis.
+`npm run verify` executa lint, tipos, testes, build e a verificação das folhas de estilos efetivamente vinculadas ao HTML, incluindo a posição do link de salto. Depois da publicação, `npm run verify:built-styles -- --url=https://ponto-api-gold.vercel.app` confere o HTML e os estilos públicos do site, comparando-os com as classes autorais da versão publicada. Isso detecta artefatos CSS incompletos ou antigos sem depender dos diretórios internos da hospedagem. `npm run test:isolated` exercita regras e permissões em bancos descartáveis.
 
 Conferência visual realizada em PC e celular, nos dois temas: navegação completa, busca de OS e colaboradores, quadro/lista, mesa abrindo a OS exata, nova OS, formulário amplo, relatórios e catálogo de checklists. Sessões reais de colaborador e coordenador foram verificadas somente na homologação local.
 
