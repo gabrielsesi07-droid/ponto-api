@@ -33,6 +33,8 @@ export type Trip = {
   returned_by: string | null;
 };
 export type Order = {
+  missing_shift_members?: { id: string; name: string }[];
+  missing_checklist_models?: { id: string; name: string }[];
   id: string;
   number: number;
   official_number?: string | null;
@@ -50,7 +52,7 @@ export type Order = {
   vehicle_id: string | null;
   equipment: string;
   model_ids?: string[];
-  equipment_models?: { id: string; name: string; family: string }[];
+  equipment_models?: { id: string; name: string; family: string; status?: 'pending' | 'published' | 'archived' }[];
   instructions: string;
   priority: string;
   status: "Agendada" | "Em andamento" | "Concluída" | "Cancelada";

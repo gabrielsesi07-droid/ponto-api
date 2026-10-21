@@ -18,12 +18,15 @@ export type CenterOrder = {
   logged_members?: string[];
   pending_checklists?: number;
   active_points?: number;
+  /** Ausente significa que a preparação ainda não foi verificada pela API. */
+  missing_shift_members?: { id: string; name: string }[];
+  missing_checklist_models?: { id: string; name: string }[];
   trips: { return_km: number | null }[];
 };
 
 export type Severity = "urgent" | "attention";
 export type CenterAction =
-  | { kind: "entries"; userId?: string; status?: string; month?: string }
+  | { kind: "entries"; userId?: string; status?: string; month?: string; review?: boolean }
   | { kind: "order"; orderId: string }
   | { kind: "orders" }
   | { kind: "people" };
@@ -34,6 +37,7 @@ export type CenterTask = {
   detail: string;
   cta: string;
   action: CenterAction;
+  category?: "points" | "operations" | "preparation" | "closing" | "people";
 };
 
 const BRT = "America/Sao_Paulo";
@@ -68,6 +72,86 @@ const names = (list: string[], max = 3) =>
     : list.slice(0, max).join(", ") + ` e mais ${list.length - max}`;
 const plural = (n: number, one: string, many: string) =>
   `${n} ${n === 1 ? one : many}`;
+
+export type EntryReviewGroup = {
+  userId: string;
+  name: string;
+  entries: Calculated[];
+  reasons: string[];
+  entryReasons: Record<string, string[]>;
+  oldest: string;
+};
+
+/**
+ * Conferência por exceção: os avisos ajudam a conferir os dados reais; não mudam
+ * aprovação, jornada ou cálculo. O limite de 16h é uma triagem operacional,
+ * nunca uma regra trabalhista nem um bloqueio de lançamento.
+ */
+export function entryReviewGroups(rows: Calculated[], users: Person[]): EntryReviewGroup[] {
+  const daily = new Map<string, { minutes: number; entries: Calculated[] }>();
+  const reasonsByEntry = new Map<string, Set<string>>();
+  const add = (entry: Calculated, reason: string) => {
+    const reasons = reasonsByEntry.get(entry.id) || new Set<string>();
+    reasons.add(reason);
+    reasonsByEntry.set(entry.id, reasons);
+  };
+  for (const e of rows) {
+    if (!e.end) continue;
+    if (e.calculation_warning) add(e, e.calculation_warning);
+    if ([e.worked, e.extra, e.amount].some((value) => value !== undefined && !Number.isFinite(value)) || e.worked < 0 || e.extra < 0 || e.amount < 0 || e.extra > e.worked)
+      add(e, "Cálculo inconsistente: confira horários e regras.");
+    const key = `${e.user_id}:${e.date}`;
+    const day = daily.get(key) || { minutes: 0, entries: [] };
+    if (Number.isFinite(e.worked)) day.minutes += e.worked;
+    day.entries.push(e);
+    daily.set(key, day);
+  }
+  for (const day of daily.values())
+    if (day.minutes >= 16 * 60)
+      for (const e of day.entries) add(e, "16h ou mais registradas no mesmo dia: confirme horários e intervalos.");
+  const userNames = new Map(users.map((u) => [u.id, u.name]));
+  const grouped = new Map<string, EntryReviewGroup>();
+  for (const e of rows) {
+    const reasons = reasonsByEntry.get(e.id);
+    if (!reasons) continue;
+    const group = grouped.get(e.user_id) || {
+      userId: e.user_id, name: userNames.get(e.user_id) || "Pessoa removida",
+      entries: [], reasons: [], entryReasons: {}, oldest: e.date,
+    };
+    group.entries.push(e);
+    group.reasons = [...new Set([...group.reasons, ...reasons])];
+    group.entryReasons[e.id] = [...reasons];
+    if (e.date < group.oldest) group.oldest = e.date;
+    grouped.set(e.user_id, group);
+  }
+  return [...grouped.values()].sort((a, b) => a.oldest.localeCompare(b.oldest) || a.name.localeCompare(b.name, "pt-BR"));
+}
+
+export function entryReviewIds(rows: Calculated[]) {
+  return new Set(entryReviewGroups(rows, []).flatMap((group) => group.entries.map((e) => e.id)));
+}
+
+export function isReviewEntry(entry: Calculated, rows: Calculated[] = [entry]) {
+  return entryReviewIds(rows).has(entry.id);
+}
+
+export function orderPreparation(order: Pick<CenterOrder, "missing_shift_members" | "missing_checklist_models">) {
+  const reasons: string[] = [];
+  if (order.missing_shift_members?.length)
+    reasons.push(`${plural(order.missing_shift_members.length, "turno a confirmar", "turnos a confirmar")} (${names(order.missing_shift_members.map((p) => p.name))})`);
+  if (order.missing_checklist_models?.length)
+    reasons.push(`checklist a atribuir: ${names(order.missing_checklist_models.map((m) => m.name))}`);
+  return reasons;
+}
+
+/** Preparação tem utilidade perto do atendimento; OS distantes não lotam a fila. */
+export function upcomingPreparation<T extends CenterOrder>(orders: T[], today: string) {
+  const horizon = new Date(today + "T12:00:00Z");
+  horizon.setUTCDate(horizon.getUTCDate() + 7);
+  const until = horizon.toISOString().slice(0, 10);
+  return orders.filter((o) => isOpen(o) && brtDate(o.ends_at) >= today && brtDate(o.starts_at) <= until && orderPreparation(o).length)
+    .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+}
 
 /** Pontos com saída e ainda não aprovados ("Revisado" também aguarda aprovação), por pessoa. */
 export function approvalGroups(rows: Calculated[], users: Person[]) {
@@ -157,7 +241,7 @@ export function ordersMissingHours<T extends CenterOrder>(
 }
 
 export type ClosingStep = {
-  id: "ended" | "entries" | "exits" | "approved" | "rates" | "hours";
+  id: "ended" | "entries" | "exits" | "timers" | "approved" | "rates" | "hours";
   label: string;
   done: boolean;
   /** Bloqueia o fechamento no servidor; avisos apenas orientam. */
@@ -178,6 +262,8 @@ export function closingChecklist(input: {
   closed: boolean;
   /** `null` quando as OS não estão disponíveis: o aviso fica "não verificado", nunca "em dia". */
   missingHours: number | null;
+  /** Cronômetros legados, retornados somente ao coordenador pelo estado da equipe. */
+  timers?: { user_id: string; started_at: string }[];
 }) {
   const inMonth = input.entries.filter((e) => e.date.slice(0, 7) === input.month);
   const open = inMonth.filter((e) => !e.end).length,
@@ -186,6 +272,9 @@ export function closingChecklist(input: {
     ended = input.month < input.today.slice(0, 7);
   const next = new Date(input.month + "-01T12:00:00Z");
   next.setUTCMonth(next.getUTCMonth() + 1);
+  const lastDay = new Date(next.getTime() - 86400000).toISOString().slice(0, 10);
+  // Um cronômetro de mês anterior ainda pode gerar horas no mês que será fechado.
+  const legacyTimers = (input.timers || []).filter((timer) => brtDate(timer.started_at) <= lastDay).length;
   const steps: ClosingStep[] = [
     {
       id: "ended",
@@ -223,7 +312,7 @@ export function closingChecklist(input: {
       done: zeroRate === 0,
       blocking: false,
       detail: zeroRate
-        ? plural(zeroRate, "ponto registrado", "pontos registrados") + " com valor-hora zero: o valor estimado de extras fica zerado."
+        ? plural(zeroRate, "ponto sem", "pontos sem") + " valor-hora: estimativa financeira pendente. Não impede o fechamento."
         : "Todos os pontos têm valor-hora.",
     },
     {
@@ -240,6 +329,16 @@ export function closingChecklist(input: {
             : "Nenhuma ausência de horas identificada.",
     },
   ];
+  if (input.timers !== undefined)
+    steps.splice(3, 0, {
+      id: "timers",
+      label: "Cronômetros antigos encerrados",
+      done: legacyTimers === 0,
+      blocking: true,
+      detail: legacyTimers
+        ? `${plural(legacyTimers, "cronômetro antigo aberto", "cronômetros antigos abertos")}. Cada colaborador precisa encerrar o seu em Registrar horas antes do fechamento.`
+        : "Nenhum cronômetro antigo pode gerar horas neste mês.",
+    });
   const blockers = steps.filter((s) => s.blocking && !s.done);
   const state: "closed" | "ready" | "blocked" | "running" = input.closed
     ? "closed"
@@ -248,7 +347,7 @@ export function closingChecklist(input: {
       : blockers.length
         ? "blocked"
         : "ready";
-  return { state, steps, open, pending, zeroRate, total: inMonth.length };
+  return { state, steps, open, pending, zeroRate, legacyTimers, total: inMonth.length };
 }
 
 /** Fila priorizada de pendências do coordenador. Urgente primeiro; dentro de cada grupo, o mais antigo primeiro. */
@@ -259,7 +358,8 @@ export function coordinatorQueue(input: {
   users: Person[];
   orders: CenterOrder[];
   period: { from: string; to: string };
-  previous?: { month: string; state: ReturnType<typeof closingChecklist>["state"]; open: number; pending: number };
+  approvalRequired?: boolean;
+  previous?: { month: string; state: ReturnType<typeof closingChecklist>["state"]; open: number; pending: number; legacyTimers?: number };
 }) {
   const tasks: CenterTask[] = [];
   const open = openEntryGroups(input.rows, input.users);
@@ -272,10 +372,11 @@ export function coordinatorQueue(input: {
       detail: `${names(open.map((g) => g.name))}. Sem saída o ponto não pode ser aprovado nem o mês fechado.`,
       cta: "Ver pontos",
       action: { kind: "entries", userId: open.length === 1 ? open[0].userId : undefined, month: input.month },
+      category: "points",
     });
   }
   for (const o of overdueOrders(input.orders, input.today)) {
-    const blockers = orderBlockers(o);
+    const blockers = [...orderBlockers(o), ...orderPreparation(o)];
     tasks.push({
       id: "overdue-" + o.id,
       severity: "urgent",
@@ -283,6 +384,7 @@ export function coordinatorQueue(input: {
       detail: `${o.client_name} · previsão ${shortDate(brtDate(o.ends_at))}${blockers.length ? " · " + blockers.join(", ") : o.status === "Agendada" ? " · ainda sem horas ou saída de veículo" : " · pronta para registrar o resultado"}.`,
       cta: "Abrir OS",
       action: { kind: "order", orderId: o.id },
+      category: "operations",
     });
   }
   if (input.previous && input.previous.state === "blocked")
@@ -293,11 +395,13 @@ export function coordinatorQueue(input: {
       detail: [
         input.previous.open && plural(input.previous.open, "ponto sem saída", "pontos sem saída"),
         input.previous.pending && plural(input.previous.pending, "ponto a aprovar", "pontos a aprovar"),
+        input.previous.legacyTimers && plural(input.previous.legacyTimers, "cronômetro antigo aberto", "cronômetros antigos abertos"),
       ]
         .filter(Boolean)
         .join(" · ") + ".",
       cta: "Resolver e fechar",
       action: { kind: "entries", month: input.previous.month },
+      category: "closing",
     });
   if (input.previous && input.previous.state === "ready")
     tasks.push({
@@ -307,6 +411,7 @@ export function coordinatorQueue(input: {
       detail: "Todos os pontos têm saída e estão aprovados.",
       cta: "Fechar mês",
       action: { kind: "entries", month: input.previous.month },
+      category: "closing",
     });
   const approvals = approvalGroups(input.rows, input.users);
   if (approvals.length) {
@@ -314,12 +419,35 @@ export function coordinatorQueue(input: {
     tasks.push({
       id: "approvals",
       severity: "attention",
-      title: plural(total, "ponto aguardando aprovação", "pontos aguardando aprovação"),
-      detail: `${plural(approvals.length, "pessoa", "pessoas")} · mais antigo de ${shortDate(approvals[0].oldest)}.`,
+      title: input.approvalRequired === false
+        ? plural(total, "registro aguardando regularização", "registros aguardando regularização")
+        : plural(total, "ponto aguardando aprovação", "pontos aguardando aprovação"),
+      detail: `${plural(approvals.length, "pessoa", "pessoas")} · mais antigo de ${shortDate(approvals[0].oldest)}.${input.approvalRequired === false ? " Novos pontos recebem aprovação automática; estes ainda estão pendentes." : ""}`,
       cta: "Revisar",
       action: { kind: "entries", userId: approvals.length === 1 ? approvals[0].userId : undefined, month: input.month },
+      category: "points",
     });
   }
+  for (const group of entryReviewGroups(input.rows, input.users))
+    tasks.push({
+      id: "review-" + group.userId,
+      severity: "attention",
+      title: `${group.name}: ${plural(group.entries.length, "ponto para conferir", "pontos para conferir")}`,
+      detail: group.reasons.join(" "),
+      cta: "Conferir pontos",
+      action: { kind: "entries", userId: group.userId, month: input.month, review: true },
+      category: "points",
+    });
+  for (const order of upcomingPreparation(input.orders, input.today))
+    tasks.push({
+      id: "prepare-" + order.id,
+      severity: "attention",
+      title: `${osLabel(order.number, order.official_number)}: preparar atendimento`,
+      detail: `${order.client_name} · início ${shortDate(brtDate(order.starts_at))} · ${orderPreparation(order).join(" · ")}.`,
+      cta: "Preparar OS",
+      action: { kind: "order", orderId: order.id },
+      category: "preparation",
+    });
   for (const o of input.orders.filter(cancelledPending))
     tasks.push({
       id: "cancelled-" + o.id,
@@ -328,6 +456,7 @@ export function coordinatorQueue(input: {
       detail: `${o.client_name} · ${orderBlockers(o).join(", ")}.`,
       cta: "Abrir OS",
       action: { kind: "order", orderId: o.id },
+      category: "operations",
     });
   for (const { order, people } of ordersMissingHours(input.orders, input.period))
     tasks.push({
@@ -337,6 +466,7 @@ export function coordinatorQueue(input: {
       detail: `${names(people.map((p) => p.name))} ainda não registrou horas · ${order.client_name}.`,
       cta: "Abrir OS",
       action: { kind: "order", orderId: order.id },
+      category: "operations",
     });
   const noRate = input.users.filter((u) => u.active && !Number(u.hourly_rate));
   if (noRate.length)
@@ -344,9 +474,11 @@ export function coordinatorQueue(input: {
       id: "no-rate",
       severity: "attention",
       title: plural(noRate.length, "pessoa ativa sem valor-hora", "pessoas ativas sem valor-hora"),
-      detail: `${names(noRate.map((u) => u.name))}. Pontos lançados antes do salário mantêm valor estimado zero.`,
+      detail: `${names(noRate.map((u) => u.name))}. A estimativa financeira fica pendente até o cadastro. O registro de horas continua disponível.`,
       cta: "Ver equipe",
       action: { kind: "people" },
+      category: "people",
     });
-  return tasks;
+  // Ordenação estável mantém a sequência operacional dentro da mesma prioridade.
+  return tasks.sort((a, b) => Number(b.severity === "urgent") - Number(a.severity === "urgent"));
 }

@@ -32,9 +32,16 @@ export async function GET() {
          (SELECT count(*)::int FROM horacerta.entries e WHERE e.order_id=o.id AND e."end" IS NULL AND e.deleted_at IS NULL)) active_points,
         EXISTS(SELECT 1 FROM horacerta.timers t WHERE t.order_id=o.id AND t.user_id=${me.id}::uuid) my_point_active,
         coalesce((SELECT array_agg(DISTINCT e.user_id) FROM horacerta.entries e WHERE e.order_id=o.id AND e.deleted_at IS NULL AND (${admin} OR e.user_id=${me.id}::uuid)),'{}') logged_members,
-        coalesce((SELECT jsonb_agg(jsonb_build_object('id',m.id,'name',m.name,'family',m.family) ORDER BY m.name) FROM horacerta.equipment_models m WHERE m.id=ANY(o.model_ids)),'[]') equipment_models,
+        coalesce((SELECT jsonb_agg(jsonb_build_object('id',m.id,'name',m.name,'family',m.family,'status',m.status) ORDER BY m.name) FROM horacerta.equipment_models m WHERE m.id=ANY(o.model_ids)),'[]') equipment_models,
         (SELECT name FROM horacerta.order_pdfs WHERE order_id=o.id) pdf_name,
         coalesce((SELECT jsonb_agg(jsonb_build_object('id',u.id,'name',u.name,'access_code',u.access_code) ORDER BY u.name) FROM horacerta.users u WHERE u.id=ANY(o.members)),'[]') team,
+        CASE WHEN ${admin} THEN coalesce((SELECT jsonb_agg(jsonb_build_object('id',u.id,'name',u.name) ORDER BY u.name)
+          FROM horacerta.users u WHERE u.id=ANY(o.members) AND u.active AND NOT EXISTS(
+            SELECT 1 FROM horacerta.order_shifts s WHERE s.order_id=o.id AND s.user_id=u.id AND s.work_type='work')),'[]') END missing_shift_members,
+        CASE WHEN ${admin} THEN coalesce((SELECT jsonb_agg(jsonb_build_object('id',m.id,'name',m.name) ORDER BY m.name)
+          FROM horacerta.equipment_models m WHERE m.id=ANY(o.model_ids) AND NOT EXISTS(
+            SELECT 1 FROM horacerta.order_checklists c LEFT JOIN horacerta.library_documents d ON d.id=c.source_document_id
+            WHERE c.order_id=o.id AND c.model_id=m.id AND (c.status='waived' OR (jsonb_array_length(c.items)>0 AND NOT coalesce(d.obsolete,false))))),'[]') END missing_checklist_models,
         coalesce((SELECT jsonb_agg(to_jsonb(a)) FROM horacerta.order_acknowledgements a WHERE a.order_id=o.id),'[]') acknowledgements,
         coalesce((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.departed_at DESC) FROM horacerta.vehicle_trips t WHERE t.order_id=o.id),'[]') trips,
         coalesce((SELECT jsonb_agg(to_jsonb(e) ORDER BY e.created_at DESC) FROM (SELECT e.id,u.name,e.action,e.detail,e.created_at FROM horacerta.order_events e JOIN horacerta.users u ON u.id=e.actor_id WHERE e.order_id=o.id ORDER BY e.created_at DESC LIMIT 100) e),'[]') events

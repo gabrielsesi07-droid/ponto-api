@@ -41,6 +41,8 @@ export function buildDemoScenario(settings: Rules, day: string): DemoScenario {
       instructions: 'Apresentar a OS na portaria e seguir as orientações do cliente.', priority: 'Normal', status,
       completion: status === 'Concluída' ? 'Serviço realizado e instalações testadas.' : '', version: 1, pdf_name: null,
       can_delete: false, active_points: 0, pending_checklists: 0, logged_members: [],
+      missing_shift_members: status === 'Agendada' ? members.map(person=>({id:person.id,name:person.name})) : [],
+      missing_checklist_models: [],
       acknowledgements: members.map(p => ({ user_id: p.id, version: 1 })), trips: [],
       events: [{ id: number, name: users[0].name, action: 'OS criada', detail: 'Histórico fictício de demonstração.', created_at: stamp(date, '07:00') }],
     };

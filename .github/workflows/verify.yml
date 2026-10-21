@@ -53,3 +53,5 @@ jobs:
         run: npm run test:security-db
       - name: Verify official OS references
         run: node --test tests/official-order-number.integration.mjs
+      - name: Verify checklist assignment and device logout
+        run: node --test tests/checklist-assignment.integration.mjs tests/logout-push.integration.mjs

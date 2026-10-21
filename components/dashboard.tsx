@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import "./coordinator-center.css";
 import {
   ArrowRight,
   CalendarClock,
@@ -46,6 +47,7 @@ import {
   brtTime,
   closingChecklist,
   coordinatorQueue,
+  entryReviewGroups,
   monthLabel,
   orderBlockers,
   ordersMissingHours,
@@ -53,17 +55,19 @@ import {
   previousMonth,
   shortDate,
   todayAgenda,
+  upcomingPreparation,
   type CenterAction,
   type CenterTask,
   type ClosingStep,
 } from "@/lib/coordinator-center";
 
 function useOperations(demo: boolean, me: Person, version: unknown) {
-  const [ops, setOps] = useState<{ orders: Order[]; loading: boolean; error: string; loaded: boolean }>({
+  const [ops, setOps] = useState<{ orders: Order[]; loading: boolean; error: string; loaded: boolean; updatedAt: string | null }>({
     orders: [],
     loading: true,
     error: "",
     loaded: false,
+    updatedAt: null,
   });
   const request = useRef(0);
   const load = useCallback(async () => {
@@ -71,7 +75,7 @@ function useOperations(demo: boolean, me: Person, version: unknown) {
     try {
       const result = demo ? demoOperations(me) : await api<OperationsData>("/api/operations");
       if (v === request.current)
-        setOps({ orders: result.orders, loading: false, error: "", loaded: true });
+        setOps({ orders: result.orders, loading: false, error: "", loaded: true, updatedAt: new Date().toISOString() });
     } catch (e) {
       if (v === request.current)
         setOps((o) => ({ ...o, loading: false, error: (e as Error).message }));
@@ -122,6 +126,7 @@ export function Dashboard({
   // Sem OS confiáveis, a checagem de horas ausentes fica "não verificada" em vez de "em dia".
   const opsReady = ops.loaded && !ops.error,
     opsPending = !ops.loaded && !ops.error;
+  const reliableOrders = opsReady ? ops.orders : [];
   const now = today(),
     currentMonth = now.slice(0, 7),
     bounds = monthBounds(month);
@@ -129,13 +134,14 @@ export function Dashboard({
     () => new Set((state.closedMonths || []).map((c) => c.month)),
     [state.closedMonths],
   );
-  const missing = ordersMissingHours(ops.orders, bounds);
+  const missing = ordersMissingHours(reliableOrders, bounds);
   const closing = closingChecklist({
     month,
     today: now,
     entries: rows,
     closed: closedSet.has(month),
     missingHours: opsReady ? missing.length : null,
+    timers: state.teamTimers || [],
   });
   const prevMonth = previousMonth(currentMonth);
   const prevClosing =
@@ -145,7 +151,8 @@ export function Dashboard({
           today: now,
           entries: allRows,
           closed: closedSet.has(prevMonth),
-          missingHours: opsReady ? ordersMissingHours(ops.orders, monthBounds(prevMonth)).length : null,
+          missingHours: opsReady ? ordersMissingHours(reliableOrders, monthBounds(prevMonth)).length : null,
+          timers: state.teamTimers || [],
         })
       : null;
   const tasks = coordinatorQueue({
@@ -153,18 +160,26 @@ export function Dashboard({
     month,
     rows,
     users: state.users,
-    orders: ops.orders,
+    orders: reliableOrders,
     period: bounds,
+    approvalRequired: state.settings.approval_required,
     previous:
       prevClosing && prevClosing.total
-        ? { month: prevMonth, state: prevClosing.state, open: prevClosing.open, pending: prevClosing.pending }
+        ? { month: prevMonth, state: prevClosing.state, open: prevClosing.open, pending: prevClosing.pending, legacyTimers: prevClosing.legacyTimers }
         : undefined,
   });
   const approvals = approvalGroups(rows, state.users),
     waitingTotal = approvals.reduce((n, g) => n + g.count, 0),
-    agenda = todayAgenda(ops.orders, now),
-    running = ops.orders.filter((o) => o.status === "Em andamento").length,
+    agenda = todayAgenda(reliableOrders, now),
+    running = reliableOrders.filter((o) => o.status === "Em andamento").length,
     urgent = tasks.filter((t) => t.severity === "urgent").length;
+  const reviews = useMemo(() => entryReviewGroups(rows, state.users), [rows, state.users]);
+  const reviewCount = reviews.reduce((count, group) => count + group.entries.length, 0);
+  const automatic = !state.settings.approval_required;
+  const preparationCount = upcomingPreparation(reliableOrders, now).length;
+  const preparationReady = opsReady && reliableOrders.every((order) =>
+    !["Agendada", "Em andamento"].includes(order.status) ||
+    (Array.isArray(order.missing_shift_members) && Array.isArray(order.missing_checklist_models)));
   const dateLabel = new Intl.DateTimeFormat("pt-BR", {
     timeZone: "America/Sao_Paulo",
     weekday: "long",
@@ -184,9 +199,11 @@ export function Dashboard({
                 ? `${urgent} ${urgent === 1 ? "pendência urgente" : "pendências urgentes"} para resolver`
                 : tasks.length
                   ? "Nenhuma urgência. Há itens para acompanhar."
-                  : opsReady
+                  : opsReady && preparationReady
                     ? "Operação em dia."
-                    : "Pontos em dia. Ordens de serviço não verificadas."}
+                    : opsReady
+                      ? "Pontos em dia. Preparação das OS não verificada."
+                      : "Pontos em dia. Ordens de serviço não verificadas."}
           </h2>
         </div>
         <div className="cc-tiles" role="list">
@@ -199,11 +216,11 @@ export function Dashboard({
               hint: "Ir para a fila de pendências",
             },
             {
-              label: "Pontos a aprovar",
-              value: waitingTotal,
-              tone: waitingTotal ? "attention" : "",
-              onClick: () => onAction({ kind: "entries", month }),
-              hint: "Abrir o histórico de pontos do mês",
+              label: automatic ? "Pontos a conferir" : "Pontos a aprovar",
+              value: automatic ? reviewCount : waitingTotal,
+              tone: (automatic ? reviewCount : waitingTotal) ? "attention" : "",
+              onClick: () => onAction({ kind: "entries", month, ...(automatic ? { review: true } : {}) }),
+              hint: automatic ? "Abrir pontos com avisos de conferência" : "Abrir o histórico de pontos do mês",
             },
             {
               label: "OS em andamento",
@@ -228,13 +245,27 @@ export function Dashboard({
                 aria-label={`${tile.label}: ${tile.value}. ${tile.hint}`}
               >
                 <span className="cc-tile-value num">
-                  {!ops.loaded && tile.label !== "Pontos a aprovar" && tile.label !== "Urgentes" ? "–" : tile.value}
+                  {!opsReady && tile.label !== "Pontos a aprovar" && tile.label !== "Pontos a conferir" && tile.label !== "Urgentes" ? "–" : tile.value}
                 </span>
                 <span className="cc-tile-label">{tile.label}</span>
               </button>
             </div>
           ))}
         </div>
+      </section>
+
+      <section className="cc-autopilot" aria-label="Acompanhamento automático da operação">
+        <div>
+          <span className="cc-autopilot-mark" aria-hidden><CheckCheck size={20} /></span>
+          <div>
+            <b>{automatic ? "Aprovação automática ativa" : "Conferência de aprovação ativa"}</b>
+            <p>{automatic ? "O sistema reúne as exceções; você acompanha o que precisa de atenção." : "Revise os pontos com saída e aprove pelo histórico da equipe."}</p>
+          </div>
+        </div>
+        <span className="cc-autopilot-detail">
+          {preparationReady ? `${preparationCount} OS a preparar nos próximos 7 dias` : "Preparação das OS ainda não verificada"}
+          {opsReady && ops.updatedAt && <small>Atualizado às {brtTime(ops.updatedAt)}</small>}
+        </span>
       </section>
 
       {ops.error && (
@@ -260,7 +291,8 @@ export function Dashboard({
           <PanelHead
             id="cc-queue-title"
             title="Precisa de você"
-            subtitle="Em ordem de prioridade: primeiro o que bloqueia aprovação, OS ou fechamento."
+            subtitle="Primeiro os impedimentos; depois a preparação e as conferências do mês."
+            action={<Button variant="ghost" className="action" aria-label="Atualizar pendências" onClick={() => void ops.reload()}><RefreshCw size={16} /><span className="hidden sm:inline">Atualizar</span></Button>}
           />
           <TaskList tasks={tasks} onAction={onAction} loading={opsPending} opsUnavailable={!opsReady && !opsPending} />
         </section>
@@ -273,7 +305,7 @@ export function Dashboard({
       </div>
 
       <div className="cc-grid mt-6">
-        <ApprovalPanel
+        {automatic ? <ReviewPanel groups={reviews} rows={rows} state={state} busy={busy} month={month} onAction={onAction} onEdit={onEdit} /> : <ApprovalPanel
           groups={approvals}
           total={waitingTotal}
           state={state}
@@ -282,7 +314,7 @@ export function Dashboard({
           onAction={onAction}
           onApprove={onApprove}
           onEdit={onEdit}
-        />
+        />}
         <AgendaPanel
           orders={agenda}
           loading={opsPending}
@@ -330,7 +362,17 @@ function TaskList({
   opsUnavailable: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const shown = expanded ? tasks : tasks.slice(0, 6);
+  const [category, setCategory] = useState("all");
+  const filters = [
+    { id: "all", label: "Todas", count: tasks.length },
+    { id: "points", label: "Pontos", count: tasks.filter((task) => task.category === "points").length },
+    { id: "operations", label: "OS", count: tasks.filter((task) => task.category === "operations" || task.category === "preparation").length },
+    { id: "closing", label: "Fechamento", count: tasks.filter((task) => task.category === "closing").length },
+    { id: "people", label: "Equipe", count: tasks.filter((task) => task.category === "people").length },
+  ].filter((filter) => filter.count > 0);
+  const active = filters.some((filter) => filter.id === category) ? category : "all";
+  const filtered = tasks.filter((task) => active === "all" || task.category === active || (active === "operations" && task.category === "preparation"));
+  const shown = expanded ? filtered : filtered.slice(0, 6);
   if (!tasks.length)
     return (
       <div className="cc-empty">
@@ -345,12 +387,15 @@ function TaskList({
             ? "Conferindo pontos e ordens de serviço."
             : opsUnavailable
               ? "Nenhuma pendência de pontos. As ordens de serviço não puderam ser verificadas."
-              : "Pontos com saída e aprovados, OS dentro do prazo e equipe com valor-hora."}
+              : "Nenhum impedimento ou aviso identificado nos dados verificados."}
         </p>
       </div>
     );
   return (
     <>
+      {filters.length > 2 && <div className="cc-queue-filters" aria-label="Filtrar pendências por assunto">
+        {filters.map((filter) => <button key={filter.id} type="button" aria-pressed={active === filter.id} onClick={() => { setCategory(filter.id); setExpanded(false); }}>{filter.label}<span className="num">{filter.count}</span></button>)}
+      </div>}
       <ol className="cc-tasks">
         {shown.map((t) => (
           <li key={t.id} className={"cc-task " + t.severity}>
@@ -375,14 +420,14 @@ function TaskList({
           </li>
         ))}
       </ol>
-      {tasks.length > 6 && (
+      {filtered.length > 6 && (
         <button
           type="button"
           className="cc-more"
           aria-expanded={expanded}
           onClick={() => setExpanded((v) => !v)}
         >
-          {expanded ? "Mostrar menos" : `Mostrar mais ${tasks.length - 6}`}
+          {expanded ? "Mostrar menos" : `Mostrar mais ${filtered.length - 6}`}
         </button>
       )}
     </>
@@ -459,9 +504,55 @@ function ClosingPanel({
           ? "Revisar e fechar o mês"
           : closing.state === "closed"
             ? "Ver pontos do mês"
-            : "Ir para aprovação e fechamento"}
+            : "Conferir e fechar o mês"}
         <ArrowRight size={16} />
       </Button>
+    </section>
+  );
+}
+
+function ReviewPanel({ groups, rows, state, busy, month, onAction, onEdit }: {
+  groups: ReturnType<typeof entryReviewGroups>;
+  rows: Calculated[];
+  state: State;
+  busy: boolean;
+  month: string;
+  onAction: (action: CenterAction) => void;
+  onEdit: (entry: Entry) => void;
+}) {
+  const count = groups.reduce((total, group) => total + group.entries.length, 0);
+  const shown = groups.flatMap((group) => group.entries.map((entry) => ({ entry, group }))).slice(0, 6);
+  const approved = rows.filter((entry) => entry.end && entry.status === "Aprovado").length;
+  return (
+    <section className="panel cc-panel" aria-labelledby="cc-review-title">
+      <PanelHead id="cc-review-title" title="Conferência por exceção"
+        subtitle="Avisos de cálculo e jornadas longas reunidos automaticamente."
+        action={count > 0 ? <span className="badge pending">{count} {count === 1 ? "ponto" : "pontos"}</span> : undefined} />
+      {!count ? (
+        <div className="cc-empty">
+          <CheckCheck className="text-emerald-600" size={30} aria-hidden />
+          <b>Nenhum ponto com aviso de conferência</b>
+          <p className="muted text-sm">{approved} {approved === 1 ? "registro aprovado" : "registros aprovados"} no mês. O fechamento continua sob sua conferência.</p>
+          <Button variant="outline" className="action mt-2" onClick={() => onAction({ kind: "entries", month })}>Ver pontos do mês <ArrowRight size={16} /></Button>
+        </div>
+      ) : (
+        <>
+          <ul className="cc-review-items">
+            {shown.map(({ entry, group }) => (
+              <li key={entry.id}>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium">{group.name}</p>
+                  <p className="muted text-xs mt-1">{shortDate(entry.date)} · {entry.start.slice(0, 5)}–{entry.end?.slice(0, 5)} · {duration(entry.worked)}</p>
+                  <p className="cc-review-reason">{group.entryReasons[entry.id].join(" ")}</p>
+                </div>
+                <Button variant="outline" className="action shrink-0" disabled={busy || isClosedMonth(state, entry.date)} onClick={() => onEdit(entry)} aria-label={`Conferir ponto de ${group.name} em ${shortDate(entry.date)}`}><Pencil size={15} /> Conferir</Button>
+              </li>
+            ))}
+          </ul>
+          <p className="muted text-xs mt-4">Jornadas com 16h ou mais no dia recebem um aviso para conferência dos horários e intervalos.</p>
+          <Button variant="ghost" className="action w-full mt-3" onClick={() => onAction({ kind: "entries", month, review: true })}>Ver todos os pontos a conferir <ArrowRight size={16} /></Button>
+        </>
+      )}
     </section>
   );
 }
@@ -703,7 +794,7 @@ function TeamPanel({
     ) : p.open ? (
       <span className="badge cc-badge urgent">{p.open} sem saída</span>
     ) : p.waiting ? (
-      <span className="badge pending">{p.waiting} a aprovar</span>
+      <span className="badge pending">{p.waiting} {state.settings.approval_required ? "a aprovar" : "pendentes"}</span>
     ) : p.count ? (
       <span className="badge approved">Em dia</span>
     ) : (

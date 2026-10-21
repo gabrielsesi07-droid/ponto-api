@@ -1,8 +1,8 @@
 import {readFile} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 import assert from 'node:assert/strict';
-import {neon} from '@neondatabase/serverless';
-const sql=neon(process.env.TEST_DATABASE_URL || process.env.DATABASE_URL);
+import {isolatedSql} from './isolated-sql-runtime.mjs';
+const sql=await isolatedSql();
 const schema='qa_week_'+randomUUID().replaceAll('-','');
 const read=name=>readFile(new URL('../sql/'+name,import.meta.url),'utf8');
 const statements=(await read('001-schema.sql')).split(';').filter(s=>s.trim());
@@ -25,3 +25,4 @@ try {await sql.transaction(statements.map(s=>sql.query(s.replaceAll('horacerta',
 catch(e){if(e.message!=='QA_WEEK_ROLLBACK_OK')throw e;}
 assert.equal((await sql`SELECT schema_name FROM information_schema.schemata WHERE schema_name=${schema}`).length,0);
 console.log('9h service / 200h salary migrations verified in isolated schema and fully rolled back.');
+await sql.close?.();

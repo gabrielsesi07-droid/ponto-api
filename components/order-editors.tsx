@@ -23,6 +23,7 @@ import { brasiliaInputToIso } from '@/lib/order-date-changes';
 import { today } from "@/lib/domain";
 import { ModelPicker } from "./technical-library";
 import { clientNameKey, searchClients, type ClientSuggestion } from '@/lib/client-search';
+import { reusableOrderDraft } from '@/lib/order-draft';
 
 export async function uploadOrderPdf(id: string, file: File) {
   if (file.size > 3 * 1024 * 1024)
@@ -209,12 +210,14 @@ function AddressInput({
 
 export function OrderEditor({
   order,
+  template,
   data,
   demo,
   onClose,
   onSaved,
 }: {
   order?: Order;
+  template?: Order;
   data: OperationsData;
   demo: boolean;
   onClose: () => void;
@@ -237,6 +240,7 @@ export function OrderEditor({
     model_ids: order?.model_ids || [],
     instructions: order?.instructions || "",
     priority: order?.priority || "Normal",
+    ...(!order && template ? reusableOrderDraft(template, data) : {}),
   }));
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
@@ -301,7 +305,7 @@ export function OrderEditor({
       <DialogContent className="ops-dialog order-wide-dialog order-editor-dialog bg-white">
         <DialogHeader className="order-editor-header">
           <DialogTitle>
-            {order ? "Editar OS" : "Gerar ordem de serviço"}
+            {order ? "Editar OS" : template ? "Criar OS semelhante" : "Gerar ordem de serviço"}
           </DialogTitle>
           <DialogDescription>
             Defina cliente, equipe e recursos. A equipe receberá a OS no dia
@@ -310,7 +314,8 @@ export function OrderEditor({
         </DialogHeader>
         <form className="order-editor-form" onSubmit={submit}>
           <div className="order-editor-body">
-          {savedId && (
+          {template && <p className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">Dados de planejamento reaproveitados de “{template.title}”. Informe o novo número oficial, confira as datas, a equipe e os equipamentos antes de gerar. O anexo, os pontos e as conferências começam em branco.</p>}
+          {savedId && error && file && (
             <p className="full rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
               A OS já está salva. Reenvie o PDF ou remova o arquivo selecionado
               para continuar.
@@ -573,7 +578,7 @@ export function OrderEditor({
             </Button>
             <Button disabled={busy} type="submit">
               {busy ? <LoaderCircle className="animate-spin" /> : <Save />}
-              {savedId
+              {savedId && file
                 ? "Concluir anexo"
                 : order
                   ? "Salvar alterações"

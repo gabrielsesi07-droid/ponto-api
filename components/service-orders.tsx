@@ -30,6 +30,7 @@ import {
   Trash2,
   Ban,
   History,
+  CopyPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
@@ -98,6 +99,7 @@ export function ServiceOrders({
       kind: "client" | "vehicle";
       data?: ServiceClient | Vehicle;
     } | null>(null);
+  const [reuseOrder, setReuseOrder] = useState<Order | undefined>();
   const [filter, setFilter] = useState("Todas"),
     [search, setSearch] = useState("");
   const [scope, setScope] = useState({ client: '', person: '', from: '', to: '' });
@@ -109,12 +111,16 @@ export function ServiceOrders({
   const currentFilter = history ? historyFilter : filter;
   const currentSearch = history ? historySearch : search;
   const pendingCount = data.orders.filter(hasCancelledPending).length;
-  const dismissed = useRef(new Set<string>()),
-    request = useRef(0);
+  const request = useRef(0);
   const admin = me.role === "coordinator";
   const openedFromPush=useRef<string | null>(null);
   useEffect(()=>{
     if (loading || blocked) return;
+    const query = new URLSearchParams(window.location.search);
+    if (admin && query.get('create') === 'order') {
+      const timer = setTimeout(() => { setReuseOrder(undefined); setEditOrder('new'); query.delete('create'); window.history.replaceState({}, '', '/?' + query); }, 0);
+      return () => clearTimeout(timer);
+    }
     const target=new URLSearchParams(window.location.search).get('order');
     if (!target || openedFromPush.current===target) return;
     const found=data.orders.find(order=>order.id===target);
@@ -124,7 +130,7 @@ export function ServiceOrders({
       else toast.error('Esta OS não está mais disponível para o seu acesso.');
     },0);
     return()=>clearTimeout(timer);
-  },[loading,blocked,data.orders]);
+  },[loading,blocked,data.orders,admin]);
   function closeOrder() {
     setSelected(null);
     const query = new URLSearchParams(window.location.search);
@@ -171,11 +177,6 @@ export function ServiceOrders({
       generation.current++;
     };
   }, [reload]);
-  useEffect(() => {
-    const current = data.orders.find((o) => o.id === selected);
-    if (current)
-      dismissed.current.add(`${today()}:${current.id}:${current.version}`);
-  }, [selected, data.orders]);
   const assignedChecklists = data.orders.filter(o => o.checklist_only && o.status === 'Em andamento');
   const due = data.orders.filter(
     (o) =>
@@ -185,25 +186,6 @@ export function ServiceOrders({
       (localDateTime(o.ends_at).slice(0, 10) >= today() ||
         o.status === "Em andamento"))),
   );
-  useEffect(() => {
-    if (blocked || selected || editOrder || resource || demo || view === 'register' || view === 'order-history') return;
-    if (new URLSearchParams(window.location.search).has('order')) return;
-    const next = data.orders.find(
-      (o) =>
-        o.members.includes(me.id) &&
-        (hasCancelledPending(o) || (["Agendada", "Em andamento"].includes(o.status) &&
-        localDateTime(o.starts_at).slice(0, 10) <= today() &&
-        (localDateTime(o.ends_at).slice(0, 10) >= today() ||
-          o.status === "Em andamento"))) &&
-        !dismissed.current.has(`${today()}:${o.id}:${o.version}`),
-    );
-    if (!next) return;
-    const timer = setTimeout(() => {
-      dismissed.current.add(`${today()}:${next.id}:${next.version}`);
-      setSelected(next.id);
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [data, me.id, blocked, selected, editOrder, resource, demo, view]);
   const rows = useMemo(
     () =>
       data.orders.filter(
@@ -577,13 +559,19 @@ export function ServiceOrders({
       )}
       {editOrder && (
         <OrderEditor
+          key={editOrder === 'new' ? reuseOrder?.id || 'new' : editOrder.id}
           order={editOrder === "new" ? undefined : editOrder}
+          template={editOrder === 'new' ? reuseOrder : undefined}
           data={data}
           demo={demo}
-          onClose={() => setEditOrder(null)}
+          onClose={() => { setEditOrder(null); setReuseOrder(undefined); }}
           onSaved={async (id) => {
             await reload();
             setSelected(id);
+            const query = new URLSearchParams(window.location.search);
+            query.set('order', id);
+            window.history.replaceState({}, '', '/?' + query);
+            openedFromPush.current = id;
             toast.success("OS salva.");
           }}
         />
@@ -607,6 +595,7 @@ export function ServiceOrders({
           onClose={closeOrder}
           onChanged={reload}
           onEdit={() => setEditOrder(order)}
+          onReuse={() => { setReuseOrder(order); setEditOrder('new'); }}
           onPoint={onPoint}
           onRegister={onRegister}
           onNavigate={onNavigate}
@@ -625,6 +614,7 @@ function OrderDetail({
   onClose,
   onChanged,
   onEdit,
+  onReuse,
   onPoint,
   onRegister,
   onNavigate,
@@ -637,6 +627,7 @@ function OrderDetail({
   onClose: () => void;
   onChanged: () => Promise<void>;
   onEdit: () => void;
+  onReuse: () => void;
   onPoint: () => Promise<void>;
   onRegister: (order: Order) => void;
   onNavigate: (view: string) => void;
@@ -860,6 +851,7 @@ function OrderDetail({
                 Editar OS
               </Button>
             )}
+            {admin && <Button variant="outline" onClick={onReuse} disabled={busy}><CopyPlus />Criar OS semelhante</Button>}
             {admin && <AlertDialog open={confirmDelete} onOpenChange={value => { if (!busy) { setConfirmDelete(value); setConfirmation(''); setDeleteError(''); } }}>
               <AlertDialogTrigger asChild><Button variant="destructive" disabled={busy || o.can_delete === false}><Trash2 />Excluir OS</Button></AlertDialogTrigger>
               <AlertDialogContent className="max-h-[90dvh] overflow-y-auto bg-white">

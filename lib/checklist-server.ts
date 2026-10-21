@@ -12,7 +12,7 @@ export async function checklistPayload(req: Request) {
     if (size > 150000) { await reader.cancel(); throw new ApiError(413, 'Checklist muito grande. Limite as observações.'); }
     parts.push(value);
   }
-  try { return JSON.parse(Buffer.concat(parts).toString('utf8')); }
+  try { return z.record(z.unknown()).parse(JSON.parse(Buffer.concat(parts).toString('utf8'))); }
   catch { throw new ApiError(400, 'Dados inválidos.'); }
 }
 export async function orderForChecklist(id: string, me: Person) {

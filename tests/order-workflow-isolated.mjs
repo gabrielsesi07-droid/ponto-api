@@ -3,8 +3,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { neon } from '@neondatabase/serverless';
-const sql=neon(process.env.TEST_DATABASE_URL || process.env.DATABASE_URL);
+import { isolatedSql } from './isolated-sql-runtime.mjs';
+const sql=await isolatedSql();
 const schema='qa_os_'+randomUUID().replaceAll('-','');
 const read=async name=>readFile(new URL('../sql/'+name,import.meta.url),'utf8');
 const statements=(await read('001-schema.sql')).split(';').filter(s=>s.trim());
@@ -363,3 +363,4 @@ try {
 }
 assert.equal((await sql`SELECT schema_name FROM information_schema.schemata WHERE schema_name=${schema}`).length,0);
 console.log('Test schema rolled back; no production numbers consumed.');
+await sql.close?.();

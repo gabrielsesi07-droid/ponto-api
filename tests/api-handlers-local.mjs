@@ -50,9 +50,13 @@ try {
   const entries = await import('../app/api/entries/route.ts');
   const shifts = await import('../app/api/shifts/route.ts');
   const recalculation = await import('../app/api/recalculation/route.ts');
+  const closings = await import('../app/api/closings/route.ts');
+  const state = await import('../app/api/state/route.ts');
+  const clock = await import('../app/api/clock/route.ts');
   const { calculate, today, legacyDefaults } = await import('../lib/domain.ts');
   await migration('001-schema.sql');
-  await sql.query('CREATE TABLE horacerta.timers(user_id uuid PRIMARY KEY REFERENCES horacerta.users(id), started_at timestamptz NOT NULL)');
+  await sql.query('ALTER TABLE horacerta.users ADD COLUMN username text');
+  await sql.query('CREATE TABLE horacerta.timers(user_id uuid PRIMARY KEY REFERENCES horacerta.users(id), started_at timestamptz NOT NULL, paused_at timestamptz)');
   await migration('003-orders.sql');
   await migration('005-flexible-client.sql');
   await migration('013-points-require-order.sql');
@@ -224,6 +228,80 @@ try {
     await migration('024-work-rules.sql');
     assert.equal((await sql`SELECT rules FROM horacerta.settings WHERE id=1`)[0].rules.day_policies.weekday.normal_minutes, 420);
     assert.deepEqual(await stored(workId), before);
+  });
+  await scenario('leitura do ponto valida o período, conserva referências e isola os dados de cada colaborador', async () => {
+    context.memberId = boss;
+    await request(state.GET, 'GET', '/api/state?from=2026-02-30&to=2026-03-05', null, 400);
+    await request(state.GET, 'GET', '/api/state?from=2026-10-21&to=2026-10-01', null, 400);
+    await request(state.GET, 'GET', '/api/state?from=2024-01-01&to=2026-10-21', null, 400);
+    const ownOnly = randomUUID();
+    await sql`INSERT INTO horacerta.entries(id,user_id,order_id,date,start,"end",service,status,rate,rules)
+      SELECT ${ownOnly}::uuid,${colleague}::uuid,${order}::uuid,${date(-4)}::date,'08:00','09:00','Leitura de outro colaborador','Aprovado',20,rules FROM horacerta.settings WHERE id=1`;
+    // Last day is taken from the real calendar, rather than assuming every month has 31 days.
+    const lastDay = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, 0)).getUTCDate();
+    const path = `/api/state?from=${month}-01&to=${month}-${lastDay}`;
+    const team = await request(state.GET, 'GET', path);
+    assert.equal(team.users.length, 3);
+    assert.ok(team.entries.some(e => e.id === ownOnly));
+    assert.ok(team.entries.every(e => 'order_number' in e && 'order_official_number' in e && 'work_type' in e && 'shift' in e));
+    context.memberId = worker;
+    const own = await request(state.GET, 'GET', path);
+    assert.ok(own.entries.every(e => e.user_id === worker));
+    assert.deepEqual(own.users.map(u => u.id), [worker]);
+    assert.deepEqual(own.teamTimers, []);
+    context.memberId = boss;
+    await sql`DELETE FROM horacerta.entries WHERE id=${ownOnly}::uuid`;
+  });
+  await scenario('seletor do ponto conserva OS histórica e cronômetro legado não aceita novos inícios', async () => {
+    context.memberId = worker;
+    const mine = await request(clock.GET, 'GET', '/api/clock');
+    assert.ok(mine.orders.every(o => o.assigned));
+    await request(clock.GET, 'GET', `/api/clock?entry_id=${workId}`);
+    context.memberId = colleague;
+    await request(clock.GET, 'GET', `/api/clock?entry_id=${workId}`, null, 404);
+    await request(clock.POST, 'POST', '/api/clock', { action: 'start', order_id: order }, 409);
+    assert.equal((await sql`SELECT 1 FROM horacerta.timers`).length, 0);
+    context.memberId = boss;
+  });
+  await scenario('sobreposição e intervalo inválido são recusados sem gerar alteração ou auditoria', async () => {
+    context.memberId = worker;
+    const snapshot = await stored(workId);
+    const auditCount = (await sql`SELECT count(*)::int count FROM horacerta.audit`)[0].count;
+    await request(entries.POST, 'POST', '/api/entries', point({ start: '17:00', end: '20:00', break_minutes: 0, break_mode: 'custom' }), 409);
+    await request(entries.POST, 'POST', '/api/entries', point({ id: workId, version: snapshot.version, break_mode: 'custom', break_start: '18:00', break_minutes: 60 }), 400);
+    assert.deepEqual(await stored(workId), snapshot);
+    assert.equal((await sql`SELECT count(*)::int count FROM horacerta.audit`)[0].count, auditCount);
+    context.memberId = boss;
+  });
+  await scenario('fechamento real exige coordenador, mês encerrado e todos os registros completos e aprovados', async () => {
+    const scope = { action: 'close', month };
+    context.memberId = worker;
+    await request(closings.POST, 'POST', '/api/closings', scope, 403);
+    context.memberId = boss;
+    await request(closings.POST, 'POST', '/api/closings', { ...scope, month: today().slice(0, 7) }, 409);
+    await sql`UPDATE horacerta.entries SET status='Pendente' WHERE id=${workId}::uuid`;
+    await request(closings.POST, 'POST', '/api/closings', scope, 409);
+    const approved = await request(closings.POST, 'POST', '/api/closings', { action: 'approve', month, user_id: worker });
+    assert.equal(approved.approved, 1);
+    await sql`UPDATE horacerta.entries SET "end"=NULL WHERE id=${travelId}::uuid`;
+    await request(closings.POST, 'POST', '/api/closings', scope, 409);
+    await sql`UPDATE horacerta.entries SET "end"='09:00' WHERE id=${travelId}::uuid`;
+    await sql`INSERT INTO horacerta.timers(user_id,started_at) VALUES(${worker}::uuid,${date(-4) + 'T08:00:00-03:00'}::timestamptz)`;
+    await request(closings.POST, 'POST', '/api/closings', scope, 409);
+    await sql`DELETE FROM horacerta.timers WHERE user_id=${worker}::uuid`;
+    const closed = await request(closings.POST, 'POST', '/api/closings', scope);
+    assert.equal(closed.ok, true);
+    assert.equal((await sql`SELECT summary FROM horacerta.month_closings WHERE month=${month + '-01'}::date`)[0].summary.entries, 4);
+  });
+  await scenario('mês fechado não aceita aprovação repetida e reabertura exige justificativa auditada', async () => {
+    await request(closings.POST, 'POST', '/api/closings', { action: 'close', month }, 409);
+    await request(closings.POST, 'POST', '/api/closings', { action: 'approve', month }, 409);
+    await request(closings.POST, 'POST', '/api/closings', { action: 'reopen', month, reason: 'curto' }, 409);
+    assert.equal((await sql`SELECT 1 FROM horacerta.month_closings`).length, 1);
+    const reason = 'Reabertura conferida para corrigir registro de teste';
+    await request(closings.POST, 'POST', '/api/closings', { action: 'reopen', month, reason });
+    assert.equal((await sql`SELECT 1 FROM horacerta.month_closings`).length, 0);
+    assert.equal((await sql`SELECT after_value->>'reason' reason FROM horacerta.audit WHERE action='Mês reaberto'`)[0].reason, reason);
   });
   console.log(`\n${passed} cenários passaram usando handlers reais, SQL real e PostgreSQL PGlite em memória. Nenhum banco remoto foi acessado.`);
 } catch (error) {

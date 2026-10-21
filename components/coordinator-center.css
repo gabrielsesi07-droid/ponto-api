@@ -1,0 +1,40 @@
+.cc-autopilot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  margin-top: 1rem;
+  border: 1px solid #cfe3d9;
+  border-radius: 16px;
+  background: #f3faf6;
+  color: #174735;
+}
+.cc-autopilot > div { display: flex; align-items: center; gap: .85rem; }
+.cc-autopilot-mark { display: grid; place-items: center; flex-shrink: 0; width: 38px; height: 38px; border-radius: 12px; background: #dcefe4; }
+.cc-autopilot b { font-size: .9rem; }
+.cc-autopilot p, .cc-autopilot-detail { font-size: .8rem; line-height: 1.5; }
+.cc-autopilot p { margin-top: .15rem; color: #426151; }
+.cc-autopilot-detail { flex-shrink: 0; text-align: right; }
+.cc-autopilot-detail small { display: block; color: #527461; }
+.cc-review-items { margin-top: 1rem; }
+.cc-review-items li { display: flex; align-items: center; gap: .85rem; padding: .95rem 0; border-bottom: 1px solid #e7ecf1; }
+.cc-review-items li:last-child { border-bottom: 0; }
+.cc-review-reason { margin-top: .4rem; font-size: .75rem; line-height: 1.6; color: #835217; overflow-wrap: anywhere; }
+.cc-queue-filters { display: flex; gap: .45rem; flex-wrap: wrap; margin: 1rem 0 .25rem; }
+.cc-queue-filters button { display: inline-flex; align-items: center; gap: .45rem; min-height: 36px; padding: .35rem .65rem; border: 1px solid #dbe3ed; border-radius: 8px; color: #536279; background: #fff; font-size: .75rem; }
+.cc-queue-filters button[aria-pressed="true"] { border-color: #bccde3; background: #eaf1fb; color: #203e6d; font-weight: 600; }
+.cc-queue-filters button span { font-size: .7rem; opacity: .8; }
+@media (max-width: 640px) {
+  .cc-autopilot { align-items: flex-start; flex-direction: column; padding: 1rem; }
+  .cc-autopilot-detail { padding-left: calc(38px + .85rem); text-align: left; }
+  .cc-review-items li { align-items: flex-start; flex-wrap: wrap; }
+  .cc-review-items li > div { min-width: min(100%, 180px); }
+}
+@media (prefers-color-scheme: dark) {
+  .dark .cc-autopilot { background: #112d23; border-color: #284e3f; color: #d2eddd; }
+  .dark .cc-autopilot-mark { background: #224a38; }
+  .dark .cc-autopilot p, .dark .cc-autopilot-detail small { color: #a4c8b3; }
+  .dark .cc-review-items li { border-color: #314054; }
+  .dark .cc-review-reason { color: #edca8a; }
+}

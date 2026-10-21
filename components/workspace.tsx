@@ -2,6 +2,7 @@
 import { orderLabel } from "@/lib/order-label.mjs";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { defaultReportOptions, reportSections, type ReportOptions } from "@/lib/export";
+import { QuickAccess } from './quick-access';
 import {
   Clock3,
   LayoutDashboard,
@@ -74,7 +75,7 @@ import { EntriesTable } from "./entries-table";
 import { demoState } from "@/lib/demo";
 import { ServiceOrders } from "./service-orders";
 import { TechnicalLibrary } from "./technical-library";
-import type { CenterAction } from "@/lib/coordinator-center";
+import { entryReviewIds, type CenterAction } from "@/lib/coordinator-center";
 import "@/app/operations.css";
 import "@/app/checklists.css";
 import {
@@ -109,6 +110,12 @@ const nav = [
   { key: "people", label: "Colaboradores", icon: Users, admin: true },
   { key: "settings", label: "Configurações", icon: Settings, admin: true },
   { key: "profile", label: "Meu acesso", icon: UserRound },
+];
+const navigationGroups = [
+  { label: 'Operação', keys: ['dashboard', 'orders', 'order-history', 'entries', 'reports'] },
+  { label: 'Meu trabalho', keys: ['register', 'insights'] },
+  { label: 'Equipe e recursos', keys: ['people', 'equipment', 'vehicles', 'clients', 'library'] },
+  { label: 'Preferências', keys: ['settings', 'profile'] },
 ];
 type Session = {
   setup?: boolean;
@@ -190,19 +197,19 @@ function Navigation({
             </p>
           </div>
         </div>
-        <p className="eyebrow px-4 pt-6 pb-3 text-slate-400">
-          Área de trabalho
-        </p>
+        {navigationGroups.map(group => {
+          const items = group.keys.map(key => nav.find(item => item.key === key)!).filter(item => !item.admin || state?.me.role === 'coordinator' || !state);
+          if (!items.length) return null;
+          return <div key={group.label} className="navigation-group">
+        <p className="eyebrow px-4 pt-5 pb-2 text-slate-400">{group.label}</p>
         <SidebarMenu>
-          {nav
-            .filter(
-              (n) => !n.admin || state?.me.role === "coordinator" || !state,
-            )
-            .map((n) => (
+          {items.map((n) => (
               <SidebarMenuItem key={n.key}>
                 <SidebarMenuButton
                   className="nav-item"
+                  title={n.label}
                   isActive={view === n.key}
+                  aria-current={view === n.key ? 'page' : undefined}
                   onClick={() => {
                     go(n.key);
                     setOpenMobile(false);
@@ -214,6 +221,8 @@ function Navigation({
               </SidebarMenuItem>
             ))}
         </SidebarMenu>
+        </div>;
+        })}
       </SidebarContent>
       <SidebarFooter className="p-5">
         <div className="rounded-xl bg-white/5 p-4 mb-3">
@@ -271,6 +280,7 @@ export function Workspace() {
     [customTo, setCustomTo] = useState(today()),
     [page, setPage] = useState(1),
     [historyMode, setHistoryMode] = useState<"list" | "people">("people");
+  const [reviewOnly,setReviewOnly] = useState(false);
   const [editor, setEditor] = useState<Editor | null>(null),
     [deleting, setDeleting] = useState<Entry | null>(null),
     [busy, setBusy] = useState(false),
@@ -359,7 +369,7 @@ export function Workspace() {
   useEffect(() => {
     const timer = window.setTimeout(() => setPage(1), 0);
     return () => window.clearTimeout(timer);
-  }, [user, status, day, search, month, period, customFrom, customTo]);
+  }, [user, status, day, search, month, period, customFrom, customTo, reviewOnly]);
   useEffect(() => {
     if (
       !data ||
@@ -389,12 +399,14 @@ export function Workspace() {
     setStatus("all");
     setDay("all");
     setSearch("");
+    setReviewOnly(false);
     setPeriod("month");
     setPage(1);
     const p = new URLSearchParams(window.location.search);
     p.set("view", v);
     // O parâmetro `order` só vale para a navegação que o pediu.
     p.delete("order");
+    p.delete("create");
     for (const [k, value] of Object.entries(params)) p.set(k, value);
     explicitView.current = true;
     window.history.pushState({}, "", "?" + p);
@@ -415,6 +427,7 @@ export function Workspace() {
       setUser(a.userId || "all");
       if (a.month) setMonth(a.month);
       if (a.status) setStatus(a.status);
+      setReviewOnly(!!a.review);
     },
     [go],
   );
@@ -430,6 +443,7 @@ export function Workspace() {
     window.history.replaceState({}, "", "?" + p);
   }
   const all = useMemo(() => calculate(data?.entries || []), [data]);
+  const reviewIds = useMemo(() => entryReviewIds(all), [all]);
   const peopleById = useMemo(
     () => new Map(data?.users.map((person) => [person.id, person]) || []),
     [data?.users],
@@ -444,6 +458,7 @@ export function Workspace() {
             (user === "all" || e.user_id === user) &&
             (status === "all" || e.status === status) &&
             (day === "all" || e.kind === day) &&
+            (!reviewOnly || reviewIds.has(e.id)) &&
             (!search ||
               [
                 e.date,
@@ -459,7 +474,7 @@ export function Workspace() {
                 .includes(search.toLowerCase())),
         )
         .sort((a, b) => (b.date + b.start).localeCompare(a.date + a.start)),
-    [all, range.from, range.to, user, status, day, search, peopleById],
+    [all, range.from, range.to, user, status, day, search, peopleById, reviewOnly, reviewIds],
   );
   const t = totals(rows),
     admin = data?.me.role === "coordinator";
@@ -629,9 +644,10 @@ export function Workspace() {
     <SidebarProvider
       style={{ "--sidebar-width": "15.5rem" } as React.CSSProperties}
     >
+      <a href="#workspace-content" className="skip-link">Ir para o conteúdo</a>
       <Navigation view={view} go={go} state={data} demo={demo} />
-      <main className="min-w-0 flex-1">
-        <header className="flex min-h-20 items-center justify-between gap-3 border-b bg-white px-5 lg:px-9">
+      <main className="min-w-0 flex-1 workspace-main">
+        <header className="workspace-topbar flex min-h-20 items-center justify-between gap-3 border-b bg-white px-5 lg:px-9">
           <div className="flex items-center gap-3">
             <SidebarTrigger aria-label="Abrir menu" className="size-11" />
             <span className="text-sm muted hidden sm:inline">
@@ -643,6 +659,11 @@ export function Workspace() {
             </span>
           </div>
           <div className="flex items-center gap-3">
+            <QuickAccess key={data.me.id + String(demo)} state={data} demo={demo} pages={nav} onNavigate={go}
+              onOrder={id => centerAction({kind:'order',orderId:id})}
+              onPerson={id => centerAction({kind:'entries',userId:id})}
+              onCreateOrder={() => { go('orders',{create:'order'}); setOrdersKey(key=>key+1); }}
+              onRegister={() => setEditor({kind:'entry'})} />
             {demo ? (
               <Button
                 variant="outline"
@@ -684,7 +705,7 @@ export function Workspace() {
             </span>
           </div>
         )}
-        <div className="content">
+        <div className="content" id="workspace-content" tabIndex={-1}>
           {data && (
             <>
               <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
@@ -709,7 +730,7 @@ export function Workspace() {
                           : view === "reports"
                             ? "Transforme horas registradas em decisões mais claras."
                             : view === "people"
-                              ? "Uma equipe pequena. Uma visão completa."
+                              ? "Pessoas, acessos e informações da equipe em um só lugar."
                               : view === "clients"
                                 ? "Organize os lugares onde sua equipe faz a diferença."
                                 : view === "settings"
@@ -757,9 +778,13 @@ export function Workspace() {
                     view !== "settings" &&
                     !["orders", "order-history", "clients", "vehicles", "library", "equipment"].includes(view) &&
                     view !== "register" && (
-                      <Button onClick={() => view === 'entries' ? setEditor({ kind: 'entry' }) : go("register")} className="action">
+                      <Button onClick={() => {
+                        if (view === 'dashboard' && admin) { go('orders', {create:'order'}); setOrdersKey(key=>key+1); }
+                        else if (view === 'entries') setEditor({kind:'entry'});
+                        else go('register');
+                      }} className="action">
                         <Plus />
-                        Registrar ponto
+                        {view === 'dashboard' && admin ? 'Gerar OS' : 'Registrar ponto'}
                       </Button>
                     )
                   )}
@@ -904,6 +929,7 @@ export function Workspace() {
                           onChange={(e) => setSearch(e.target.value)}
                         />
                       </label>
+                      {admin && <label className="review-filter"><input type="checkbox" checked={reviewOnly} onChange={event=>setReviewOnly(event.target.checked)}/>Somente pontos a conferir</label>}
                     </>
                   )}
                 </div>

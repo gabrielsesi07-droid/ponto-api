@@ -59,9 +59,13 @@ export async function POST(req: Request, ctx: Context) {
     const bytes = Buffer.concat(chunks);
     if (bytes.subarray(0, 5).toString() !== "%PDF-")
       throw new ApiError(400, "O arquivo precisa ser um PDF válido.");
-    const name = decodeURIComponent(
-      req.headers.get("x-file-name") || "ordem-de-servico.pdf",
-    )
+    let decodedName: string;
+    try {
+      decodedName = decodeURIComponent(req.headers.get("x-file-name") || "ordem-de-servico.pdf");
+    } catch {
+      throw new ApiError(400, "Nome do arquivo inválido. Selecione o PDF novamente.");
+    }
+    const name = decodedName
       .replace(/[\r\n/\\]/g, "_")
       .slice(0, 160);
     const sql = db();

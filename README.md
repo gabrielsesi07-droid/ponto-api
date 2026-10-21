@@ -39,6 +39,7 @@ A demonstração em /?demo=1 usa dados fictícios e não salva alterações. A d
 npm run typecheck
 npm test
 npm run verify
+npm run test:isolated
 npm run test:api
 npm run build
 ```

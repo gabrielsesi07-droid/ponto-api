@@ -16,6 +16,7 @@
     "db:migrate": "node --env-file=.env scripts/migrate.mjs",
     "typecheck": "tsc --noEmit",
     "test": "node scripts/test-unit.mjs",
+    "test:isolated": "node scripts/verify-isolated.mjs",
     "verify": "npm run lint && npm run typecheck && npm test && npm run build:vercel",
     "test:order-workflow": "node --env-file=.env tests/order-workflow-isolated.mjs",
     "test:security-db": "node --env-file-if-exists=.env --test tests/security-integrity.integration.mjs",

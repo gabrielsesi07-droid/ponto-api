@@ -11,6 +11,9 @@ if (process.env.DATABASE_URL) {
 }
 const base = process.env.TEST_BASE_URL || 'http://localhost:5173';
 if (!['localhost', '127.0.0.1'].includes(new URL(base).hostname)) throw new Error('Only a local isolated test server is allowed.');
+const target = new URL(process.env.TEST_DATABASE_URL);
+if (!['localhost', '127.0.0.1'].includes(target.hostname) || target.pathname !== '/horacerta_qa' || !target.port)
+  throw new Error('Only an explicit loopback PostgreSQL port and database horacerta_qa are allowed.');
 const sql = neon(process.env.TEST_DATABASE_URL), tag = crypto.randomUUID().slice(0, 8);
 const username = 'qa_security_' + tag, adminPin = randomTemporaryPin(), finalPin = '846291';
 let admin, worker, orderId, clientId;
@@ -61,9 +64,15 @@ try {
   const hours = { user_id: worker.id, order_id: orderId, date: today, start: '08:00', end: '09:00', break_minutes: 0 };
   expect(await call('/api/entries', { ...hours, end: null }, worker.id), 400, 'incomplete manual hours are rejected');
   expect(await call('/api/clock', { action: 'start', order_id: orderId }, worker.id), 409, 'new legacy timers remain disabled');
+  expect(await call('/api/entries', hours, worker.id), 409, 'work hours require a personally confirmed shift');
+  expect(await call('/api/shifts', { order_id: orderId, work_type: 'work', shift: { start: '08:00', end: '17:00', break_start: '12:00', break_end: '13:00' } }, worker.id), 200, 'worker confirms the personal work shift');
   const point = expect(await call('/api/entries', hours, worker.id), 200, 'manual completed hours are recorded');
-  const [entry] = await sql`SELECT version,rate FROM horacerta.entries WHERE id=${point.data.id}`;
+  let [entry] = await sql`SELECT version,rate,status FROM horacerta.entries WHERE id=${point.data.id}`;
   assert.equal(Number(entry.rate), 20);
+  assert.equal(entry.status, 'Aprovado', 'New v2 hours use automatic approval');
+  expect(await call('/api/entries', { ...hours, id: point.data.id, version: entry.version, end: '09:15' }, worker.id), 200, 'worker corrects own automatically approved hours while the month is open');
+  [entry] = await sql`SELECT version,rate,status FROM horacerta.entries WHERE id=${point.data.id}`;
+  assert.equal(entry.status, 'Aprovado');
   expect(await call('/api/entries', { ...hours, start: '08:30', end: '09:30' }, worker.id), 409, 'overlapping hours are rejected');
   expect(await call('/api/entries', { id: point.data.id, version: entry.version, status: 'Aprovado' }, worker.id, 'PATCH'), 403, 'worker cannot approve hours');
   expect(await call('/api/entries', { id: point.data.id, version: entry.version, status: 'Aprovado' }, admin.id, 'PATCH'), 200, 'coordinator approves with serialized status change');
@@ -83,6 +92,9 @@ try {
   if (ids.length) await sql.transaction([
     sql`DELETE FROM horacerta.audit WHERE actor_id=ANY(${ids}::uuid[])`,
     sql`DELETE FROM horacerta.entries WHERE user_id=ANY(${ids}::uuid[])`,
+    sql`DELETE FROM horacerta.checklist_history WHERE checklist_id IN (SELECT id FROM horacerta.order_checklists WHERE order_id=${orderId || null}::uuid)`,
+    sql`DELETE FROM horacerta.order_checklists WHERE order_id=${orderId || null}::uuid`,
+    sql`DELETE FROM horacerta.order_shifts WHERE order_id=${orderId || null}::uuid`,
     sql`DELETE FROM horacerta.order_events WHERE order_id=${orderId || null}::uuid`,
     sql`DELETE FROM horacerta.order_acknowledgements WHERE order_id=${orderId || null}::uuid`,
     sql`DELETE FROM horacerta.orders WHERE id=${orderId || null}::uuid`,
