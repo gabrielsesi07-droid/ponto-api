@@ -8,6 +8,37 @@ import ts from 'typescript';
 const projectRoot = fileURLToPath(new URL('../', import.meta.url));
 const classNames = selector => [...selector.matchAll(/\.([a-zA-Z_][\w-]*)/g)].map(match => match[1]);
 
+function within(directory, relative) {
+  const file = path.resolve(directory, relative);
+  const resolved = path.relative(directory, file);
+  if (!resolved || resolved === '..' || resolved.startsWith('..' + path.sep) || path.isAbsolute(resolved))
+    throw new Error('Referência fora do diretório de build: ' + relative);
+  return file;
+}
+
+/**
+ * Next's Vercel adapter emits Build Output API v3 into <distDir>/output before
+ * `next build` returns. Its root static page is `.html`, mapped to `./` by an
+ * override; the CLI's equivalent output lives in .vercel/output.
+ * See nextjs/adapter-vercel packages/adapter/src/{index,outputs}.ts.
+ */
+async function publishedHome(root, dist) {
+  for (const output of [path.join(dist, 'output'), path.join(root, '.vercel/output')]) {
+    if (!existsSync(output)) continue;
+    const configFile = path.join(output, 'config.json');
+    const config = JSON.parse(await readFile(configFile, 'utf8'));
+    if (config.version !== 3) throw new Error('Formato de publicação Vercel não suportado: ' + path.relative(root, configFile));
+    const homes = Object.entries(config.overrides ?? {}).filter(([file, override]) =>
+      /\.html$/.test(file) && override && ['/', './', '.', ''].includes(override.path) &&
+      (!override.contentType || /^text\/html(?:;|$)/i.test(override.contentType)));
+    if (homes.length !== 1)
+      throw new Error('O output Vercel precisa identificar exatamente um HTML para a rota inicial em config.json.overrides.');
+    const staticDir = path.join(output, 'static');
+    return { htmlFile: within(staticDir, homes[0][0]), assetDir: staticDir, assetPrefix: '/' };
+  }
+  return { htmlFile: path.join(dist, 'server/app/index.html'), assetDir: dist, assetPrefix: '/_next/' };
+}
+
 /** Follow the home route's source imports without executing application code or opening a database. */
 async function authoredStyles(root) {
   const visited = new Set(), sources = new Map();
@@ -67,7 +98,8 @@ export async function verifyBuiltStyles({ root = projectRoot, distDir = '.next' 
   root = path.resolve(root);
   const dist = path.resolve(root, distDir);
   await readFile(path.join(dist, 'BUILD_ID'), 'utf8');
-  const html = await readFile(path.join(dist, 'server/app/index.html'), 'utf8');
+  const publication = await publishedHome(root, dist);
+  const html = await readFile(publication.htmlFile, 'utf8');
   const references = [...new Set([...html.matchAll(/href=["']([^"']+\.css(?:\?[^"']*)?)["']/g)].map(match => match[1]))];
   if (!references.length) throw new Error('O HTML de produção não referencia nenhuma folha de estilos.');
   const actual = new Set();
@@ -76,8 +108,7 @@ export async function verifyBuiltStyles({ root = projectRoot, distDir = '.next' 
     const url = new URL(reference, 'https://build.invalid');
     if (url.origin !== 'https://build.invalid' || !url.pathname.startsWith('/_next/static/'))
       throw new Error('Referência CSS inesperada no HTML de produção: ' + reference);
-    const file = path.resolve(dist, '.' + decodeURIComponent(url.pathname.slice('/_next'.length)));
-    if (path.relative(dist, file).startsWith('..')) throw new Error('Referência CSS fora do diretório de build.');
+    const file = within(publication.assetDir, decodeURIComponent(url.pathname.slice(publication.assetPrefix.length)));
     const tree = postcss.parse(await readFile(file, 'utf8'), { from: file });
     tree.walkRules(rule => {
       classNames(rule.selector).forEach(name => actual.add(name));

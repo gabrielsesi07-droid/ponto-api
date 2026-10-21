@@ -17,8 +17,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="pt-BR" suppressHydrationWarning>
-      <body className={`${geist.variable} ${plexMono.variable}`}>
+    <html lang="pt-BR" className={`${geist.variable} ${plexMono.variable}`} suppressHydrationWarning>
+      <body>
         <AppearanceProvider>
         {children}
         <Toaster richColors position="top-right" />
