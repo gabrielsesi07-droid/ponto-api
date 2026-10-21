@@ -1124,7 +1124,7 @@ export function Workspace() {
                       <div className="grid gap-3 sm:grid-cols-2">
                         {reportSections.map(section => (
                           <label key={section.key} className="flex items-center gap-3 text-sm cursor-pointer">
-                            <input type="checkbox" className="size-4 accent-blue-600" checked={reportOptions[section.key]} disabled={exporting} onChange={event => setReportOptions(previous => ({ ...previous, [section.key]: event.target.checked }))} />
+                            <input type="checkbox" className="size-4 accent-[var(--primary)]" checked={reportOptions[section.key]} disabled={exporting} onChange={event => setReportOptions(previous => ({ ...previous, [section.key]: event.target.checked }))} />
                             {section.label}
                           </label>
                         ))}

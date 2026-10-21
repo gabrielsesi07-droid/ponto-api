@@ -9,6 +9,19 @@ Identidade aplicada ao aplicativo: verde floresta, superfícies claras e detalhe
 - Busca, lista e filtro usam o conjunto completo. A rolagem das colunas no PC mantém a mesa próxima sem remover atendimentos. No celular as etapas ficam empilhadas.
 - Falha ao carregar operações mantém o estado não verificado; conferência dos pontos e fechamento mensal permanecem no painel.
 
+## Documentos e exportações
+
+PDFs de jornada e planilhas usam a paleta clara Signature, independentemente do tema escolhido no aplicativo. As cores dos dois formatos ficam em `lib/export-document.ts`; período e emissão usam a apresentação brasileira, com horário de Brasília.
+
+- O PDF agrupa campos relacionados em colunas legíveis, repete o cabeçalho nas páginas seguintes e inclui número de página. Faixas e observações opcionais ficam em um detalhamento com referências para os lançamentos correspondentes.
+- O Excel mantém a tabela na aba Lançamentos, com filtros, identificação e cabeçalhos congelados. Datas, horários, durações e valores são células tipadas. Durações usam `[h]` para somar acima de 24 horas. Textos que ultrapassam a altura permitida pelo Excel também são apresentados em partes na aba Detalhes. As configurações de impressão repetem a identificação em tabelas largas.
+- Data e colaborador continuam obrigatórios. Os resumos respeitam as seções selecionadas: horas só aparecem quando solicitadas. Estimativas financeiras e a moeda de cada registro exigem seleção explícita; valor-hora ausente continua sem estimativa.
+- CSV mantém a estrutura tabular com BOM UTF-8, separador `;`, escape de aspas e proteção contra fórmulas em textos. O formato não comporta estilos visuais.
+- A impressão dos checklists usa folha A4, cabeçalho Signature, metadados, ida e retorno, observações e campos manuais para responsáveis. Alertas de pendência, dispensa e documento obsoleto permanecem visíveis. A consulta continua exigindo acesso à OS.
+- PDFs anexados às OS e documentos da biblioteca são os arquivos originais recebidos. Sua diagramação e seu conteúdo não são reescritos.
+
+`createReportDocument` gera o arquivo sem acionar o navegador; `exportReport` faz o download. Isso permite testar os mesmos arquivos usados pelo aplicativo. As suítes de exportação verificam seleção, privacidade, moedas históricas, células tipadas, textos longos, paginação e proteção do CSV.
+
 ## Verificação
 
 `npm run verify` executa lint, tipos, testes, build e a verificação das folhas de estilos efetivamente vinculadas ao HTML, incluindo a posição do link de salto. Depois da publicação, `npm run verify:built-styles -- --url=https://ponto-api-gold.vercel.app` confere o HTML e os estilos públicos do site, comparando-os com as classes autorais da versão publicada. Isso detecta artefatos CSS incompletos ou antigos sem depender dos diretórios internos da hospedagem. `npm run test:isolated` exercita regras e permissões em bancos descartáveis.

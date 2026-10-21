@@ -1,6 +1,7 @@
 import { orderLabel } from "./order-label.mjs";
 import type { Calculated, State } from "./domain";
 import { duration } from "./domain.ts";
+import type { ReportDocumentContext } from "./export-document";
 export const reportSections = [
   { key: "service", label: "OS, empresa e serviço" },
   { key: "times", label: "Entrada, saída e intervalo" },
@@ -37,97 +38,53 @@ export function buildReportData(rows: Calculated[], state: State, options: Repor
     { header: "Observações do cálculo", group: "notes", value: e => e.calculation_warning || "" },
     { header: "Valor extras estimado", group: "values", value: e => e.extra > 0 && e.missing_rate ? "" : Number(e.amount.toFixed(2)) },
     { header: "Conferência do valor", group: "values", value: e => e.missing_rate || Number(e.rate) === 0 ? "Valor-hora não informado; estimativa indisponível" : "Valor estimado" },
+    { header: "Moeda", group: "values", value: e => e.rules.currency || state.settings.currency },
   ];
   const selected = columns.filter(column => !column.group || options[column.group]);
   return { headers: selected.map(column => column.header), data: rows.map(entry => selected.map(column => column.value(entry))) };
 }
 
-export async function exportReport(
+export async function createReportDocument(
   format: "csv" | "xlsx" | "pdf",
   rows: Calculated[],
   state: State,
   period: string,
   options: ReportOptions = defaultReportOptions,
+  generatedAt = new Date(),
 ) {
   const { headers, data } = buildReportData(rows, state, options);
-  const name = "horacerta-" + period.replace(/[^0-9-]/g, "") + "." + format;
-  function download(blob: Blob) {
-    const url = URL.createObjectURL(blob),
-      a = document.createElement("a");
-    a.href = url;
-    a.download = name;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
+  const context: ReportDocumentContext = { headers, data, rows, state, period, options, generatedAt };
   if (format === "csv") {
     const safe = (v: unknown) => {
       let s = String(v);
-      if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+      if (/^(?:[\s\uFEFF]*[=+\-@]|[\t\r\n])/.test(s)) s = "'" + s;
       return '"' + s.replace(/"/g, '""') + '"';
     };
-    download(
-      new Blob(
+    return new Blob(
         [
           "\ufeff" +
             [headers, ...data].map((r) => r.map(safe).join(";")).join("\r\n"),
         ],
         { type: "text/csv;charset=utf-8" },
-      ),
     );
   }
   if (format === "xlsx") {
-    const { default: ExcelJS } = await import("exceljs");
-    const { Workbook } = ExcelJS;
-    const book = new Workbook(),
-      sheet = book.addWorksheet("Lançamentos");
-    sheet.addRow(headers);
-    data.forEach((r) => sheet.addRow(r));
-    sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
-    sheet.getRow(1).fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "FF142B42" },
-    };
-    sheet.columns.forEach(
-      (c, i) => (c.width = [2, 3, 4].includes(i) ? 28 : 18),
-    );
-    sheet.views = [{ state: "frozen", ySplit: 1 }];
-    sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: headers.length } };
-    download(
-      new Blob([(await book.xlsx.writeBuffer()) as ArrayBuffer], {
-        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      }),
-    );
+    const { createReportWorkbook } = await import("./export-xlsx.ts");
+    return createReportWorkbook(context);
   }
-  if (format === "pdf") {
-    const [{ jsPDF }, { autoTable }] = await Promise.all([
-      import("jspdf"),
-      import("jspdf-autotable"),
-    ]);
-    const pdf = new jsPDF({ orientation: "landscape" });
-    pdf.setFontSize(20);
-    pdf.text("HoraCerta | Relatório de jornada", 14, 18);
-    pdf.setFontSize(10);
-    pdf.text(
-      period + (options.values ? " · Valores estimados · Moeda: " + state.settings.currency : ""),
-      14,
-      26,
-    );
-    autoTable(pdf, {
-      startY: 33,
-      head: [headers],
-      body: data.map((r) => r.map(String)),
-      styles: { fontSize: 7, cellPadding: 2 },
-      headStyles: { fillColor: [20, 43, 66] },
-      didDrawPage: () => {
-        pdf.setFontSize(8);
-        pdf.text(
-          "Gerado em " + new Date().toLocaleString("pt-BR"),
-          14,
-          pdf.internal.pageSize.height - 7,
-        );
-      },
-    });
-    download(pdf.output('blob'));
-  }
+  const { createReportPdf } = await import("./export-pdf.ts");
+  return createReportPdf(context);
+}
+
+export async function exportReport(
+  format: "csv" | "xlsx" | "pdf", rows: Calculated[], state: State,
+  period: string, options: ReportOptions = defaultReportOptions,
+) {
+  const blob = await createReportDocument(format, rows, state, period, options);
+  const url = URL.createObjectURL(blob), anchor = document.createElement("a");
+  anchor.href = url;
+  const filenamePeriod = period.trim().replace(/\s+a\s+/g, "-a-").replace(/[^0-9a-]/g, "");
+  anchor.download = "horacerta-jornada-" + filenamePeriod + "." + format;
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
