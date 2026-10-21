@@ -3,8 +3,8 @@ import { orderLabel } from "@/lib/order-label.mjs";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { defaultReportOptions, reportSections, type ReportOptions } from "@/lib/export";
 import { QuickAccess } from './quick-access';
+import { AppearanceToggle } from './appearance';
 import {
-  Clock3,
   LayoutDashboard,
   Timer,
   ListChecks,
@@ -32,6 +32,7 @@ import {
   BookOpen,
   Wrench,
   History,
+  PanelsTopLeft,
 } from "lucide-react";
 import {
   Sidebar,
@@ -165,26 +166,25 @@ function Navigation({
   state: State | null;
   demo: boolean;
 }) {
-  const { setOpenMobile } = useSidebar();
+  const { setOpenMobile, state: sidebarState, isMobile, setOpen } = useSidebar();
+  const compact = sidebarState === "collapsed" && !isMobile;
+  const railLabels: Record<string, string> = { dashboard: "Operação", orders: "Serviços", register: "Meu ponto", entries: "Pontos", reports: "Relatórios", people: "Equipe", insights: "Resumo", profile: "Acesso" };
+  const railKeys = state?.me.role === "employee" ? ["register", "orders", "entries", "insights", "reports"] : ["dashboard", "orders", "entries", "reports", "people"];
   return (
-    <Sidebar>
-      <SidebarHeader className="px-6 pt-8 pb-6">
-        <div className="flex items-center gap-3 text-white">
-          <div className="rounded-xl bg-white/10 p-2">
-            <Clock3 className="size-7 text-amber-300" />
-          </div>
-          <div>
+    <Sidebar collapsible="icon" className="signature-sidebar">
+      <SidebarHeader className={`signature-sidebar-header${compact ? " is-compact" : ""}`}>
+        <button className="signature-brand" aria-label="HoraCerta · ir ao início" onClick={() => go(state?.me.role === "employee" ? "register" : "dashboard")}>
+          <span className="signature-monogram" aria-hidden="true">hc</span>
+          {!compact && <span className="signature-wordmark">
             <b className="text-[23px] tracking-tight">
-              HoraCerta<span className="text-amber-300">.</span>
+              HoraCerta<span>.</span>
             </b>
-            <p className="text-[10px] tracking-[.18em] text-slate-300">
-              PONTO EM SERVIÇO
-            </p>
-          </div>
-        </div>
+            <small>GESTÃO EM MOVIMENTO</small>
+          </span>}
+        </button>
       </SidebarHeader>
-      <SidebarContent className="px-4">
-        <div className="mx-1 my-3 rounded-xl border border-white/10 p-3.5 flex items-center gap-3">
+      <SidebarContent className={compact ? "signature-rail-content" : "px-3"}>
+        {!compact && <div className="signature-team">
           <span className="rounded-lg bg-white/10 p-2">
             <Building2 size={18} />
           </span>
@@ -196,8 +196,11 @@ function Navigation({
                 : "Seu espaço de trabalho"}
             </p>
           </div>
-        </div>
-        {navigationGroups.map(group => {
+        </div>}
+        {compact ? <nav aria-label="Menu principal" className="signature-rail-menu">
+          {railKeys.map(key => nav.find(item => item.key === key)!).map(item => <button key={item.key} title={item.label} aria-label={item.label} aria-current={view === item.key ? "page" : undefined} onClick={() => go(item.key)} className="signature-rail-item"><item.icon size={21}/><span>{railLabels[item.key]}</span></button>)}
+          <button className="signature-rail-item" aria-label="Ver todos os recursos e configurações" title="Todos os recursos e configurações" onClick={() => setOpen(true)}><PanelsTopLeft size={21}/><span>Recursos</span></button>
+        </nav> : navigationGroups.map(group => {
           const items = group.keys.map(key => nav.find(item => item.key === key)!).filter(item => !item.admin || state?.me.role === 'coordinator' || !state);
           if (!items.length) return null;
           return <div key={group.label} className="navigation-group">
@@ -224,8 +227,8 @@ function Navigation({
         </div>;
         })}
       </SidebarContent>
-      <SidebarFooter className="p-5">
-        <div className="rounded-xl bg-white/5 p-4 mb-3">
+      <SidebarFooter className={compact ? "signature-rail-footer" : "p-4"}>
+        {!compact && <div className="signature-access-note">
           <div className="flex items-center gap-2 text-amber-200 text-sm font-medium">
             <ShieldCheck size={17} />
             {demo ? "Demonstração" : "Acesso protegido"}
@@ -235,22 +238,23 @@ function Navigation({
               ? "Explore com dados fictícios. Nenhum lançamento é salvo."
               : "Cada pessoa vê os dados permitidos para seu perfil."}
           </p>
-        </div>
+        </div>}
         <button
-          className="flex gap-3 items-center p-2 text-left"
+          className="signature-account"
+          aria-label={`Meu acesso · ${state?.me.name || "HoraCerta"}`}
           onClick={() => go("profile")}
         >
           <span className="avatar bg-slate-600! text-white!">
             {initials(state?.me.name || "HC")}
           </span>
-          <div>
+          {!compact && <div>
             <b className="block text-sm text-white">
               {state?.me.name || "Bem-vindo"}
             </b>
             <small className="text-slate-300">
               {state?.me.role === "employee" ? "Colaborador" : "Coordenador"}
             </small>
-          </div>
+          </div>}
         </button>
       </SidebarFooter>
     </Sidebar>
@@ -642,23 +646,25 @@ export function Workspace() {
   }
   return (
     <SidebarProvider
-      style={{ "--sidebar-width": "15.5rem" } as React.CSSProperties}
+      defaultOpen={false}
+      style={{ "--sidebar-width": "15.5rem", "--sidebar-width-icon": "5.5rem" } as React.CSSProperties}
     >
       <a href="#workspace-content" className="skip-link">Ir para o conteúdo</a>
       <Navigation view={view} go={go} state={data} demo={demo} />
       <main className="min-w-0 flex-1 workspace-main">
-        <header className="workspace-topbar flex min-h-20 items-center justify-between gap-3 border-b bg-white px-5 lg:px-9">
+        <header className="workspace-topbar flex items-center justify-between gap-3 border-b px-5 lg:px-7">
           <div className="flex items-center gap-3">
             <SidebarTrigger aria-label="Abrir menu" className="size-11" />
             <span className="text-sm muted hidden sm:inline">
-              Área de trabalho
+              HoraCerta<span className="signature-brand-dot">.</span>
             </span>
             <ChevronRight size={14} className="muted hidden sm:inline" />
             <span className="text-sm font-medium hidden min-[400px]:inline">
               {title}
             </span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="workspace-topbar-actions flex items-center gap-2">
+            <AppearanceToggle />
             <QuickAccess key={data.me.id + String(demo)} state={data} demo={demo} pages={nav} onNavigate={go}
               onOrder={id => centerAction({kind:'order',orderId:id})}
               onPerson={id => centerAction({kind:'entries',userId:id})}
@@ -668,10 +674,11 @@ export function Workspace() {
               <Button
                 variant="outline"
                 onClick={() => changeDemo(false)}
-                className="action text-sm"
+                aria-label="Sair da demonstração"
+                className="action text-sm demo-exit"
               >
                 <Eye size={16} />
-                Sair da demonstração
+                <span className="hidden sm:inline">Sair da demonstração</span>
               </Button>
             ) : data ? (
               <Button
@@ -698,7 +705,7 @@ export function Workspace() {
           </div>
         </header>
         {demo && (
-          <div className="bg-amber-50 text-amber-900 border-b border-amber-200 px-5 lg:px-9 py-2.5 text-sm flex gap-2 items-center">
+          <div className="demo-notice border-b px-5 lg:px-7 py-2 text-xs flex gap-2 items-center">
             <Eye size={16} />
             <span>
               Demonstração · Os nomes, valores e jornadas abaixo são fictícios.
@@ -708,19 +715,25 @@ export function Workspace() {
         <div className="content" id="workspace-content" tabIndex={-1}>
           {data && (
             <>
-              <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
+              <div className="workspace-hero mb-6 flex flex-wrap items-end justify-between gap-4">
                 <div>
                   <p className="eyebrow muted mb-2">
                     {view === "dashboard"
-                      ? "VISÃO GERAL"
+                      ? "CENTRO DE OPERAÇÕES"
                       : ["profile", "insights", "register"].includes(view)
                         ? "MEU ESPAÇO"
                         : "ESPAÇO DA EQUIPE"}
                   </p>
-                  <h1>{title}</h1>
+                  <h1>{view === "dashboard" ? "Operação em perspectiva." : title}</h1>
                   <p className="muted mt-1 text-[15px]">
                     {view === "dashboard"
-                      ? "O que precisa da sua atenção, em ordem de prioridade."
+                      ? "Equipe, serviços e próximos passos. Tudo sob seu olhar."
+                      : view === "orders"
+                        ? "Planeje a equipe e acompanhe cada atendimento."
+                      : view === "order-history"
+                        ? "Serviços encerrados, resultados e conferências em um só lugar."
+                      : view === "vehicles"
+                        ? "Acompanhe a frota, as viagens e os retornos da equipe."
                       : ["library", "equipment"].includes(view)
                         ? "Encontre os materiais técnicos que apoiam cada serviço."
                       : view === "insights"
@@ -740,7 +753,9 @@ export function Workspace() {
                                     : "Sua atividade, seu histórico e seus resultados."}
                   </p>
                 </div>
-                <div className="flex gap-3">
+                <div className="workspace-hero-actions flex gap-3">
+                  {view === "dashboard" && <label className="signature-period">Conferência mensal<input aria-label="Mês" type="month" value={month} onChange={event => { if (event.target.value) { setMonth(event.target.value); setPeriod("month"); } }}/></label>}
+                  {view === "dashboard" && <div className="signature-date"><b>{new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "long", timeZone: "America/Sao_Paulo" }).format(new Date())}</b><span>{new Intl.DateTimeFormat("pt-BR", { weekday: "short", year: "numeric", timeZone: "America/Sao_Paulo" }).format(new Date())}</span></div>}
                   {loading && (
                     <LoaderCircle
                       className="animate-spin muted self-center"
@@ -775,7 +790,7 @@ export function Workspace() {
                       Configurar meu acesso
                     </Button>
                   ) : (
-                    view !== "settings" &&
+                    view !== "settings" && view !== "dashboard" &&
                     !["orders", "order-history", "clients", "vehicles", "library", "equipment"].includes(view) &&
                     view !== "register" && (
                       <Button onClick={() => {
@@ -813,7 +828,6 @@ export function Workspace() {
                 onRegister={order => setEditor({kind:'entry', order: {id:order.id, date: new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(order.starts_at)), company:order.client_name, service:order.title}})}
               />
               {[
-                "dashboard",
                 "insights",
                 "entries",
                 "reports",
@@ -961,6 +975,7 @@ export function Workspace() {
                   demo={demo}
                   busy={busy}
                   onAction={centerAction}
+                  onCreateOrder={() => { go('orders', {create:'order'}); setOrdersKey(key=>key+1); }}
                   onApprove={(e) => void updateStatus(e, "Aprovado")}
                   onEdit={(e) => setEditor({ kind: "entry", data: e })}
                 />

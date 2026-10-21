@@ -147,7 +147,7 @@ export function PersonalInsights({
                 >
                   <CartesianGrid
                     vertical={false}
-                    stroke="#e8edf5"
+                    stroke="var(--border)"
                     strokeDasharray="4 4"
                   />
                   <XAxis
@@ -169,7 +169,7 @@ export function PersonalInsights({
                   />
                   <Bar
                     dataKey="hours"
-                    fill="#3d73e5"
+                    fill="var(--chart-1)"
                     radius={[4, 4, 0, 0]}
                     isAnimationActive={false}
                   />
@@ -229,7 +229,7 @@ export function PersonalInsights({
                   {months.map((m) => (
                     <Cell
                       key={m.key}
-                      fill={m.key === month ? "#3d73e5" : "#c9d8f5"}
+                      fill={m.key === month ? "var(--chart-1)" : "var(--chart-3)"}
                     />
                   ))}
                 </Bar>
@@ -391,7 +391,7 @@ export function PersonalInsights({
           </Button>
         </section>
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#142b42] text-white p-5">
+      <div className="insight-nudge flex flex-wrap items-center justify-between gap-3 rounded-xl text-white p-5">
         <div>
           <b>Voltou do campo?</b>
           <p className="text-sm text-slate-300 mt-1">

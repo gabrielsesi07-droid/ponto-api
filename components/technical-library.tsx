@@ -59,7 +59,7 @@ function DocumentReader({ doc, models, admin, close, refreshed }: {
     } catch (e) { toast.error((e as Error).message); } finally { setBusy(false); }
   }
   return <Dialog open onOpenChange={open => { if (!open && !busy) close(); }}>
-    <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-3xl">
+    <DialogContent className="library-document-dialog max-h-[90dvh] overflow-y-auto sm:max-w-3xl">
       <DialogHeader>
         <DialogTitle className="pr-6 break-words">{doc.name}</DialogTitle>
         <DialogDescription>Documento original preservado · {sizeLabel(doc.size)} · {reviewLabels[doc.status]}</DialogDescription>
@@ -147,15 +147,15 @@ export function TechnicalLibrary({ admin, demo = false, orderId, initialTab = 'd
       refresh(); toast.success('Modelo atualizado.');
     } catch (e) { toast.error((e as Error).message); } finally { setBusyModel(''); }
   }
-  if (demo) return <div className="rounded-xl border bg-white p-5"><BookOpen className="mb-2" /><h2 className="font-semibold">Biblioteca técnica privada</h2><p className="mt-2 text-sm">Entre com seu acesso para consultar os materiais liberados. Documentos internos não aparecem na demonstração.</p></div>;
-  return <section className="min-w-0 space-y-5" aria-label="Biblioteca técnica">
-    {!orderId && <header className="rounded-2xl border bg-white p-5 sm:p-7">
+  if (demo) return <div className="technical-library rounded-xl border bg-white p-5"><BookOpen className="mb-2" /><h2 className="font-semibold">Biblioteca técnica privada</h2><p className="mt-2 text-sm">Entre com seu acesso para consultar os materiais liberados. Documentos internos não aparecem na demonstração.</p></div>;
+  return <section className="technical-library min-w-0 space-y-5" aria-label="Biblioteca técnica">
+    {!orderId && <header className="library-header rounded-2xl border bg-white p-5 sm:p-7">
       <span className="flex items-center gap-2 text-sm font-semibold text-blue-700"><BookOpen size={20} />CONHECIMENTO DA EQUIPE</span>
       <h2 className="mt-3 text-2xl font-bold">{initialTab === 'models' ? 'Catálogo e checklists padrão' : 'Biblioteca técnica'}</h2>
       <p className="mt-2 text-sm text-slate-600">Checklists, catálogos e manuais em um só lugar. Modelos de equipamento, sem controle de estoque físico.</p>
       {admin && data?.recent && <p className="mt-3 text-xs text-slate-600">Última importação: {new Date(data.recent.created_at).toLocaleString('pt-BR')}{data.recent.finished_at ? ` · ${data.recent.summary.documents || 0} documentos · ${data.recent.summary.obsolete || 0} obsoletos · ${data.recent.summary.no_text || 0} sem texto` : ' · Importação incompleta; contate o responsável'}. Atualizações das pastas exigem nova importação local.</p>}
     </header>}
-    {!orderId && <div className="flex flex-wrap gap-2" role="group" aria-label="Tipo de consulta">
+    {!orderId && <div className="library-tabs flex flex-wrap gap-2" role="group" aria-label="Tipo de consulta">
       <Button variant={tab === 'documents' ? 'default' : 'outline'} onClick={() => setTab('documents')}><FileText size={18} />Documentos</Button>
       <Button variant={tab === 'models' ? 'default' : 'outline'} onClick={() => setTab('models')}><Wrench size={18} />Modelos de equipamento</Button>
       <Button variant="outline" disabled={loading} onClick={refresh}>Atualizar biblioteca</Button>
@@ -171,7 +171,7 @@ export function TechnicalLibrary({ admin, demo = false, orderId, initialTab = 'd
       <p className="text-sm text-slate-600" role="status">{loading ? 'Buscando documentos…' : `${data?.total || 0} documento(s) encontrado(s)`}</p>
       {!loading && !error && data?.total === 0 && <div className="rounded-xl border border-dashed p-6 text-sm">{orderId ? 'Nenhum documento liberado para os modelos desta OS. O coordenador pode vincular modelos e revisar os materiais na Biblioteca.' : 'Nenhum documento com estes filtros. Materiais novos precisam ser liberados pelo coordenador.'}</div>}
       {!loading && !error && <div className={`grid gap-3 ${orderId ? '' : 'lg:grid-cols-2'}`}>
-        {data?.documents.map(doc => <article key={doc.id} className="min-w-0 rounded-xl border bg-white p-4">
+        {data?.documents.map(doc => <article key={doc.id} className="library-document-card min-w-0 rounded-xl border bg-white p-4">
           <div className="flex items-start gap-3"><FileText className="mt-1 shrink-0 text-blue-600" size={22} /><div className="min-w-0 flex-1">
             <p className="text-xs text-slate-500">{documentCategories[doc.category]} · {sizeLabel(doc.size)}</p>
             <h3 className="mt-1 break-words text-sm font-semibold">{doc.name}</h3>
@@ -191,7 +191,7 @@ export function TechnicalLibrary({ admin, demo = false, orderId, initialTab = 'd
       {data && <p role="status" className="text-sm text-slate-600">{data.models.length} equipamentos · {data.models.filter(m => m.checklist_ready).length} com checklist disponível · {data.models.filter(m => !m.checklist_ready).length} sem checklist disponível</p>}
       {loading && <p role="status" className="text-sm">Carregando equipamentos…</p>}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {data?.models.filter(m => normalizeSearch(m.name + ' ' + m.family).includes(normalizeSearch(modelSearch.trim())) && (checklistFilter === 'all' || (checklistFilter === 'ready' ? m.checklist_ready : !m.checklist_ready))).map(m => <article key={m.id} className="rounded-xl border bg-white p-4">
+      {data?.models.filter(m => normalizeSearch(m.name + ' ' + m.family).includes(normalizeSearch(modelSearch.trim())) && (checklistFilter === 'all' || (checklistFilter === 'ready' ? m.checklist_ready : !m.checklist_ready))).map(m => <article key={m.id} className="equipment-card rounded-xl border bg-white p-4">
         <Wrench className="text-blue-600" size={22} /><h3 className="mt-3 font-bold">{m.name}</h3><p className="mt-1 text-sm text-slate-500">{m.family}</p>
         <p className="mt-3 text-xs">{m.document_count} documento(s) · {reviewLabels[m.status]}</p>
         <div className={`mt-3 rounded-lg p-3 text-sm ${m.checklist_ready ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-900'}`}>
@@ -227,7 +227,7 @@ export function ModelPicker({ value, onChange, demo }: { value: string[]; onChan
   }, [demo, revision]);
   const available = selectableModels(models, value);
   const shown = available.filter(m => normalizeSearch(m.name + ' ' + m.family).includes(normalizeSearch(query.trim())));
-  return <fieldset className="full min-w-0 rounded-xl border border-blue-200 bg-blue-50/30 p-3 sm:p-4"><legend className="px-1 text-sm font-semibold">Equipamentos do catálogo</legend>
+  return <fieldset className="catalogue-picker full min-w-0 rounded-xl border border-blue-200 bg-blue-50/30 p-3 sm:p-4"><legend className="px-1 text-sm font-semibold">Equipamentos do catálogo</legend>
     {demo ? <p className="text-sm">Catálogo privado indisponível na demonstração.</p> : <>
       <p className="mb-3 text-sm text-slate-600">Selecione apenas os equipamentos desta OS. Os checklists disponíveis serão vinculados automaticamente para os colaboradores conferirem pelo próprio login. Não representa reserva de estoque.</p>
       <label className="block text-sm font-medium">Buscar equipamento<input className="mt-1 min-h-11 w-full min-w-0 rounded-lg border bg-white px-3" type="search" value={query} maxLength={120} placeholder="Nome ou família do equipamento…" onChange={e => setQuery(e.target.value)} /></label>

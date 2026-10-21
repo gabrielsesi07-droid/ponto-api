@@ -207,7 +207,7 @@ export function ServiceOrders({
   const order = data.orders.find((o) => o.id === selected);
   const shown = ["orders", "order-history", "vehicles", "clients"].includes(view);
   return (
-    <>
+    <div className="orders-workspace">
       {error && (
         <div
           role="alert"
@@ -234,7 +234,7 @@ export function ServiceOrders({
           </div>
         </div>
       )}
-      {!shown && !!due.length && (
+      {!shown && !(admin && view === 'dashboard') && !!due.length && (
         <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -262,7 +262,7 @@ export function ServiceOrders({
       )}
       {(view === "orders" || history) && (
         <>
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <div className="orders-toolbar mb-5 flex flex-wrap items-center justify-between gap-3">
             <p className="muted text-sm">
               {history ? 'Consulte as OS concluídas e canceladas, sem misturar com a agenda e os atendimentos em andamento.' : admin
                 ? "Planeje os atendimentos e acompanhe a equipe. Informe o número oficial do documento; a referência interna é preservada."
@@ -288,7 +288,7 @@ export function ServiceOrders({
             </div>
           </div>
           {!history && pendingCount > 0 && <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" role="status"><p>{pendingCount} OS cancelada(s) ainda com pendências de ponto, retorno ou conferência. Consulte no histórico.</p><Button variant="outline" onClick={() => { setHistoryFilter('Pendências'); setHistoryMonth(''); setHistorySearch(''); onNavigate('order-history'); }}>Resolver pendências</Button></div>}
-          <div className="mb-5 grid gap-3 sm:grid-cols-3">
+          <div className="orders-summary mb-5" aria-label={history ? 'Resumo do histórico' : 'Resumo dos atendimentos'}>
             {(history ? [
               ['Concluídas', data.orders.filter(o => o.status === 'Concluída').length],
               ['Canceladas', data.orders.filter(o => o.status === 'Cancelada').length],
@@ -307,13 +307,13 @@ export function ServiceOrders({
                 data.orders.filter((o) => ['Agendada', 'Em andamento'].includes(o.status)).length,
               ],
             ]).map(([label, n]) => (
-              <div className="panel p-5" key={label}>
-                <p className="muted text-sm">{label}</p>
-                <b className="mt-1 block text-3xl">{n}</b>
+              <div className="orders-summary-item" key={label}>
+                <b>{n}</b>
+                <p>{label}</p>
               </div>
             ))}
           </div>
-          <div className="ops-form mb-5">
+          <div className="ops-form orders-filters mb-5">
             <label>
               Buscar OS
               <input
@@ -343,40 +343,39 @@ export function ServiceOrders({
           </div>
           {scope.from && scope.to && scope.from > scope.to && <p role="alert" className="mb-3 text-sm text-amber-800">A data final precisa ser igual ou posterior à data inicial.</p>}
           {!loading && !error && <p className="muted mb-4 text-sm" role="status">{rows.length} de {sectionCount} OS {history ? 'no histórico' : 'em aberto'}{hasFilters ? ' · filtros aplicados' : ''}</p>}
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="orders-grid">
             {rows.map((o) => {
               const attention = orderAttention(o, today(), checkedAt, admin);
               return (
-              <article className="panel min-w-0 p-5" key={o.id}>
+              <article className="panel order-ticket min-w-0" key={o.id}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <b className="text-blue-700">{orderNumber(o.number, o.official_number)}</b>
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold">
-                    {o.status} · {o.priority}
-                  </span>
+                  <b className="order-ticket-reference">{orderNumber(o.number, o.official_number)}</b>
+                  <span className="order-ticket-status" data-status={o.status}>{o.status}</span>
                 </div>
-                <h2 className="mt-3 break-words">{o.title}</h2>
+                <h2 className="order-ticket-client break-words">{o.client_name}</h2>
+                <p className="order-ticket-service">{o.title}</p>
+                <span className="order-ticket-priority" data-priority={o.priority}>Prioridade {o.priority}</span>
                 {hasCancelledPending(o) && <p className="mt-2 rounded-lg bg-amber-50 p-3 text-sm font-medium text-amber-900">Cancelada com pendências: confira ponto, retorno e equipamentos.</p>}
                 {o.checklist_only && <p className="mt-2 rounded-lg bg-violet-50 p-3 text-sm font-medium text-violet-950">Checklist designado para você · acesso somente à conferência.</p>}
-                <p className="mt-1 font-medium">{o.client_name}</p>
-                <p className="muted mt-3 flex gap-2 text-sm">
+                <p className="order-ticket-datum muted mt-3 flex gap-2 text-sm">
                   <CalendarDays size={17} className="shrink-0" />
                   {dateLabel(o.starts_at)} até {dateLabel(o.ends_at)}
                 </p>
-                <p className="muted mt-2 flex gap-2 text-sm">
+                <p className="order-ticket-datum muted mt-2 flex gap-2 text-sm">
                   <MapPin size={17} className="shrink-0" />
                   {o.address || "Endereço não informado"}
                 </p>
-                <p className="muted mt-3 text-sm">
+                <p className="order-ticket-team muted mt-3 text-sm">
                   {o.checklist_only ? 'Acesso restrito ao checklist designado.' : `Equipe: ${o.team.map((p) => p.name).join(", ")}`}
                 </p>
-                <div className="mt-4 space-y-2 rounded-xl border bg-slate-50 p-3 text-sm">
+                <div className="order-ticket-attention mt-4 space-y-2 text-sm">
                   {attention.overdue && <p className="font-medium text-amber-900">Prazo previsto vencido · confirme o andamento com a equipe.</p>}
                   {!!attention.blockers.length && <ul className="space-y-1 text-amber-900" aria-label="Pendências de encerramento">{attention.blockers.map(item => <li key={item.id}>• {item.label}</li>)}</ul>}
                   {o.status === 'Concluída' && !!attention.missingHours.length && <p>Horas ainda não registradas: <b>{attention.missingHours.map(person => person.name).join(', ')}</b>. A OS permanece concluída.</p>}
                   <p><b>Próxima ação:</b> {attention.nextAction}</p>
                 </div>
                 <Button
-                  className="mt-4 w-full"
+                  className="order-ticket-open mt-4 w-full"
                   variant="outline"
                   onClick={() => setSelected(o.id)}
                 >
@@ -602,7 +601,7 @@ export function ServiceOrders({
           checkedAt={checkedAt}
         />
       )}
-    </>
+    </div>
   );
 }
 
@@ -747,8 +746,8 @@ function OrderDetail({
   );
   return (
     <Dialog open onOpenChange={(v) => !v && !busy && closeWindow()}>
-      <DialogContent className="ops-dialog order-wide-dialog max-h-[92svh] overflow-y-auto bg-white">
-        <DialogHeader>
+      <DialogContent className="ops-dialog order-detail-dialog order-wide-dialog max-h-[92svh] overflow-y-auto bg-white">
+        <DialogHeader className="order-detail-header">
           <DialogTitle>
             {orderNumber(o.number, o.official_number)} · {o.title}
           </DialogTitle>
@@ -756,9 +755,9 @@ function OrderDetail({
             {o.client_name} · {o.status} · Prioridade {o.priority}
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-5">
-          <p className="text-xs muted">Referência interna: {orderNumber(o.number)}</p>
-          {admin && <form className="rounded-xl border p-4 space-y-2" onSubmit={async e => {
+        <div className="order-detail-body space-y-5">
+          <p className="order-internal-reference text-xs muted">Referência interna: {orderNumber(o.number)}</p>
+          {admin && <form className="order-number-form rounded-xl border p-4 space-y-2" onSubmit={async e => {
             e.preventDefault();
             if (demo) { setError("Entre para alterar o número oficial."); return; }
             setBusy(true); setError("");
@@ -779,7 +778,7 @@ function OrderDetail({
             <p className="mt-1">O coordenador designou você para conferir equipamento(s) desta OS. Seu acesso é somente à conferência atribuída: ponto, viagem, ciência da OS e conclusão continuam com a equipe.</p>
             <Button className="mt-3" variant="outline" onClick={() => focusSection('order-checklists')}>Ir à conferência</Button>
           </section>}
-          {!checklistOnly && (open || hasCancelledPending(o)) && <section className="rounded-xl border bg-slate-50 p-4" aria-label="Próxima ação desta OS">
+          {!checklistOnly && (open || hasCancelledPending(o)) && <section className="order-next-action rounded-xl border bg-slate-50 p-4" aria-label="Próxima ação desta OS">
             <h3 className="font-semibold">Próxima ação</h3><p className="mt-2 text-sm">{attention.nextAction}</p>
             {!!attention.blockers.length && <div className="mt-3 space-y-2 text-sm">{attention.blockers.map(item => <p key={item.id}><b>{item.label}:</b> {item.action}</p>)}</div>}
             <div className="mt-3 flex flex-wrap gap-2">
@@ -788,10 +787,10 @@ function OrderDetail({
               {Number(o.pending_checklists) > 0 && <Button variant="outline" onClick={() => focusSection('order-checklists')}>Ir aos checklists</Button>}
             </div>
           </section>}
-          {open && !checklistOnly && <section className="rounded-xl border border-blue-200 bg-blue-50 p-4" aria-label="Etapas para concluir a OS">
+          {open && !checklistOnly && <section className="order-closeout rounded-xl border border-blue-200 bg-blue-50 p-4" aria-label="Etapas para concluir a OS">
             <h3 className="font-semibold">O que falta para concluir esta OS?</h3>
             <p className="mt-1 text-sm">Registrar horas, finalizar um checklist e concluir a OS são ações diferentes. As horas podem ser informadas depois do trabalho, inclusive após concluir a OS.</p>
-            <ol className="mt-3 space-y-3 text-sm">{steps.map(step => <li key={step.id}>
+            <ol className="order-closeout-steps mt-3 space-y-3 text-sm">{steps.map(step => <li key={step.id} data-complete={step.done}>
               <span className="font-semibold">{step.done ? '✓ Pronto: ' : 'Pendente: '}{step.label}</span>
               {!step.done && <p className="mt-1">{step.help}</p>}
             </li>)}</ol>
@@ -802,7 +801,7 @@ function OrderDetail({
             <p className="mt-3 text-xs">Sem viagem aberta, não há retorno pendente. A conferência considera apenas os checklists vinculados; confira também os avisos dos equipamentos abaixo.</p>
             <Button className="mt-3" variant="outline" onClick={() => document.getElementById('order-closeout-result')?.focus()}>Ir ao resultado e conclusão</Button>
           </section>}
-          <div className="grid gap-3 rounded-xl bg-slate-50 p-4 sm:grid-cols-2">
+          <div className="order-facts grid gap-3 rounded-xl bg-slate-50 p-4 sm:grid-cols-2">
             <div>
               <b className="text-xs uppercase muted">Início previsto</b>
               <p>{dateLabel(o.starts_at)}</p>
@@ -820,7 +819,7 @@ function OrderDetail({
             </div>
             {admin && open && <div className="sm:col-span-2"><Button variant="outline" disabled={busy} onClick={() => setEditDates(true)}><CalendarDays />Alterar previsão</Button></div>}
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="order-detail-actions flex flex-wrap gap-2">
             {o.address.trim() && (
               <Button asChild>
                 <a href={mapsUrl(o)} target="_blank" rel="noopener noreferrer">
@@ -885,13 +884,13 @@ function OrderDetail({
           {o.status === 'Cancelada' && <section className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"><h3 className="font-semibold">Atendimento cancelado · histórico preservado</h3><p>{hasCancelledPending(o) ? 'Resolva as pendências abaixo. Cancelar não encerra automaticamente o ponto nem registra o retorno.' : 'Sem pendências de ponto, viagem ou conferência registrada.'}</p><p>Pontos em andamento: {o.active_points || 0} · Viagens sem retorno: {o.trips.filter(t => t.return_km === null).length} · Checklists pendentes: {o.pending_checklists || 0}</p>{o.my_point_active && <Button variant="outline" className="h-auto min-h-11 whitespace-normal" onClick={() => { onClose(); void onPoint(); }}>Ir ao Meu ponto para encerrar</Button>}</section>}
           {!checklistOnly && assigned && <OrderShiftPanel key={o.id} orderId={o.id} meId={me.id} admin={admin} demo={demo} />}
           {admin && <TeamShiftPanel key={'team-'+o.id} orderId={o.id} meId={me.id} demo={demo} people={o.team}/>}
-          {!checklistOnly && <section>
+          {!checklistOnly && <section className="order-team-section">
             <h3 className="font-semibold">Equipe designada</h3>
             <div className="mt-2 flex flex-wrap gap-2">
               {o.team.map((p) => (
                 <span
                   key={p.id}
-                  className="rounded-full border px-3 py-2 text-sm"
+                  className="order-team-member rounded-full border px-3 py-2 text-sm"
                 >
                   {p.name}
                   {p.access_code ? ` · ${p.access_code}` : ""}
@@ -915,7 +914,7 @@ function OrderDetail({
               </Button>
             )}
           </section>}
-          <section className="rounded-xl border p-4">
+          <section className="order-equipment-section rounded-xl border p-4">
             <h3 className="flex items-center gap-2 font-semibold">
               <Wrench size={18} />
               Equipamentos e instruções
@@ -993,7 +992,7 @@ function OrderDetail({
               )}
               <div className="mt-3 space-y-2">
                 {o.trips.map((t) => (
-                  <div key={t.id} className="rounded-lg bg-slate-50 p-3 text-sm">
+                  <div key={t.id} className="order-trip rounded-lg bg-slate-50 p-3 text-sm">
                     <p>Saída: {dateLabel(t.departed_at)} · {kmLabel(t.departure_km)}</p>
                     <p className="mt-1">{t.return_km === null ? 'Aguardando retorno' : `Retorno: ${t.returned_at ? dateLabel(t.returned_at) + ' · ' : ''}${kmLabel(t.return_km)}`}</p>
                     {admin && <Button className="mt-2" size="sm" variant="outline" disabled={busy} onClick={() => setEditTrip(t)}><Pencil />Corrigir datas</Button>}
@@ -1077,7 +1076,7 @@ function OrderDetail({
               />
             </label>
           )}
-          <details className="rounded-xl border p-4">
+          <details className="order-timeline rounded-xl border p-4">
             <summary className="cursor-pointer font-semibold">
               Histórico da OS
             </summary>

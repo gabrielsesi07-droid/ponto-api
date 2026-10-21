@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./coordinator-center.css";
+import { SignatureOperationBoard } from "./signature-operation-board";
 import {
   ArrowRight,
   CalendarClock,
@@ -41,7 +42,7 @@ import {
   type State,
 } from "@/lib/domain";
 import { demoOperations } from "@/lib/demo";
-import type { OperationsData, Order } from "@/lib/orders";
+import type { OperationsData, Order, Vehicle } from "@/lib/orders";
 import {
   approvalGroups,
   brtTime,
@@ -55,15 +56,15 @@ import {
   previousMonth,
   shortDate,
   todayAgenda,
-  upcomingPreparation,
   type CenterAction,
   type CenterTask,
   type ClosingStep,
 } from "@/lib/coordinator-center";
 
 function useOperations(demo: boolean, me: Person, version: unknown) {
-  const [ops, setOps] = useState<{ orders: Order[]; loading: boolean; error: string; loaded: boolean; updatedAt: string | null }>({
+  const [ops, setOps] = useState<{ orders: Order[]; vehicles: Vehicle[]; loading: boolean; error: string; loaded: boolean; updatedAt: string | null }>({
     orders: [],
+    vehicles: [],
     loading: true,
     error: "",
     loaded: false,
@@ -75,7 +76,7 @@ function useOperations(demo: boolean, me: Person, version: unknown) {
     try {
       const result = demo ? demoOperations(me) : await api<OperationsData>("/api/operations");
       if (v === request.current)
-        setOps({ orders: result.orders, loading: false, error: "", loaded: true, updatedAt: new Date().toISOString() });
+        setOps({ orders: result.orders, vehicles: result.vehicles, loading: false, error: "", loaded: true, updatedAt: new Date().toISOString() });
     } catch (e) {
       if (v === request.current)
         setOps((o) => ({ ...o, loading: false, error: (e as Error).message }));
@@ -108,6 +109,7 @@ export function Dashboard({
   onAction,
   onApprove,
   onEdit,
+  onCreateOrder,
 }: {
   /** Pontos do mês selecionado, de toda a equipe. */
   rows: Calculated[];
@@ -121,6 +123,7 @@ export function Dashboard({
   onAction: (action: CenterAction) => void;
   onApprove: (entry: Entry) => void;
   onEdit: (entry: Entry) => void;
+  onCreateOrder?: () => void;
 }) {
   const ops = useOperations(demo, state.me, state);
   // Sem OS confiáveis, a checagem de horas ausentes fica "não verificada" em vez de "em dia".
@@ -170,104 +173,14 @@ export function Dashboard({
   });
   const approvals = approvalGroups(rows, state.users),
     waitingTotal = approvals.reduce((n, g) => n + g.count, 0),
-    agenda = todayAgenda(reliableOrders, now),
-    running = reliableOrders.filter((o) => o.status === "Em andamento").length,
-    urgent = tasks.filter((t) => t.severity === "urgent").length;
+    agenda = todayAgenda(reliableOrders, now);
   const reviews = useMemo(() => entryReviewGroups(rows, state.users), [rows, state.users]);
+  const reviewIds = useMemo(() => new Set(reviews.flatMap((group) => group.entries.map((entry) => entry.id))), [reviews]);
   const reviewCount = reviews.reduce((count, group) => count + group.entries.length, 0);
   const automatic = !state.settings.approval_required;
-  const preparationCount = upcomingPreparation(reliableOrders, now).length;
-  const preparationReady = opsReady && reliableOrders.every((order) =>
-    !["Agendada", "Em andamento"].includes(order.status) ||
-    (Array.isArray(order.missing_shift_members) && Array.isArray(order.missing_checklist_models)));
-  const dateLabel = new Intl.DateTimeFormat("pt-BR", {
-    timeZone: "America/Sao_Paulo",
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  }).format(new Date());
 
   return (
-    <div className="cc">
-      <section className="panel cc-today" aria-labelledby="cc-today-title">
-        <div className="min-w-0">
-          <p className="eyebrow muted">Hoje · {dateLabel}</p>
-          <h2 id="cc-today-title" className="cc-headline">
-            {opsPending
-              ? "Carregando a operação…"
-              : urgent
-                ? `${urgent} ${urgent === 1 ? "pendência urgente" : "pendências urgentes"} para resolver`
-                : tasks.length
-                  ? "Nenhuma urgência. Há itens para acompanhar."
-                  : opsReady && preparationReady
-                    ? "Operação em dia."
-                    : opsReady
-                      ? "Pontos em dia. Preparação das OS não verificada."
-                      : "Pontos em dia. Ordens de serviço não verificadas."}
-          </h2>
-        </div>
-        <div className="cc-tiles" role="list">
-          {[
-            {
-              label: "Urgentes",
-              value: urgent,
-              tone: urgent ? "urgent" : "",
-              onClick: () => document.getElementById("cc-queue")?.focus(),
-              hint: "Ir para a fila de pendências",
-            },
-            {
-              label: automatic ? "Pontos a conferir" : "Pontos a aprovar",
-              value: automatic ? reviewCount : waitingTotal,
-              tone: (automatic ? reviewCount : waitingTotal) ? "attention" : "",
-              onClick: () => onAction({ kind: "entries", month, ...(automatic ? { review: true } : {}) }),
-              hint: automatic ? "Abrir pontos com avisos de conferência" : "Abrir o histórico de pontos do mês",
-            },
-            {
-              label: "OS em andamento",
-              value: running,
-              tone: "",
-              onClick: () => onAction({ kind: "orders" }),
-              hint: "Abrir ordens de serviço",
-            },
-            {
-              label: "Atendimentos hoje",
-              value: agenda.length,
-              tone: "",
-              onClick: () => onAction({ kind: "orders" }),
-              hint: "Abrir ordens de serviço",
-            },
-          ].map((tile) => (
-            <div role="listitem" key={tile.label}>
-              <button
-                type="button"
-                className={"cc-tile " + tile.tone}
-                onClick={tile.onClick}
-                aria-label={`${tile.label}: ${tile.value}. ${tile.hint}`}
-              >
-                <span className="cc-tile-value num">
-                  {!opsReady && tile.label !== "Pontos a aprovar" && tile.label !== "Pontos a conferir" && tile.label !== "Urgentes" ? "–" : tile.value}
-                </span>
-                <span className="cc-tile-label">{tile.label}</span>
-              </button>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="cc-autopilot" aria-label="Acompanhamento automático da operação">
-        <div>
-          <span className="cc-autopilot-mark" aria-hidden><CheckCheck size={20} /></span>
-          <div>
-            <b>{automatic ? "Aprovação automática ativa" : "Conferência de aprovação ativa"}</b>
-            <p>{automatic ? "O sistema reúne as exceções; você acompanha o que precisa de atenção." : "Revise os pontos com saída e aprove pelo histórico da equipe."}</p>
-          </div>
-        </div>
-        <span className="cc-autopilot-detail">
-          {preparationReady ? `${preparationCount} OS a preparar nos próximos 7 dias` : "Preparação das OS ainda não verificada"}
-          {opsReady && ops.updatedAt && <small>Atualizado às {brtTime(ops.updatedAt)}</small>}
-        </span>
-      </section>
-
+    <div className="cc cc-signature">
       {ops.error && (
         <div role="alert" className="cc-alert mt-5">
           <TriangleAlert size={18} className="shrink-0" />
@@ -280,7 +193,11 @@ export function Dashboard({
         </div>
       )}
 
-      <div className="cc-grid mt-6">
+      <SignatureOperationBoard orders={reliableOrders} vehicles={ops.vehicles} rows={rows} reviewIds={reviewIds} today={now} period={bounds} automatic={automatic} loading={opsPending} available={opsReady} updatedAt={ops.updatedAt} onAction={onAction} onCreateOrder={onCreateOrder} onRefresh={() => void ops.reload()} />
+
+      <section className="cc-signature-support" aria-labelledby="cc-support-title">
+      <header className="cc-signature-support-head"><h2 id="cc-support-title">Conferências e fechamento</h2><p>{monthLabel(month)} · {tasks.length} {tasks.length === 1 ? "item para acompanhar" : "itens para acompanhar"}</p></header>
+      <div className="cc-grid">
         <section
           id="cc-queue"
           tabIndex={-1}
@@ -294,7 +211,7 @@ export function Dashboard({
             subtitle="Primeiro os impedimentos; depois a preparação e as conferências do mês."
             action={<Button variant="ghost" className="action" aria-label="Atualizar pendências" onClick={() => void ops.reload()}><RefreshCw size={16} /><span className="hidden sm:inline">Atualizar</span></Button>}
           />
-          <TaskList tasks={tasks} onAction={onAction} loading={opsPending} opsUnavailable={!opsReady && !opsPending} />
+          <TaskList tasks={tasks} onAction={onAction} loading={opsPending} opsUnavailable={!opsReady && !opsPending} limit={3} />
         </section>
         <ClosingPanel
           month={month}
@@ -303,8 +220,11 @@ export function Dashboard({
           onOpen={() => onAction({ kind: "entries", month })}
         />
       </div>
+      </section>
 
-      <div className="cc-grid mt-6">
+      <details className="cc-signature-details" open={reviewCount > 0 || (!automatic && waitingTotal > 0)}>
+        <summary>{automatic ? "Conferência dos pontos" : "Aprovação dos pontos"}<small>{automatic ? `${reviewCount} com aviso` : `${waitingTotal} pendentes`} · agenda do dia</small></summary>
+      <div className="cc-grid">
         {automatic ? <ReviewPanel groups={reviews} rows={rows} state={state} busy={busy} month={month} onAction={onAction} onEdit={onEdit} /> : <ApprovalPanel
           groups={approvals}
           total={waitingTotal}
@@ -321,9 +241,12 @@ export function Dashboard({
           onAction={onAction}
         />
       </div>
+      </details>
 
+      <details className="cc-signature-details"><summary>Equipe e indicadores<small>Horas e registros do período</small></summary>
       <TeamPanel state={state} rows={rows} month={month} onAction={onAction} />
       <Indicators rows={rows} previous={previous} state={state} month={month} />
+      </details>
     </div>
   );
 }
@@ -355,11 +278,13 @@ function TaskList({
   onAction,
   loading,
   opsUnavailable,
+  limit = 6,
 }: {
   tasks: CenterTask[];
   onAction: (a: CenterAction) => void;
   loading: boolean;
   opsUnavailable: boolean;
+  limit?: number;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [category, setCategory] = useState("all");
@@ -372,7 +297,7 @@ function TaskList({
   ].filter((filter) => filter.count > 0);
   const active = filters.some((filter) => filter.id === category) ? category : "all";
   const filtered = tasks.filter((task) => active === "all" || task.category === active || (active === "operations" && task.category === "preparation"));
-  const shown = expanded ? filtered : filtered.slice(0, 6);
+  const shown = expanded ? filtered : filtered.slice(0, limit);
   if (!tasks.length)
     return (
       <div className="cc-empty">
@@ -420,14 +345,14 @@ function TaskList({
           </li>
         ))}
       </ol>
-      {filtered.length > 6 && (
+      {filtered.length > limit && (
         <button
           type="button"
           className="cc-more"
           aria-expanded={expanded}
           onClick={() => setExpanded((v) => !v)}
         >
-          {expanded ? "Mostrar menos" : `Mostrar mais ${filtered.length - 6}`}
+          {expanded ? "Mostrar menos" : `Mostrar mais ${filtered.length - limit}`}
         </button>
       )}
     </>
@@ -960,15 +885,15 @@ function Indicators({
         <div className="h-52 mt-6" role="img" aria-label="Horas extras por semana do mês">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={weekly} margin={{ top: 8, right: 8, left: -22, bottom: 0 }}>
-              <CartesianGrid vertical={false} stroke="#e9edf4" strokeDasharray="4 4" />
-              <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#637089" }} />
-              <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#637089" }} unit="h" />
+              <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="4 4" />
+              <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "var(--muted-foreground)" }} />
+              <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "var(--muted-foreground)" }} unit="h" />
               <Tooltip
                 formatter={(v) => [duration(Number(v) * 60), "Horas extras"]}
-                contentStyle={{ borderRadius: 10, borderColor: "#e2e7ef" }}
-                cursor={{ fill: "#f2f4f8" }}
+                contentStyle={{ borderRadius: 10, borderColor: "var(--border)", background: "var(--card)", color: "var(--foreground)" }}
+                cursor={{ fill: "var(--muted)" }}
               />
-              <Bar dataKey="extras" fill="#3d73e5" radius={[4, 4, 0, 0]} barSize={34} isAnimationActive={false} />
+              <Bar dataKey="extras" fill="var(--chart-1)" radius={[4, 4, 0, 0]} barSize={34} isAnimationActive={false} />
             </BarChart>
           </ResponsiveContainer>
         </div>

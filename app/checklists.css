@@ -1,4 +1,77 @@
-.check-input{display:block;width:100%;min-width:0;min-height:44px;margin-top:5px;padding:10px 12px;border:1px solid #d8e0eb;border-radius:8px;background:white;color:#182d45;font:inherit;font-weight:400}
-.check-input:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
-.check-input:disabled{background:#f1f5f9;color:#475569}
-fieldset:disabled .check-input{background:#f1f5f9}
+.check-input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  margin-top: 0.4rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--input);
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  transition: border-color 150ms, box-shadow 150ms;
+}
+.check-input:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.check-input:disabled, fieldset:disabled .check-input { background: var(--muted); color: var(--muted-foreground); }
+textarea.check-input { resize: vertical; line-height: 1.65; }
+
+/* Checklist dialogs are portals; scope by their existing input class. */
+[data-slot="dialog-content"]:has(.check-input) {
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  background: var(--card);
+  color: var(--foreground);
+  padding: 1.5rem;
+  gap: 1.1rem;
+}
+[data-slot="dialog-content"]:has(.check-input) [data-slot="dialog-header"] {
+  padding-right: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+[data-slot="dialog-content"]:has(.check-input) [data-slot="dialog-title"] { font-size: clamp(1.2rem, 1.7vw, 1.55rem); font-weight: 500; line-height: 1.25; letter-spacing: -0.035em; }
+[data-slot="dialog-content"]:has(.check-input) [data-slot="dialog-description"] { max-width: 85ch; font-size: 0.8125rem; line-height: 1.65; color: var(--muted-foreground); }
+[data-slot="dialog-content"]:has(.check-input) [data-slot="button"] { min-height: 40px; height: auto; white-space: normal; font-size: 0.75rem; }
+[data-slot="dialog-content"]:has(.check-input) :is(input[type="checkbox"], input[type="radio"]) { accent-color: var(--primary); }
+[data-slot="dialog-content"]:has(.check-input) label { line-height: 1.55; }
+[data-slot="dialog-content"]:has(.check-input) fieldset > legend { font-family: var(--font-mono); font-size: 0.625rem; font-weight: 400; letter-spacing: 0.06em; color: var(--muted-foreground); }
+[data-slot="dialog-content"]:has(.check-input) fieldset:has(> legend):has(.check-input) { border-color: var(--border); background: var(--card); border-radius: 0.7rem; }
+[data-slot="dialog-content"]:has(.check-input) .rounded-lg:has(> label > input[type="checkbox"]:checked) { border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); background: var(--accent); }
+
+:is([data-slot="dialog-content"]:has(.check-input), #order-checklists) :is(.bg-white, .bg-slate-50, .bg-slate-100) { background-color: var(--muted); }
+:is([data-slot="dialog-content"]:has(.check-input), #order-checklists) .bg-white { background-color: var(--card); }
+:is([data-slot="dialog-content"]:has(.check-input), #order-checklists) [class*="bg-blue-50"] { background-color: var(--accent); }
+:is([data-slot="dialog-content"]:has(.check-input), #order-checklists) [class*="text-blue-"] { color: var(--primary); }
+:is([data-slot="dialog-content"]:has(.check-input), #order-checklists) :is(.text-slate-400, .text-slate-500, .text-slate-600) { color: var(--muted-foreground); }
+:is([data-slot="dialog-content"]:has(.check-input), #order-checklists) :is(.bg-amber-50, .bg-amber-100) { background-color: var(--warning-soft); }
+:is([data-slot="dialog-content"]:has(.check-input), #order-checklists) [class*="text-amber-"] { color: var(--warning); }
+:is([data-slot="dialog-content"]:has(.check-input), #order-checklists) :is(.bg-red-50, .bg-red-100) { background-color: var(--danger-soft); }
+:is([data-slot="dialog-content"]:has(.check-input), #order-checklists) [class*="text-red-"] { color: var(--destructive); }
+:is([data-slot="dialog-content"]:has(.check-input), #order-checklists) :is(.bg-emerald-50, .bg-emerald-100) { background-color: var(--success-soft); }
+:is([data-slot="dialog-content"]:has(.check-input), #order-checklists) [class*="text-emerald-"] { color: var(--success); }
+:is([data-slot="dialog-content"]:has(.check-input), #order-checklists) :is([class*="border-blue-"], [class*="border-amber-"], [class*="border-red-"]) { border-color: var(--border); }
+
+#order-checklists { min-width: 0; }
+#order-checklists > section { background: var(--card); border-radius: 0.75rem; padding: 1.15rem; }
+#order-checklists > section > h3 { padding-bottom: 0.9rem; border-bottom: 1px solid var(--border); font-size: 0.875rem; font-weight: 600; }
+#order-checklists > section > h3 svg { color: var(--primary); }
+#order-checklists > section > .rounded-lg { padding: 1rem; border-radius: 0.65rem; line-height: 1.65; }
+#order-checklists > section > .rounded-lg > b { font-size: 0.875rem; font-weight: 500; }
+#order-checklists [data-slot="button"] { min-height: 40px; height: auto; font-size: 0.75rem; white-space: normal; }
+
+@media (min-width: 1100px) {
+  [data-slot="dialog-content"]:has([aria-label^="Descrição do item"]) { width: calc(100% - 4rem); max-width: 1280px; }
+  [data-slot="dialog-content"]:has(.check-input) .space-y-3:has(> fieldset > legend) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 1rem; }
+  [data-slot="dialog-content"]:has(.check-input) .space-y-3:has(> fieldset > legend) > * { margin-block: 0; }
+  [data-slot="dialog-content"]:has(.check-input) .space-y-3:has(> fieldset > legend) > [data-slot="button"] { grid-column: 1/-1; justify-self: start; }
+}
+@media (max-width: 639px) {
+  [data-slot="dialog-content"]:has(.check-input) { padding: 1rem; gap: 1rem; }
+  [data-slot="dialog-content"]:has(.check-input) [data-slot="dialog-title"] { font-size: 1.2rem; }
+  :is([data-slot="dialog-content"]:has(.check-input), #order-checklists) [data-slot="button"] { min-height: 44px; }
+  #order-checklists > section { padding: 1rem; }
+}
