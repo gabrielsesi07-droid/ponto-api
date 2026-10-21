@@ -304,6 +304,10 @@ export function OrderEditor({
     <Dialog open onOpenChange={(v) => !v && !busy && onClose()}>
       <DialogContent className="ops-dialog order-wide-dialog order-editor-dialog bg-white">
         <DialogHeader className="order-editor-header">
+          <div className="order-sheet-masthead" aria-hidden="true">
+            <span className="order-sheet-brand"><span className="order-sheet-monogram">hc</span><span>HoraCerta<span className="order-sheet-dot">.</span></span></span>
+            <span className="order-sheet-kicker">Planejamento do atendimento</span>
+          </div>
           <DialogTitle>
             {order ? "Editar OS" : template ? "Criar OS semelhante" : "Gerar ordem de serviço"}
           </DialogTitle>
@@ -323,7 +327,7 @@ export function OrderEditor({
           )}
           <fieldset disabled={busy || !!savedId} className="order-editor-columns">
             <section className="ops-form order-editor-section" aria-labelledby="order-service-heading">
-              <h3 id="order-service-heading" className="full font-semibold text-lg">Dados do atendimento</h3>
+              <h3 id="order-service-heading" className="full font-semibold text-lg"><span className="order-section-index" aria-hidden="true">01</span>Dados do atendimento</h3>
             <label className="full">
               Número oficial da OS
               <input maxLength={80} value={form.official_number} onChange={e => change("official_number", e.target.value)} placeholder="Ex.: 4831 ou OS 4831" />
@@ -464,7 +468,7 @@ export function OrderEditor({
             </label>
             </section>
             <section className="ops-form order-editor-section" aria-labelledby="order-team-heading">
-              <h3 id="order-team-heading" className="full font-semibold text-lg">Equipe e recursos</h3>
+              <h3 id="order-team-heading" className="full font-semibold text-lg"><span className="order-section-index" aria-hidden="true">02</span>Equipe e recursos</h3>
             <fieldset className="full rounded-xl border p-4">
               <legend className="px-1 text-sm font-semibold">
                 Equipe designada ({form.members.length})
@@ -539,7 +543,7 @@ export function OrderEditor({
             </section>
           </fieldset>
           <div className="ops-form mt-5">
-          <label className="full rounded-xl border border-dashed bg-slate-50 p-4">
+          <label className="order-attachment-field full rounded-xl border border-dashed bg-slate-50 p-4">
             <span className="flex items-center gap-2">
               <Upload size={18} />
               PDF da OS (opcional, até 3 MB)

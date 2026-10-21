@@ -28,6 +28,7 @@ import { automaticBreakForDay, workedMinutes } from '@/lib/manual-work';
 import { OrderShiftPanel } from './order-shift-panel';
 import { entryTimeIssue } from '@/lib/entry-time-feedback';
 import { requestApi } from '@/lib/api-client';
+import './entry-editor.css';
 export type Editor =
   | { kind: "entry"; data?: Entry; order?: {id:string; date:string; company:string; service:string} }
   | { kind: "user"; data?: Person }
@@ -208,8 +209,9 @@ export function EditDialog({
   );
   return (
     <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto bg-white sm:max-w-lg">
-        <DialogHeader>
+      <DialogContent className={editor.kind === "entry" ? "entry-dialog" : "max-h-[90svh] overflow-y-auto bg-white sm:max-w-lg"}>
+        <DialogHeader className={editor.kind === "entry" ? "entry-header" : undefined}>
+          {editor.kind === "entry" && <div className="entry-masthead"><span className="entry-monogram" aria-hidden="true">hc</span><span className="entry-wordmark">HoraCerta<span>.</span></span><span className="entry-document-label">Jornada na OS</span></div>}
           <DialogTitle>
             {editor.kind === "entry"
               ? e
@@ -230,27 +232,30 @@ export function EditDialog({
                   ? "Atualize os dados ou gere um PIN temporário para recuperar o acesso. A recuperação encerra as sessões abertas dessa pessoa."
                   : "Ao salvar, você receberá o código e um PIN temporário para entregar ao colaborador. Ele deverá criar seu PIN pessoal no primeiro acesso."}
           </DialogDescription>
+          {editor.kind === "entry" && <div className="entry-person"><UserRound size={16} aria-hidden="true" /><span>Colaborador</span><b>{state.users.find(user => user.id === entryOwner)?.name}</b></div>}
         </DialogHeader>
-        <form onSubmit={submit} className="form-grid mt-2">
+        <form onSubmit={submit} className={editor.kind === "entry" ? "form-grid entry-form" : "form-grid mt-2"}>
           {editor.kind === "entry" ? (
-            <>
-              <div className="full flex gap-2 items-center rounded-lg bg-blue-50 text-blue-800 px-4 py-3 text-sm">
-                <UserRound size={18} />
-                <b>
-                  {
-                    state.users.find(
-                      (u) => u.id === (e?.user_id || state.me.id),
-                    )?.name
-                  }
-                </b>
-              </div>
+            <div className="entry-body"><div className="entry-columns">
+              <div className="entry-column"><section className="entry-section" aria-labelledby="entry-service-title">
+              <h3 id="entry-service-title" className="entry-section-title"><span>01</span>Atendimento</h3>
+              <div className="entry-fields">
               <PointDatePicker value={String(form.date)} onChange={date => change('date', date)} initiallyOpen={!e} disabled={busy} />
               <PointOrderPicker value={String(form.order_id || '')} date={String(form.date)} demo={demo} disabled={busy} entryId={e?.id} existingOrderId={e?.order_id} workType={form.work_type === 'travel' ? 'travel' : 'work'}
                 onChange={order => setForm(f => ({...f,order_id:order?.id || '',company:order?.client_name || e?.company || '',service:order?.title || e?.service || ''}))} />
               {closedMonth && <p className="full rounded-lg bg-amber-50 p-3 text-sm text-amber-900" role="alert">O mês desta data está fechado. Registros e ajustes ficam bloqueados até o coordenador reabri-lo.</p>}
               {e && !e.order_id && <p className="full text-sm text-amber-900">Registro anterior à obrigatoriedade de OS. Você pode preservar o histórico ou vinculá-lo à OS correta; o sistema não escolherá uma por conta própria.</p>}
               <label className="full">Tipo de jornada<Pick label="Tipo de jornada" value={String(form.work_type)} onChange={v => change('work_type',v)} items={[{value:'work',label:'Serviço no local'},{value:'travel',label:'Deslocamento'}]}/></label>
-              {form.order_id && (!e || e.rules.calculation_version === 2) && <OrderShiftPanel key={String(form.order_id) + form.work_type} orderId={String(form.order_id)} meId={state.me.id} userId={entryOwner} admin={state.me.role === 'coordinator'} demo={demo} workType={form.work_type === 'travel' ? 'travel' : 'work'}/>}
+              <div className="full entry-service-fields">
+                {input("company", "Empresa atendida", "text", true, { readOnly: true, minLength: 2, maxLength: 160, placeholder: "Preenchida pela OS" })}
+                {input("service", "Serviço realizado", "text", true, { readOnly: true, minLength: 2, maxLength: 500, placeholder: "Preenchido pela OS" })}
+              </div>
+              </div></section>
+              {form.order_id && (!e || e.rules.calculation_version === 2) && <div className="entry-shift"><OrderShiftPanel key={String(form.order_id) + form.work_type} orderId={String(form.order_id)} meId={state.me.id} userId={entryOwner} admin={state.me.role === 'coordinator'} demo={demo} workType={form.work_type === 'travel' ? 'travel' : 'work'}/></div>}
+              </div>
+              <div className="entry-column"><section className="entry-section" aria-labelledby="entry-hours-title">
+              <h3 id="entry-hours-title" className="entry-section-title"><span>02</span>Horários realizados</h3>
+              <div className="entry-fields">
               {input("start", "Entrada", "time", true)}
               {input("end", "Saída (HH:MM)", "text", true, {
                 placeholder: "18:00 ou 24:00",
@@ -259,7 +264,7 @@ export function EditDialog({
                 "aria-invalid": !!timeIssue || undefined,
                 "aria-describedby": timeIssue ? "entry-time-issue" : undefined,
               })}
-              <div className="full space-y-2 rounded-lg border p-3">
+              <div className="full entry-break space-y-2 rounded-lg border p-3">
                 <label className="flex-row! items-center gap-3! cursor-pointer"><input type="checkbox" className="h-5! w-5! shrink-0" checked={customBreak} disabled={busy} onChange={event => setCustomBreak(event.target.checked)} />Definir intervalo específico</label>
                 {customBreak ? <>
                   {input('break_minutes', 'Intervalo total (minutos)', 'number', true, {min:0,max:1439})}
@@ -270,22 +275,11 @@ export function EditDialog({
               </div>
               {timeIssue ? <p id="entry-time-issue" role="alert" className="full rounded-lg bg-red-50 p-3 text-sm text-red-800">{timeIssue}</p> :
               <p className="full rounded-lg bg-blue-50 p-3 text-sm" aria-live="polite">{workMinutes === null ? 'Informe entrada, saída e intervalo para conferir a duração. Se o trabalho passou da meia-noite, registre cada data separadamente: até 24:00 no primeiro dia e a partir de 00:00 no seguinte.' : `Tempo de trabalho: ${Math.floor(workMinutes / 60)}h ${String(workMinutes % 60).padStart(2,'0')}min, descontado o intervalo. As horas extras são calculadas ao salvar, somando os serviços do dia.`}</p>}
-              <div className="full">
-                {input("company", "Empresa atendida", "text", true, {
-                  readOnly: true,
-                  minLength: 2,
-                  maxLength: 160,
-                  placeholder: "Ex.: Empresa Nova Era",
-                })}
-              </div>
-              <div className="full">
-                {input("service", "Serviço realizado", "text", true, {
-                  readOnly: true,
-                  minLength: 2,
-                  maxLength: 500,
-                })}
-              </div>
-              <label className="full flex-row! justify-between items-center">
+              </div></section>
+              <section className="entry-section" aria-labelledby="entry-notes-title">
+              <h3 id="entry-notes-title" className="entry-section-title"><span>03</span>Detalhes do registro</h3>
+              <div className="entry-fields">
+              <label className="full entry-holiday flex-row! justify-between items-center">
                 Foi feriado?
                 <Switch
                   checked={!!form.holiday}
@@ -302,7 +296,8 @@ export function EditDialog({
                   placeholder="Detalhes do trabalho ou motivo de uma correção."
                 />
               </label>
-            </>
+              </div></section></div>
+            </div></div>
           ) : (
             <>
               {input("name", "Nome completo", "text", true, { maxLength: 120 })}
@@ -376,12 +371,12 @@ export function EditDialog({
           {error && (
             <p
               role="alert"
-              className="full rounded-lg bg-red-50 p-3 text-red-700 text-sm"
+              className={`full rounded-lg bg-red-50 p-3 text-red-700 text-sm${editor.kind === "entry" ? " entry-error" : ""}`}
             >
               {error}
             </p>
           )}
-          <div className="full flex flex-col-reverse gap-3 pt-4 border-t sm:flex-row sm:justify-end">
+          <div className={editor.kind === "entry" ? "entry-footer" : "full flex flex-col-reverse gap-3 pt-4 border-t sm:flex-row sm:justify-end"}>
             <Button
               type="button"
               variant="outline"

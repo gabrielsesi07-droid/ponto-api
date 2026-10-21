@@ -8,6 +8,7 @@ Identidade aplicada ao aplicativo: verde floresta, superfícies claras e detalhe
 - Selecionar um cartão altera apenas a mesa de leitura. Os botões abrem a OS correspondente; criar uma OS usa o formulário e a API existentes. Nenhuma conferência física é marcada pelo quadro.
 - Busca, lista e filtro usam o conjunto completo. A rolagem das colunas no PC mantém a mesa próxima sem remover atendimentos. No celular as etapas ficam empilhadas.
 - Falha ao carregar operações mantém o estado não verificado; conferência dos pontos e fechamento mensal permanecem no painel.
+- A OS e o formulário de horas usam cabeçalho Signature e ações fixas, com rolagem no conteúdo. No PC, atendimento e horários ficam lado a lado; no celular os campos se empilham e o calendário se ajusta à largura. A edição do número oficial da OS fica recolhida até ser solicitada. As mudanças de apresentação preservam os formulários, validações e permissões existentes.
 
 ## Documentos e exportações
 

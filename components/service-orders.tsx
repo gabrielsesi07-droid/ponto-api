@@ -746,8 +746,12 @@ function OrderDetail({
   );
   return (
     <Dialog open onOpenChange={(v) => !v && !busy && closeWindow()}>
-      <DialogContent className="ops-dialog order-detail-dialog order-wide-dialog max-h-[92svh] overflow-y-auto bg-white">
+      <DialogContent className="ops-dialog order-detail-dialog order-wide-dialog bg-white">
         <DialogHeader className="order-detail-header">
+          <div className="order-sheet-masthead" aria-hidden="true">
+            <span className="order-sheet-brand"><span className="order-sheet-monogram">hc</span><span>HoraCerta<span className="order-sheet-dot">.</span></span></span>
+            <span className="order-sheet-kicker">Ordem de serviço</span>
+          </div>
           <DialogTitle>
             {orderNumber(o.number, o.official_number)} · {o.title}
           </DialogTitle>
@@ -757,7 +761,9 @@ function OrderDetail({
         </DialogHeader>
         <div className="order-detail-body space-y-5">
           <p className="order-internal-reference text-xs muted">Referência interna: {orderNumber(o.number)}</p>
-          {admin && <form className="order-number-form rounded-xl border p-4 space-y-2" onSubmit={async e => {
+          {admin && <details className="order-number-disclosure rounded-xl border">
+            <summary>Editar número oficial da OS</summary>
+            <form className="order-number-form p-4 space-y-2" onSubmit={async e => {
             e.preventDefault();
             if (demo) { setError("Entre para alterar o número oficial."); return; }
             setBusy(true); setError("");
@@ -771,7 +777,8 @@ function OrderDetail({
             <input id="official-order-number" className="input w-full" maxLength={80} value={officialNumber} onChange={e => setOfficialNumber(e.target.value)} placeholder="Ex.: 4831 ou OS 4831" disabled={busy} />
             <p className="text-xs muted">Use o número do PDF. Esta alteração preserva pontos, equipe e histórico. Vazio mantém a referência interna.</p>
             <Button type="submit" variant="outline" disabled={busy || officialNumber.trim() === (o.official_number || "")}>Salvar número oficial</Button>
-          </form>}
+            </form>
+          </details>}
           {demo && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-950">Cenário fictício para consulta. Viagens, checklists e horas mostram as etapas do fluxo; as ações não salvam alterações.</p>}
           {checklistOnly && <section className="rounded-xl border border-violet-200 bg-violet-50 p-4 text-sm text-violet-950" aria-label="Sua tarefa nesta OS">
             <h3 className="font-semibold">Checklist designado para você</h3>
@@ -1109,10 +1116,12 @@ function OrderDetail({
               {error}
             </p>
           )}
+        </div>
+        <div className="order-detail-footer">
+          <p className="order-sheet-footer-reference">{orderNumber(o.number, o.official_number)}<span> · </span>{o.client_name}</p>
           <Button
             disabled={busy}
             variant="outline"
-            className="w-full"
             onClick={closeWindow}
           >
             {busy ? <LoaderCircle className="animate-spin" /> : null}Fechar janela

@@ -94,6 +94,7 @@
 }
 .ops-dialog [data-slot="dialog-description"] {
   max-width: 76ch;
+  overflow-wrap: anywhere;
   color: var(--muted-foreground);
   font-size: 0.8125rem;
   line-height: 1.65;
@@ -113,11 +114,23 @@
 }
 .order-editor-header {
   flex-shrink: 0;
-  padding: 1.25rem 3rem 1.25rem 1.5rem;
-  border-bottom: 1px solid var(--border);
-  background: var(--muted);
+  padding: 1.35rem 3.5rem 1.25rem 1.75rem;
+  border-bottom: 2px solid var(--primary);
+  background: var(--card);
   text-align: left;
 }
+.order-sheet-masthead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.8rem;
+}
+.order-sheet-brand { display: flex; align-items: center; gap: 0.6rem; color: var(--foreground); font-size: 1.05rem; font-weight: 600; letter-spacing: -0.04em; }
+.order-sheet-monogram { display: grid; place-items: center; flex-shrink: 0; width: 30px; height: 30px; padding-right: 2px; border: 1px solid color-mix(in srgb, var(--gold) 55%, var(--border)); border-radius: 9px; background: var(--warning-soft); color: var(--gold); font-size: 1.1rem; font-weight: 500; letter-spacing: -0.09em; }
+.order-sheet-dot { color: var(--gold); }
+.order-sheet-kicker { color: var(--gold); font-size: 0.625rem; font-weight: 500; letter-spacing: 0.1em; line-height: 1.5; text-align: right; text-transform: uppercase; }
+.order-section-index { color: var(--gold); font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 400; letter-spacing: 0.025em; }
 .order-editor-form {
   display: flex;
   flex-direction: column;
@@ -150,8 +163,12 @@
   background: var(--card);
 }
 .order-editor-section > h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 0.65rem;
   padding-bottom: 0.9rem;
   border-bottom: 1px solid var(--border);
+  color: var(--primary);
   font-size: 1rem;
   font-weight: 500;
   letter-spacing: -0.025em;
@@ -166,6 +183,7 @@
   border-top: 1px solid var(--border);
   background: var(--card);
 }
+.order-attachment-field { border-color: color-mix(in srgb, var(--gold) 35%, var(--border)); }
 
 /* Surface and status colors follow the shared Signature palette in both themes. */
 :is(.orders-workspace, .ops-dialog, .technical-library, .library-document-dialog) :is(.bg-white, .bg-slate-50, .bg-slate-100) {
@@ -242,12 +260,23 @@
 .order-ticket .order-ticket-open { justify-content: space-between; margin-top: auto; min-height: 40px; background: var(--muted); font-size: 0.75rem; font-weight: 500; }
 .order-ticket-open svg { width: 15px; height: 15px; }
 
-.order-detail-dialog { padding: 0; }
-.order-detail-header { padding: 1.5rem 3rem 1.3rem 1.5rem; border-bottom: 1px solid var(--border); background: var(--muted); text-align: left; }
-.order-detail-body { padding: 1.5rem; }
-.order-detail-body > :is(section, details) { border-radius: 0.75rem; }
-.order-detail-body h3 { font-size: 0.875rem; font-weight: 600; letter-spacing: -0.015em; }
+.ops-dialog.order-detail-dialog { display: flex; flex-direction: column; height: 92svh; max-height: 92svh; padding: 0; gap: 0; overflow: hidden; }
+.order-detail-header { flex-shrink: 0; padding: 1.35rem 3.5rem 1.25rem 1.75rem; border-bottom: 2px solid var(--primary); background: var(--card); text-align: left; }
+.order-detail-body { flex: 1; min-height: 0; padding: 1.5rem 1.75rem; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; scroll-padding-block: 1.5rem; background: var(--background); }
+.order-detail-body > :is(section, details) { border-radius: 0.75rem; background-color: var(--card); }
+.order-detail-body > :is(section, details):focus { outline: 2px solid var(--ring); outline-offset: 3px; }
+.order-detail-body h3 { color: var(--primary); font-size: 0.875rem; font-weight: 600; letter-spacing: -0.015em; }
+.order-detail-footer { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; gap: 1rem; padding: 0.85rem 1.75rem; border-top: 1px solid var(--border); background: var(--card); }
+.order-sheet-footer-reference { min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; color: var(--muted-foreground); font-family: var(--font-mono); font-size: 0.6875rem; line-height: 1.5; overflow-wrap: anywhere; }
+.order-detail-footer > [data-slot="button"] { flex-shrink: 0; }
+.ops-dialog:is(.order-detail-dialog, .order-editor-dialog) > [data-slot="dialog-close"] { top: 1.2rem; right: 1.1rem; display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid var(--border); border-radius: 50%; background: var(--card); color: var(--muted-foreground); opacity: 1; }
+.ops-dialog:is(.order-detail-dialog, .order-editor-dialog) > [data-slot="dialog-close"]:hover { background: var(--accent); color: var(--primary); }
 .order-number-form { background: var(--muted); }
+.order-number-disclosure { overflow: hidden; }
+.order-number-disclosure > summary { padding: 0.85rem 1rem; color: var(--muted-foreground); font-size: 0.75rem; font-weight: 500; cursor: pointer; }
+.order-number-disclosure > summary:hover { color: var(--primary); background: var(--accent); }
+.order-number-disclosure > summary:focus-visible { outline: 2px solid var(--ring); outline-offset: -3px; }
+.order-number-disclosure[open] > summary { border-bottom: 1px solid var(--border); color: var(--primary); }
 .order-number-form > label { color: var(--muted-foreground); font-size: 0.75rem; }
 .order-number-form .input { padding: 0.65rem 0.8rem; background: var(--card); border: 1px solid var(--input); border-radius: 0.45rem; color: var(--foreground); font-family: var(--font-mono); font-size: 0.8125rem; }
 .order-next-action { border-left: 3px solid var(--warning); }
@@ -301,7 +330,7 @@
     padding: 1.5rem;
   }
   .order-editor-section {
-    padding: 1.25rem;
+    padding: 1.5rem;
   }
   .order-detail-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; align-items: start; }
   .order-detail-body > * { grid-column: 1/-1; margin-block: 0; }
@@ -315,6 +344,9 @@
   .order-editor-header {
     padding-left: 1rem;
   }
+  .order-sheet-masthead { gap: 0.6rem; margin-bottom: 0.65rem; }
+  .order-sheet-brand { gap: 0.45rem; font-size: 0.9375rem; }
+  .order-sheet-kicker { max-width: 110px; font-size: 0.5625rem; letter-spacing: 0.06em; }
   .order-editor-body {
     padding: 0.75rem;
   }
@@ -329,8 +361,13 @@
   .orders-summary-item p { font-size: 0.625rem; }
   .orders-grid { grid-template-columns: minmax(0, 1fr); }
   :is(.orders-workspace, .technical-library, .library-document-dialog) [data-slot="button"] { min-height: 44px; }
-  .order-detail-header { padding: 1.15rem 2.6rem 1.1rem 1rem; }
-  .order-detail-body { padding: 1rem; }
+  .ops-dialog.order-wide-dialog { width: calc(100% - 1rem); }
+  .order-editor-header, .order-detail-header { padding: 1rem 3rem 1rem 1rem; }
+  .order-detail-body { padding: 0.85rem; }
+  .order-detail-footer { gap: 0.6rem; padding: 0.75rem 1rem; }
+  .order-sheet-footer-reference { font-size: 0.625rem; }
+  .order-detail-footer > [data-slot="button"] { padding-inline: 0.8rem; font-size: 0.75rem; }
+  .ops-dialog:is(.order-detail-dialog, .order-editor-dialog) > [data-slot="dialog-close"] { top: 1rem; right: 0.8rem; width: 28px; height: 28px; }
   .order-detail-actions > [data-slot="button"] { flex: 1 1 150px; font-size: 0.75rem; }
   .order-closeout-steps > li { padding-left: 2.3rem; }
   .order-closeout-steps > li::before { left: 0.6rem; }
