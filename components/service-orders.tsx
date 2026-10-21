@@ -756,7 +756,7 @@ function OrderDetail({
   );
   return (
     <Dialog open onOpenChange={(v) => !v && !busy && closeWindow()}>
-      <DialogContent className="ops-dialog max-h-[92svh] overflow-y-auto bg-white sm:max-w-3xl">
+      <DialogContent className="ops-dialog order-wide-dialog max-h-[92svh] overflow-y-auto bg-white">
         <DialogHeader>
           <DialogTitle>
             {orderNumber(o.number, o.official_number)} · {o.title}

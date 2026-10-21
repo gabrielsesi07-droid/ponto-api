@@ -298,8 +298,8 @@ export function OrderEditor({
   }
   return (
     <Dialog open onOpenChange={(v) => !v && !busy && onClose()}>
-      <DialogContent className="ops-dialog max-h-[92svh] overflow-y-auto bg-white sm:max-w-3xl">
-        <DialogHeader>
+      <DialogContent className="ops-dialog order-wide-dialog order-editor-dialog bg-white">
+        <DialogHeader className="order-editor-header">
           <DialogTitle>
             {order ? "Editar OS" : "Gerar ordem de serviço"}
           </DialogTitle>
@@ -308,14 +308,17 @@ export function OrderEditor({
             agendado. Horários de Brasília.
           </DialogDescription>
         </DialogHeader>
-        <form className="ops-form" onSubmit={submit}>
+        <form className="order-editor-form" onSubmit={submit}>
+          <div className="order-editor-body">
           {savedId && (
             <p className="full rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
               A OS já está salva. Reenvie o PDF ou remova o arquivo selecionado
               para continuar.
             </p>
           )}
-          <fieldset disabled={busy || !!savedId} className="contents">
+          <fieldset disabled={busy || !!savedId} className="order-editor-columns">
+            <section className="ops-form order-editor-section" aria-labelledby="order-service-heading">
+              <h3 id="order-service-heading" className="full font-semibold text-lg">Dados do atendimento</h3>
             <label className="full">
               Número oficial da OS
               <input maxLength={80} value={form.official_number} onChange={e => change("official_number", e.target.value)} placeholder="Ex.: 4831 ou OS 4831" />
@@ -454,6 +457,9 @@ export function OrderEditor({
                 onChange={(e) => change("phone", e.target.value)}
               />
             </label>
+            </section>
+            <section className="ops-form order-editor-section" aria-labelledby="order-team-heading">
+              <h3 id="order-team-heading" className="full font-semibold text-lg">Equipe e recursos</h3>
             <fieldset className="full rounded-xl border p-4">
               <legend className="px-1 text-sm font-semibold">
                 Equipe designada ({form.members.length})
@@ -525,7 +531,9 @@ export function OrderEditor({
                 placeholder="Acesso ao local, atividades previstas, EPIs e orientações para a equipe."
               />
             </label>
+            </section>
           </fieldset>
+          <div className="ops-form mt-5">
           <label className="full rounded-xl border border-dashed bg-slate-50 p-4">
             <span className="flex items-center gap-2">
               <Upload size={18} />
@@ -552,7 +560,9 @@ export function OrderEditor({
               {error}
             </p>
           )}
-          <div className="full flex flex-wrap justify-end gap-3 border-t pt-4">
+          </div>
+          </div>
+          <div className="order-editor-footer">
             <Button
               type="button"
               variant="outline"
