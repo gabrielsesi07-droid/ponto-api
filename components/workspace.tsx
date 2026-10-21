@@ -1,6 +1,7 @@
 "use client";
 import { orderLabel } from "@/lib/order-label.mjs";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { defaultReportOptions, reportSections, type ReportOptions } from "@/lib/export";
 import {
   Clock3,
   LayoutDashboard,
@@ -541,12 +542,13 @@ export function Workspace() {
       setBusy(false);
     }
   }
+  const [reportOptions, setReportOptions] = useState<ReportOptions>({ ...defaultReportOptions });
   async function exportFile(format: "csv" | "xlsx" | "pdf") {
     if (!data) return;
     setExporting(true);
     try {
       const { exportReport } = await import("@/lib/export");
-      await exportReport(format, rows, data, range.from + " a " + range.to);
+      await exportReport(format, rows, data, range.from + " a " + range.to, reportOptions);
       toast.success("Relatório exportado.");
     } catch {
       toast.error("Não foi possível exportar o relatório.");
@@ -1075,6 +1077,18 @@ export function Workspace() {
                         ))}
                       </div>
                     </div>
+                    <fieldset className="mt-6 rounded-xl border p-4">
+                      <legend className="px-2 font-semibold">O que incluir no arquivo</legend>
+                      <p className="muted text-sm mb-4">Escolha os dados para PDF, Excel e CSV. Data e colaborador sempre são incluídos. A previsão de valores continua disponível na tela e só entra no arquivo se você marcar essa opção.</p>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {reportSections.map(section => (
+                          <label key={section.key} className="flex items-center gap-3 text-sm cursor-pointer">
+                            <input type="checkbox" className="size-4 accent-blue-600" checked={reportOptions[section.key]} disabled={exporting} onChange={event => setReportOptions(previous => ({ ...previous, [section.key]: event.target.checked }))} />
+                            {section.label}
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
                     <div className="mt-7">
                       {admin ? (
                         <Tabs defaultValue="people">

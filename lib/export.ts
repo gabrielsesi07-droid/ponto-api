@@ -1,52 +1,55 @@
 import { orderLabel } from "./order-label.mjs";
 import type { Calculated, State } from "./domain";
-import { duration } from "./domain";
+import { duration } from "./domain.ts";
+export const reportSections = [
+  { key: "service", label: "OS, empresa e serviço" },
+  { key: "times", label: "Entrada, saída e intervalo" },
+  { key: "hours", label: "Horas trabalhadas, normais e extras" },
+  { key: "classification", label: "Tipo de dia e deslocamento" },
+  { key: "status", label: "Status do ponto" },
+  { key: "breakdown", label: "Faixas de horas extras" },
+  { key: "notes", label: "Observações do cálculo" },
+  { key: "values", label: "Valores estimados das extras" },
+] as const;
+export type ReportOptions = Record<(typeof reportSections)[number]["key"], boolean>;
+export const defaultReportOptions: ReportOptions = {
+  service: true, times: true, hours: true, classification: true,
+  status: true, breakdown: false, notes: false, values: false,
+};
+
+export function buildReportData(rows: Calculated[], state: State, options: ReportOptions = defaultReportOptions) {
+  const columns: { header: string; group?: keyof ReportOptions; value: (e: Calculated) => string | number }[] = [
+    { header: "Data", value: e => e.date },
+    { header: "Colaborador", value: e => state.users.find(u => u.id === e.user_id)?.name || "" },
+    { header: "OS", group: "service", value: e => e.order_number ? orderLabel(e.order_number, e.order_official_number) : "Histórico anterior · sem OS" },
+    { header: "Empresa atendida", group: "service", value: e => e.company || "Não informada" },
+    { header: "Serviço", group: "service", value: e => e.service || "Serviço técnico" },
+    { header: "Entrada", group: "times", value: e => e.start.slice(0, 5) },
+    { header: "Saída", group: "times", value: e => e.end?.slice(0, 5) || "Em aberto" },
+    { header: "Intervalo min", group: "times", value: e => e.break_minutes },
+    { header: "Trabalhadas", group: "hours", value: e => duration(e.worked) },
+    { header: "Normais", group: "hours", value: e => duration(e.normal) },
+    { header: "Extras", group: "hours", value: e => duration(e.extra) },
+    { header: "Tipo de dia", group: "classification", value: e => e.kind },
+    { header: "Tipo de apontamento", group: "classification", value: e => e.work_type === "travel" ? "Deslocamento" : "Serviço" },
+    { header: "Status", group: "status", value: e => e.status },
+    { header: "Faixas de extras", group: "breakdown", value: e => e.breakdown?.map(tier => `${duration(tier.minutes)} com +${tier.bonus}%${options.values ? (e.missing_rate ? " · valor a calcular" : ` · ${tier.amount.toFixed(2)} ${e.rules.currency}`) : ""}`).join(" | ") || "" },
+    { header: "Observações do cálculo", group: "notes", value: e => e.calculation_warning || "" },
+    { header: "Valor extras estimado", group: "values", value: e => e.extra > 0 && e.missing_rate ? "" : Number(e.amount.toFixed(2)) },
+    { header: "Conferência do valor", group: "values", value: e => e.missing_rate || Number(e.rate) === 0 ? "Valor-hora não informado; estimativa indisponível" : "Valor estimado" },
+  ];
+  const selected = columns.filter(column => !column.group || options[column.group]);
+  return { headers: selected.map(column => column.header), data: rows.map(entry => selected.map(column => column.value(entry))) };
+}
+
 export async function exportReport(
   format: "csv" | "xlsx" | "pdf",
   rows: Calculated[],
   state: State,
   period: string,
+  options: ReportOptions = defaultReportOptions,
 ) {
-  const headers = [
-    "Data",
-    "OS",
-    "Colaborador",
-    "Empresa atendida",
-    "Serviço",
-    "Entrada",
-    "Saída",
-    "Intervalo min",
-    "Trabalhadas",
-    "Normais",
-    "Extras",
-    "Tipo de dia",
-    "Valor extras",
-    "Status",
-    "Tipo de apontamento",
-    "Faixas de extras",
-    "Observações do cálculo",
-    "Conferência do valor",
-  ];
-  const data = rows.map((e) => [
-    e.date,
-    e.order_number ? orderLabel(e.order_number, e.order_official_number) : 'Histórico anterior · sem OS',
-    state.users.find((u) => u.id === e.user_id)?.name || "",
-    e.company || "Não informada",
-    e.service || "Serviço técnico",
-    e.start.slice(0, 5),
-    e.end?.slice(0, 5) || "Em aberto",
-    e.break_minutes,
-    duration(e.worked),
-    duration(e.normal),
-    duration(e.extra),
-    e.kind,
-    e.extra > 0 && e.missing_rate ? "" : Number(e.amount.toFixed(2)),
-    e.status,
-    e.work_type === "travel" ? "Deslocamento" : "Serviço",
-    e.breakdown?.map((tier) => `${duration(tier.minutes)} com +${tier.bonus}%${e.missing_rate ? " · valor a calcular" : ` · ${tier.amount.toFixed(2)} ${e.rules.currency}`}`).join(" | ") || "",
-    [e.extra > 0 && e.missing_rate ? "Valor-hora não informado; estimativa indisponível" : "", e.calculation_warning].filter(Boolean).join(" | "),
-    Number(e.rate) === 0 ? "Valor-hora registrado como zero: conferir antes de utilizar" : "Valor estimado",
-  ]);
+  const { headers, data } = buildReportData(rows, state, options);
   const name = "horacerta-" + period.replace(/[^0-9-]/g, "") + "." + format;
   function download(blob: Blob) {
     const url = URL.createObjectURL(blob),
@@ -73,7 +76,8 @@ export async function exportReport(
     );
   }
   if (format === "xlsx") {
-    const { Workbook } = await import("exceljs");
+    const { default: ExcelJS } = await import("exceljs");
+    const { Workbook } = ExcelJS;
     const book = new Workbook(),
       sheet = book.addWorksheet("Lançamentos");
     sheet.addRow(headers);
@@ -105,7 +109,7 @@ export async function exportReport(
     pdf.text("HoraCerta | Relatório de jornada", 14, 18);
     pdf.setFontSize(10);
     pdf.text(
-      period + " · Valores estimados · Moeda: " + state.settings.currency,
+      period + (options.values ? " · Valores estimados · Moeda: " + state.settings.currency : ""),
       14,
       26,
     );
