@@ -1,7 +1,18 @@
 export type EquipmentModel = {
   id: string; name: string; family: string; status: 'pending' | 'published' | 'archived'; version: number;
   document_count?: number;
+  checklist_status?: 'draft' | 'imported' | 'active' | 'archived' | null;
+  checklist_source?: string | null;
+  checklist_items?: number;
+  checklist_ready?: boolean;
 };
+export function equipmentChecklistLabel(model: EquipmentModel) {
+  if (model.checklist_ready) return model.checklist_status === 'imported' ? 'Referência importada · disponível na OS' : 'Checklist ativo';
+  if (model.checklist_status === 'draft') return 'Rascunho · ainda não acompanha a OS';
+  if (model.checklist_status === 'archived') return 'Checklist desativado';
+  if (model.checklist_status) return 'Checklist indisponível · revisar origem ou itens';
+  return 'Sem checklist atribuído';
+}
 export type LibraryDocument = {
   id: string; name: string; extension: string; size: number;
   category: 'checklist' | 'catalog' | 'manual'; status: 'pending' | 'published' | 'archived';

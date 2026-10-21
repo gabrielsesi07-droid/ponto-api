@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { checklistProgress, checklistCompletionIssues, newChecklistItem, type ChecklistItem, type ChecklistTemplate, type OrderChecklist } from '@/lib/checklists';
 import { submitChecklist } from '@/lib/checklist-request';
 import { assignmentCandidates, assignmentIssue, canAssignChecklist, ASSIGNMENT_REASON_MAX, type Assignee, type AssignmentFields } from '@/lib/checklist-assignment';
+import { normalizeSearch } from '@/lib/library';
 
 /** Campos opcionais do servidor: `can_edit` decide a edição; os demais descrevem a designação de responsável. */
 type ServerChecklist = OrderChecklist & AssignmentFields & { can_edit?: boolean };
@@ -50,11 +51,12 @@ export function ChecklistItems({ items, onChange, template = false, disabled = f
 }
 
 type TemplateData = { model: { id: string; name: string }; template: ChecklistTemplate | null;
-  sources: { id: string; name: string }[]; suggested: ChecklistItem[] | null };
+  sources: { id: string; name: string; linked: boolean }[]; suggested: ChecklistItem[] | null };
 export function ChecklistTemplateEditor({ modelId, onClose, onSaved }: { modelId: string; onClose: () => void; onSaved: () => void }) {
   const [data, setData] = useState<TemplateData | null>(null), [error, setError] = useState('');
   const [title, setTitle] = useState(''), [source, setSource] = useState(''), [items, setItems] = useState<ChecklistItem[]>([]);
   const [dirty, setDirty] = useState(false), [busy, setBusy] = useState(false), [confirmed, setConfirmed] = useState(false);
+  const [sourceSearch, setSourceSearch] = useState('');
   useEffect(() => {
     const controller = new AbortController();
     fetch('/api/checklists/templates?model=' + modelId, { signal: controller.signal }).then(async res => {
@@ -90,8 +92,15 @@ export function ChecklistTemplateEditor({ modelId, onClose, onSaved }: { modelId
       {data?.template?.status === 'imported' && <p className="rounded-lg bg-blue-50 p-3 text-sm">Esta lista importada já acompanha novas OS como referência. Você pode revisá-la e ativar o padrão validado. Salvar como rascunho ou desativar interrompe novos vínculos automáticos.</p>}
       {data && <fieldset disabled={busy} className="min-w-0 space-y-4">
         <label className="block text-sm font-medium">Título<input className="check-input" maxLength={180} value={title} onChange={e => { setTitle(e.target.value); setDirty(true); }} /></label>
-        <label className="block text-sm font-medium">Documento de referência<select className="check-input" value={source} onChange={e => { setSource(e.target.value); setDirty(true); setConfirmed(false); }}><option value="">Checklist próprio, sem documento de origem</option>{data.sources.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}{source && !data.sources.some(s => s.id === source) && <option value={source}>{data.template?.source_name} (verifique a origem)</option>}</select></label>
+        <section className="space-y-3 rounded-xl border bg-slate-50 p-4" aria-label="Atribuir checklist da Biblioteca">
+          <h3 className="font-semibold">Escolher checklist da Biblioteca</h3>
+          <p className="text-sm text-slate-600">Busque e escolha um documento, mesmo que ainda não esteja vinculado a este equipamento. O vínculo será salvo junto com o checklist.</p>
+          <label className="block text-sm font-medium">Buscar checklist<input type="search" className="check-input" value={sourceSearch} onChange={e => setSourceSearch(e.target.value)} placeholder="Ex.: Scan, Ballbar, Lasertracker…" /></label>
+          <label className="block text-sm font-medium">Documento de referência<select className="check-input" value={source} onChange={e => { setSource(e.target.value); setDirty(true); setConfirmed(false); }}><option value="">Checklist próprio, sem documento de origem</option>{data.sources.filter(s => s.id === source || normalizeSearch(s.name).includes(normalizeSearch(sourceSearch.trim()))).map(s => <option key={s.id} value={s.id}>{s.name}{s.linked ? ' · já vinculado' : ''}</option>)}{source && !data.sources.some(s => s.id === source) && <option value={source}>{data.template?.source_name} (verifique a origem)</option>}</select></label>
+          {sourceSearch.trim() && !data.sources.some(s => normalizeSearch(s.name).includes(normalizeSearch(sourceSearch.trim()))) && <p role="status" className="text-sm">Nenhum documento encontrado para esta busca. O documento selecionado continua preservado.</p>}
         <Button type="button" variant="outline" className="h-auto min-h-11 max-w-full whitespace-normal" disabled={!source || busy} onClick={() => void importItems()}>Importar sugestão de itens do documento</Button>
+          <p className="text-xs text-slate-600">Trocar o documento não substitui os itens atuais. Importe a lista e revise os itens abaixo antes de ativar. Salvar rascunho guarda o vínculo, mas ainda não inclui o checklist nas próximas OS.</p>
+        </section>
         <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-950">Confira o original na Biblioteca. A sugestão remove datas, OS, comentários e números de série preenchidos. Não substitui a validação técnica nem garante compatibilidade com o equipamento.</p>
         <ChecklistItems items={items} onChange={changeItems} template />
         <label className="flex items-start gap-3 rounded-lg bg-blue-50 p-3 text-sm"><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} className="mt-1 size-4 shrink-0" />Revisei o modelo, o documento e a lista de itens previstos. O padrão pode ser usado pela equipe; a conferência física será feita pelos colaboradores na OS.</label>

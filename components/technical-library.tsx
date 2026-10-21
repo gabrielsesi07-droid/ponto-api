@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { api } from './editors';
 import { toast } from 'sonner';
 import { ChecklistTemplateEditor } from './checklist-editor';
-import { documentCategories, reviewLabels, normalizeSearch, selectableModels, type EquipmentModel, type LibraryDocument } from '@/lib/library';
+import { documentCategories, reviewLabels, normalizeSearch, selectableModels, equipmentChecklistLabel, type EquipmentModel, type LibraryDocument } from '@/lib/library';
 
 type Section = { position: number; locator: string; content: string };
 type LibraryData = { documents: LibraryDocument[]; models: EquipmentModel[]; total: number;
@@ -120,6 +120,7 @@ export function TechnicalLibrary({ admin, demo = false, orderId, initialTab = 'd
   const [checklistModel, setChecklistModel] = useState('');
   const [selected, setSelected] = useState<LibraryDocument | null>(null), [revision, setRevision] = useState(0);
   const [busyModel, setBusyModel] = useState('');
+  const [modelSearch, setModelSearch] = useState(''), [checklistFilter, setChecklistFilter] = useState('all');
   const refresh = useCallback(() => setRevision(v => v + 1), []);
   useEffect(() => {
     if (demo) return;
@@ -182,16 +183,27 @@ export function TechnicalLibrary({ admin, demo = false, orderId, initialTab = 'd
         </article>)}
       </div>}
       {(data?.total || 0) > 24 && <div className="flex items-center justify-between gap-2"><Button variant="outline" disabled={loading || page === 1} onClick={() => setPage(p => p - 1)}>Anterior</Button><span className="text-sm">{page} / {Math.ceil((data?.total || 0) / 24)}</span><Button variant="outline" disabled={loading || page * 24 >= (data?.total || 0)} onClick={() => setPage(p => p + 1)}>Próxima</Button></div>}
-    </> : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {data?.models.map(m => <article key={m.id} className="rounded-xl border bg-white p-4">
+    </> : <>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="text-sm font-medium">Buscar equipamento<input type="search" className="check-input" value={modelSearch} onChange={e => setModelSearch(e.target.value)} placeholder="Nome ou família do equipamento" /></label>
+        <label className="text-sm font-medium">Checklist na OS<select className="check-input" value={checklistFilter} onChange={e => setChecklistFilter(e.target.value)}><option value="all">Todos os equipamentos</option><option value="ready">Com checklist disponível</option><option value="missing">Sem checklist disponível</option></select></label>
+      </div>
+      {data && <p role="status" className="text-sm text-slate-600">{data.models.length} equipamentos · {data.models.filter(m => m.checklist_ready).length} com checklist disponível · {data.models.filter(m => !m.checklist_ready).length} sem checklist disponível</p>}
+      {loading && <p role="status" className="text-sm">Carregando equipamentos…</p>}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {data?.models.filter(m => normalizeSearch(m.name + ' ' + m.family).includes(normalizeSearch(modelSearch.trim())) && (checklistFilter === 'all' || (checklistFilter === 'ready' ? m.checklist_ready : !m.checklist_ready))).map(m => <article key={m.id} className="rounded-xl border bg-white p-4">
         <Wrench className="text-blue-600" size={22} /><h3 className="mt-3 font-bold">{m.name}</h3><p className="mt-1 text-sm text-slate-500">{m.family}</p>
         <p className="mt-3 text-xs">{m.document_count} documento(s) · {reviewLabels[m.status]}</p>
+        <div className={`mt-3 rounded-lg p-3 text-sm ${m.checklist_ready ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-900'}`}>
+          <p className="font-medium">{equipmentChecklistLabel(m)}</p>
+          {admin && m.checklist_status && <p className="mt-1 text-xs">{m.checklist_items || 0} itens · {m.checklist_source || 'Sem documento de referência'}</p>}
+        </div>
         <div className="mt-4 flex flex-wrap gap-2"><Button variant="outline" onClick={() => { setModel(m.id); setQ(''); setCategory(''); setStatus(''); setPage(1); setTab('documents'); }}>Ver documentos</Button>
-          {admin && <Button onClick={() => setChecklistModel(m.id)}>Configurar checklist</Button>}
+          {admin && <Button onClick={() => setChecklistModel(m.id)}>{m.checklist_ready ? 'Revisar checklist' : 'Atribuir checklist'}</Button>}
           {admin && <Button disabled={!!busyModel} variant={m.status === 'published' ? 'outline' : 'default'} onClick={() => void reviewModel(m, m.status === 'published' ? 'archived' : 'published')}>{m.status === 'published' ? 'Arquivar modelo' : 'Validar modelo'}</Button>}
         </div>
       </article>)}
-    </div>}
+    </div></>}
     {selected && <DocumentReader key={selected.id} doc={selected} admin={admin} models={data?.models || []} close={() => setSelected(null)} refreshed={refresh} />}
     {checklistModel && <ChecklistTemplateEditor modelId={checklistModel} onClose={() => setChecklistModel('')} onSaved={refresh} />}
   </section>;

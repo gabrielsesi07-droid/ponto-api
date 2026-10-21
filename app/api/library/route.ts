@@ -30,8 +30,16 @@ export async function GET(req: Request) {
         FROM horacerta.library_documents d WHERE ${predicate} ORDER BY d.name,d.id LIMIT 24 OFFSET ${(page - 1) * 24}`,
       sql`SELECT count(*)::int total FROM horacerta.library_documents d WHERE ${predicate}`,
       sql`SELECT m.id,m.name,m.family,m.status,m.version,
+        CASE WHEN ${admin} THEN t.status END checklist_status,
+        CASE WHEN ${admin} THEN t.source_name END checklist_source,
+        CASE WHEN ${admin} THEN coalesce(jsonb_array_length(t.items),0) END checklist_items,
+        (m.status<>'archived' AND t.status IN ('active','imported') AND jsonb_array_length(t.items)>0
+          AND (t.source_document_id IS NULL OR (source.ready AND NOT source.obsolete))
+          AND (t.status<>'imported' OR t.source_document_id IS NOT NULL)) IS TRUE checklist_ready,
         (SELECT count(*)::int FROM horacerta.library_model_documents md JOIN horacerta.library_documents d ON d.id=md.document_id WHERE md.model_id=m.id AND d.ready AND (${admin} OR (d.status='published' AND NOT d.obsolete))) document_count
-        FROM horacerta.equipment_models m WHERE ${admin} OR m.status='published' ORDER BY m.name`,
+        FROM horacerta.equipment_models m LEFT JOIN horacerta.checklist_templates t ON t.model_id=m.id
+        LEFT JOIN horacerta.library_documents source ON source.id=t.source_document_id
+        WHERE ${admin} OR m.status='published' ORDER BY m.name`,
       admin ? sql`SELECT created_at,finished_at,summary FROM horacerta.library_imports ORDER BY created_at DESC LIMIT 1` : Promise.resolve([]),
     ]);
     return Response.json({ documents, total: total[0].total, models, recent: recent[0] || null }, { headers: libraryHeaders });
