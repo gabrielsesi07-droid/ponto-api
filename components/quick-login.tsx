@@ -198,13 +198,13 @@ export function QuickLogin({
           prefetch={false}
           onClick={back}
           className="login-brand"
-          aria-label="HoraCerta, início do login"
+          aria-label="Automated Precision Inc., início do login"
         >
           <span className="login-brand-icon">
             <Clock3 size={24} strokeWidth={1.7} />
           </span>
           <span>
-            HoraCerta<span className="login-brand-dot">.</span>
+            Automated Precision<span className="login-brand-dot"> Inc.</span>
           </span>
         </Link>
         <span className="login-header-note">
@@ -249,7 +249,7 @@ export function QuickLogin({
             </div>
             <div className="login-clock">
               <div className="login-clock-rim" />
-              <span className="login-clock-label">HORA CERTA</span>
+              <span className="login-clock-label">PRECISION</span>
               <span className="login-clock-twelve">12</span>
               <span className="login-clock-three">03</span>
               <span className="login-clock-six">06</span>
@@ -278,7 +278,7 @@ export function QuickLogin({
             </div>
           </div>
 
-          <div className="login-benefits" aria-label="Recursos do HoraCerta">
+          <div className="login-benefits" aria-label="Recursos do sistema">
             <span>
               <Check size={14} /> Registro de horas
             </span>
@@ -306,7 +306,7 @@ export function QuickLogin({
               <Fingerprint size={32} strokeWidth={1.5} />
             </div>
             <div className="login-intro">
-              <p className="login-card-eyebrow">BEM-VINDO AO HORACERTA</p>
+              <p className="login-card-eyebrow">BEM-VINDO À AUTOMATED PRECISION</p>
               <h2 id="login-title">
                 {setup
                   ? "Tudo começa aqui."
@@ -635,7 +635,7 @@ export function QuickLogin({
 
       <footer className="login-footer">
         <span>
-          HoraCerta <span className="login-footer-divider">/</span> Cada hora
+          Automated Precision Inc. <span className="login-footer-divider">/</span> Cada hora
           conta.
         </span>
         <span>

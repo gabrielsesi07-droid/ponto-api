@@ -8,7 +8,7 @@ const geist = Geist({ subsets: ["latin"], variable: "--font-geist", display: "sw
 const brandFont = Space_Grotesk({ subsets: ["latin"], weight: ["600", "700"], variable: "--font-brand", display: "swap" });
 const plexMono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-signature-mono", display: "swap" });
 export const metadata: Metadata = {
-  title: "HoraCerta · Gestão de jornada",
+  title: "Automated Precision Inc. · Gestão de jornada",
   description: "Ponto, serviços e horas extras em um só lugar.",
   icons: { icon: "/favicon.svg" },
 };

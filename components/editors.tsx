@@ -198,7 +198,7 @@ export function EditDialog({
         <div className="flex flex-wrap justify-end gap-2">
           <Button variant="outline" onClick={async () => {
             try {
-              await navigator.clipboard.writeText(`Olá, ${issuedAccess.person.name}! Seu acesso ao HoraCerta:\nCódigo: ${issuedAccess.person.access_code}\nPIN temporário: ${issuedAccess.temporary_pin}\nTroque o PIN no primeiro acesso. Válido até ${new Date(issuedAccess.temporary_pin_expires_at).toLocaleString('pt-BR')}.`);
+              await navigator.clipboard.writeText(`Olá, ${issuedAccess.person.name}! Seu acesso ao sistema da Automated Precision Inc.:\nCódigo: ${issuedAccess.person.access_code}\nPIN temporário: ${issuedAccess.temporary_pin}\nTroque o PIN no primeiro acesso. Válido até ${new Date(issuedAccess.temporary_pin_expires_at).toLocaleString('pt-BR')}.`);
               setCopied(true);
             } catch { toast.error('Não foi possível copiar. Selecione os dados para copiá-los manualmente.'); }
           }}>{copied ? 'Copiado' : 'Copiar acesso'}</Button>
@@ -211,7 +211,7 @@ export function EditDialog({
     <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
       <DialogContent className={editor.kind === "entry" ? "entry-dialog" : "max-h-[90svh] overflow-y-auto bg-white sm:max-w-lg"}>
         <DialogHeader className={editor.kind === "entry" ? "entry-header" : undefined}>
-          {editor.kind === "entry" && <div className="entry-masthead"><span className="entry-monogram" aria-hidden="true">API</span><span className="entry-wordmark">HoraCerta<span>.</span></span><span className="entry-document-label">Jornada na OS</span></div>}
+          {editor.kind === "entry" && <div className="entry-masthead"><span className="entry-monogram" aria-hidden="true">API</span><span className="entry-wordmark">Automated Precision<span> Inc.</span></span><span className="entry-document-label">Jornada na OS</span></div>}
           <DialogTitle>
             {editor.kind === "entry"
               ? e

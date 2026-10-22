@@ -173,13 +173,10 @@ function Navigation({
   return (
     <Sidebar collapsible="icon" className="signature-sidebar">
       <SidebarHeader className={`signature-sidebar-header${compact ? " is-compact" : ""}`}>
-        <button className="signature-brand" aria-label="HoraCerta · ir ao início" onClick={() => go(state?.me.role === "employee" ? "register" : "dashboard")}>
+        <button className="signature-brand" aria-label="Automated Precision Inc. · ir ao início" onClick={() => go(state?.me.role === "employee" ? "register" : "dashboard")}>
           <span className="signature-monogram" aria-hidden="true">API</span>
           {!compact && <span className="signature-wordmark">
-            <b className="text-[23px] tracking-tight">
-              HoraCerta<span>.</span>
-            </b>
-            <small>AUTOMATED PRECISION INTERFACE</small>
+            <b>Automated Precision<span> Inc.</span></b>
           </span>}
         </button>
       </SidebarHeader>
@@ -241,7 +238,7 @@ function Navigation({
         </div>}
         <button
           className="signature-account"
-          aria-label={`Meu acesso · ${state?.me.name || "HoraCerta"}`}
+          aria-label={`Meu acesso · ${state?.me.name || "Automated Precision Inc."}`}
           onClick={() => go("profile")}
         >
           <span className="avatar bg-slate-600! text-white!">
@@ -655,10 +652,10 @@ export function Workspace() {
         <header className="workspace-topbar flex items-center justify-between gap-3 border-b px-5 lg:px-7">
           <div className="flex items-center gap-3">
             <SidebarTrigger aria-label="Abrir menu" className="size-11" />
-            <span className="text-sm muted hidden sm:inline">
-              HoraCerta<span className="signature-brand-dot">.</span>
+            <span className="text-sm muted hidden whitespace-nowrap lg:inline">
+              Automated Precision<span className="signature-brand-dot"> Inc.</span>
             </span>
-            <ChevronRight size={14} className="muted hidden sm:inline" />
+            <ChevronRight size={14} className="muted hidden lg:inline" />
             <span className="text-sm font-medium hidden min-[400px]:inline">
               {title}
             </span>
@@ -1334,7 +1331,7 @@ export function Workspace() {
             </>
           )}
           <footer className="mt-10 pt-5 border-t flex flex-wrap gap-2 justify-between text-xs muted">
-            <span>HoraCerta · Cada hora conta.</span>
+            <span>Automated Precision Inc. · Cada hora conta.</span>
             <span>Jornada em horário de Brasília · Valores estimados</span>
           </footer>
         </div>
@@ -1456,7 +1453,7 @@ function PinChangeGate({
         </div>
         <h1 id="pin-gate-title" className="text-2xl!">Crie seu PIN pessoal</h1>
         <p className="muted mt-2 text-sm leading-relaxed">
-          Olá, {me.name.split(" ")[0]}. Antes de acessar o HoraCerta, defina um PIN de 6 números que só você conhece.
+          Olá, {me.name.split(" ")[0]}. Antes de acessar o sistema, defina um PIN de 6 números que só você conhece.
           Depois de salvar, entre novamente com o novo PIN.
         </p>
         <div className="mt-6 grid gap-4">

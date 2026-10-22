@@ -70,7 +70,7 @@ body { font-family: var(--font-geist), "Segoe UI", sans-serif; }
 .signature-brand { display: flex; align-items: center; gap: 11px; color: #eef3e9; text-align: left; }
 .signature-monogram { display: grid; place-items: center; flex: 0 0 40px; width: 40px; height: 40px; border: 1px solid #ae9a625c; border-radius: 12px; color: #fff; font-family: var(--font-brand), var(--font-geist), sans-serif; font-size: 13px; letter-spacing: .02em; font-weight: 700; padding: 0; background: #9f8c4c1f; }
 .signature-wordmark { display: grid; gap: 1px; }
-.signature-wordmark b { font-size: 21px; font-weight: 550; }
+.signature-wordmark b { font-family: var(--font-brand), var(--font-geist), sans-serif; font-size: 16px; font-weight: 700; line-height: 1.12; letter-spacing: -.01em; }
 .signature-wordmark b span { color: #d6b875; }
 .signature-wordmark small { font-size: 8px; color: #b2c8b9; letter-spacing: .08em; white-space: nowrap; }
 .signature-team { display: flex; align-items: center; gap: 10px; margin: 0 5px 10px; padding: 12px 8px; border-bottom: 1px solid #ffffff16; }

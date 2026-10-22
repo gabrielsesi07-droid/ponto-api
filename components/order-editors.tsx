@@ -305,7 +305,7 @@ export function OrderEditor({
       <DialogContent className="ops-dialog order-wide-dialog order-editor-dialog bg-white">
         <DialogHeader className="order-editor-header">
           <div className="order-sheet-masthead" aria-hidden="true">
-            <span className="order-sheet-brand"><span className="order-sheet-monogram">API</span><span>HoraCerta<span className="order-sheet-dot">.</span></span></span>
+            <span className="order-sheet-brand"><span className="order-sheet-monogram">API</span><span>Automated Precision<span className="order-sheet-dot"> Inc.</span></span></span>
             <span className="order-sheet-kicker">Planejamento do atendimento</span>
           </div>
           <DialogTitle>

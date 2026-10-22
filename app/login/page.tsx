@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { LoginPage } from "@/components/login-page";
 
 export const metadata: Metadata = {
-  title: "Entrar · HoraCerta",
+  title: "Entrar · Automated Precision Inc.",
   description: "Seu tempo, no lugar certo. Entre com seu nome de acesso e PIN.",
 };
 
