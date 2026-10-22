@@ -211,7 +211,7 @@ export function EditDialog({
     <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
       <DialogContent className={editor.kind === "entry" ? "entry-dialog" : "max-h-[90svh] overflow-y-auto bg-white sm:max-w-lg"}>
         <DialogHeader className={editor.kind === "entry" ? "entry-header" : undefined}>
-          {editor.kind === "entry" && <div className="entry-masthead"><span className="entry-monogram" aria-hidden="true">hc</span><span className="entry-wordmark">HoraCerta<span>.</span></span><span className="entry-document-label">Jornada na OS</span></div>}
+          {editor.kind === "entry" && <div className="entry-masthead"><span className="entry-monogram" aria-hidden="true">API</span><span className="entry-wordmark">HoraCerta<span>.</span></span><span className="entry-document-label">Jornada na OS</span></div>}
           <DialogTitle>
             {editor.kind === "entry"
               ? e

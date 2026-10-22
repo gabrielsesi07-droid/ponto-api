@@ -27,7 +27,7 @@ export default async function PrintChecklist({ params }: { params: Promise<{ id:
     </div>
     <header className="print-header">
       <div className="print-brand-row">
-        <div className="print-brand"><span className="print-monogram" aria-hidden="true">hc</span><span><b>HoraCerta<span className="print-brand-dot">.</span></b><small>Gestão de jornada e operações</small></span></div>
+        <div className="print-brand"><span className="print-monogram" aria-hidden="true">API</span><span><b>HoraCerta<span className="print-brand-dot">.</span></b><small>Gestão de jornada e operações</small></span></div>
         <span className="print-document-label">Conferência de equipamentos</span>
       </div>
       <div className="print-title-row"><div><p className="print-eyebrow">Checklist da ordem de serviço</p><h1>{c.title}</h1></div><div className="print-number"><span>Ordem de serviço</span><b>{orderNumber(o.number, o.official_number)}</b><small>Preenchimento rev. {c.version}</small></div></div>

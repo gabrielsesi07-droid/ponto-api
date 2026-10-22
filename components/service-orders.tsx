@@ -749,7 +749,7 @@ function OrderDetail({
       <DialogContent className="ops-dialog order-detail-dialog order-wide-dialog bg-white">
         <DialogHeader className="order-detail-header">
           <div className="order-sheet-masthead" aria-hidden="true">
-            <span className="order-sheet-brand"><span className="order-sheet-monogram">hc</span><span>HoraCerta<span className="order-sheet-dot">.</span></span></span>
+            <span className="order-sheet-brand"><span className="order-sheet-monogram">API</span><span>HoraCerta<span className="order-sheet-dot">.</span></span></span>
             <span className="order-sheet-kicker">Ordem de serviço</span>
           </div>
           <DialogTitle>

@@ -17,7 +17,7 @@
 .entry-dialog > * { min-width: 0; }
 .entry-dialog .entry-header { flex-shrink: 0; gap: 10px; padding: 22px 56px 18px 26px; text-align: left; border-bottom: 1px solid var(--border); }
 .entry-masthead { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
-.entry-monogram { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; border: 1px solid var(--gold); border-radius: 9px; color: var(--gold); font-size: 18px; letter-spacing: -.08em; }
+.entry-monogram { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; border: 1px solid var(--gold); border-radius: 9px; color: var(--gold); font-family: var(--font-brand), sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .02em; }
 .entry-wordmark { color: var(--foreground); font-size: 17px; font-weight: 550; letter-spacing: -.05em; }
 .entry-wordmark > span { color: var(--gold); }
 .entry-document-label { margin-left: auto; color: var(--muted-foreground); font-size: 10px; text-transform: uppercase; letter-spacing: .1em; }
@@ -75,7 +75,7 @@
   .entry-dialog .entry-header { padding: 16px 44px 14px 16px; gap: 8px; }
   .entry-document-label { display: none; }
   .entry-masthead { margin-bottom: 3px; }
-  .entry-monogram { width: 28px; height: 28px; font-size: 16px; }
+  .entry-monogram { width: 28px; height: 28px; font-size: 10px; }
   .entry-wordmark { font-size: 15px; }
   .entry-dialog [data-slot="dialog-description"] { font-size: 12px; }
   .entry-body { padding: 14px; }

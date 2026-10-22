@@ -174,12 +174,12 @@ function Navigation({
     <Sidebar collapsible="icon" className="signature-sidebar">
       <SidebarHeader className={`signature-sidebar-header${compact ? " is-compact" : ""}`}>
         <button className="signature-brand" aria-label="HoraCerta · ir ao início" onClick={() => go(state?.me.role === "employee" ? "register" : "dashboard")}>
-          <span className="signature-monogram" aria-hidden="true">hc</span>
+          <span className="signature-monogram" aria-hidden="true">API</span>
           {!compact && <span className="signature-wordmark">
             <b className="text-[23px] tracking-tight">
               HoraCerta<span>.</span>
             </b>
-            <small>GESTÃO EM MOVIMENTO</small>
+            <small>AUTOMATED PRECISION INTERFACE</small>
           </span>}
         </button>
       </SidebarHeader>

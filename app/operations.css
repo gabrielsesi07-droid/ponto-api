@@ -127,7 +127,7 @@
   margin-bottom: 0.8rem;
 }
 .order-sheet-brand { display: flex; align-items: center; gap: 0.6rem; color: var(--foreground); font-size: 1.05rem; font-weight: 600; letter-spacing: -0.04em; }
-.order-sheet-monogram { display: grid; place-items: center; flex-shrink: 0; width: 30px; height: 30px; padding-right: 2px; border: 1px solid color-mix(in srgb, var(--gold) 55%, var(--border)); border-radius: 9px; background: var(--warning-soft); color: var(--gold); font-size: 1.1rem; font-weight: 500; letter-spacing: -0.09em; }
+.order-sheet-monogram { display: grid; place-items: center; flex-shrink: 0; width: 30px; height: 30px; padding: 0; border: 1px solid color-mix(in srgb, var(--gold) 55%, var(--border)); border-radius: 9px; background: var(--warning-soft); color: var(--gold); font-family: var(--font-brand), sans-serif; font-size: .62rem; font-weight: 700; letter-spacing: .02em; }
 .order-sheet-dot { color: var(--gold); }
 .order-sheet-kicker { color: var(--gold); font-size: 0.625rem; font-weight: 500; letter-spacing: 0.1em; line-height: 1.5; text-align: right; text-transform: uppercase; }
 .order-section-index { color: var(--gold); font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 400; letter-spacing: 0.025em; }
