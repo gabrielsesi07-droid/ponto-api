@@ -1,6 +1,5 @@
 import { neon } from "@neondatabase/serverless";
 import { env } from "cloudflare:workers";
-import { getChatGPTUser } from "@/app/chatgpt-auth";
 import { cookies } from "next/headers";
 import { digest, pinAccessAllowed } from "./pin";
 import { z } from "zod";
@@ -27,11 +26,6 @@ export function db() {
 }
 export function runtimeEnv(name: string) {
   return (env as unknown as Record<string, string | undefined>)[name] || process.env[name];
-}
-export async function identity() {
-  const user = await getChatGPTUser();
-  if (!user) throw new ApiError(401, "Entre com sua conta para continuar.");
-  return user;
 }
 export async function member(options: { allowPinChange?: boolean } = {}) {
   const token=(await cookies()).get('hc_session')?.value;

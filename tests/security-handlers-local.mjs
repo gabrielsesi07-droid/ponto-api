@@ -26,7 +26,6 @@ function load(file, imports = {}) {
 const server = load('lib/server.ts', {
   '@neondatabase/serverless': { neon: () => sql },
   'cloudflare:workers': { env: { DATABASE_URL: 'isolated-pglite-no-network' } },
-  '@/app/chatgpt-auth': { getChatGPTUser: async () => null },
   'next/headers': { cookies: async () => ({ get: () => token ? { value: token } : undefined }) },
   './pin': pin, './work-rules': workRules,
 });

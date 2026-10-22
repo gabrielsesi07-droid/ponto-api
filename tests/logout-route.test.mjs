@@ -24,7 +24,7 @@ function harness() {
   sql.transaction = async queries => { transactions.push(queries); return []; };
   const pin = { digest: async token => 'hash:' + token, sessionCookie: (_token, _req, days) => `hc_session=; Max-Age=${days}`, pinAccessAllowed: () => true };
   const server = load('lib/server.ts', { '@neondatabase/serverless': { neon: () => { dbCalls++; return sql; } },
-    'cloudflare:workers': { env: { DATABASE_URL: 'disabled-unit-stub' } }, '@/app/chatgpt-auth': { getChatGPTUser: async () => null },
+    'cloudflare:workers': { env: { DATABASE_URL: 'disabled-unit-stub' } },
     'next/headers': { cookies: async () => ({ get: () => undefined }) }, './pin': pin, './work-rules': workRules });
   const route = load('app/api/login/route.ts', { '@/lib/server': server, '@/lib/pin': pin,
     '@/lib/push-validation': load('lib/push-validation.ts'), '@/lib/logout-push': load('lib/logout-push.ts') });

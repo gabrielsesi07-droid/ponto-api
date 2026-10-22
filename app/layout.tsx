@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Toaster } from "@/components/ui/sonner";
 import { AppearanceProvider } from "@/components/appearance";
 import { Geist, IBM_Plex_Mono } from "next/font/google";
@@ -10,6 +10,14 @@ export const metadata: Metadata = {
   title: "HoraCerta · Gestão de jornada",
   description: "Ponto, serviços e horas extras em um só lugar.",
   icons: { icon: "/favicon.svg" },
+};
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#0b1f3a" },
+    { media: "(prefers-color-scheme: dark)", color: "#0b1220" },
+  ],
 };
 export default function RootLayout({
   children,

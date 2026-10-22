@@ -845,3 +845,17 @@ small {
     min-width: 0;
   }
 }
+
+/* Polish: typography, anchor offsets, touch feedback and high-contrast support. */
+html { scroll-padding-top: 72px; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+h1, h2, h3 { text-wrap: balance; }
+p, li { text-wrap: pretty; }
+button, [role="button"], a { -webkit-tap-highlight-color: transparent; }
+::selection { background: color-mix(in srgb, var(--ring, #2563eb) 28%, transparent); }
+@media (forced-colors: active) {
+  :where(button, a, input, select, textarea, [tabindex]):focus-visible { outline: 3px solid Highlight; outline-offset: 2px; }
+  .cc-panel, .skip-link { border: 1px solid CanvasText; }
+}
+@media (hover: none) {
+  :where(button, a):active { opacity: 0.88; }
+}

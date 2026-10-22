@@ -21,8 +21,8 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts --no-fund
       - run: npm run verify
-      - name: Check critical production advisories
-        run: npm audit --omit=dev --audit-level=critical
+      - name: Check high-severity production advisories
+        run: npm audit --omit=dev --audit-level=high
   postgres-integrity:
     runs-on: ubuntu-latest
     timeout-minutes: 10
