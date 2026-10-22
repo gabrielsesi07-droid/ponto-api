@@ -646,7 +646,7 @@ export function Workspace() {
   }
   return (
     <SidebarProvider
-      defaultOpen={false}
+      defaultOpen
       style={{ "--sidebar-width": "15.5rem", "--sidebar-width-icon": "5.5rem" } as React.CSSProperties}
     >
       <a href="#workspace-content" className="skip-link">Ir para o conteúdo</a>
