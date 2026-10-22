@@ -48,6 +48,7 @@ Visual: azul-marinho, azul de ação, âmbar para extras e verde para aprovaçã
 - O mês corrente é parcial; a comparação exibe os totais registrados, não uma projeção.
 - Fechamento mensal: exige mês encerrado, nenhum registro sem saída e todos aprovados (há aprovação em lote por mês e pessoa). Um gatilho no banco impede criar, editar, aprovar ou excluir registros de mês fechado por qualquer caminho. Reabrir exige motivo (10+ caracteres) e fica na auditoria.
 - Sem adicional noturno, folha salarial, banco de horas, feriados automáticos ou certificação como registrador oficial.
+- Configurações em abas (Horas extras, Deslocamento, Lançamentos, Formatos, Histórico). Em Horas extras cada tipo de dia tem carga normal e até 12 faixas de adicional; o simulador usa a mesma função `calculate` dos pontos, com as regras ainda não salvas. Regras salvas valem só para novos pontos; o histórico muda apenas pelo recálculo do mês (cenário "configurações salvas..." em `tests/api-handlers-local.mjs`).
 - Datas previstas da OS aberta e datas reais da viagem são corrigíveis pelo coordenador, com motivo, versão/estado anterior, verificação de conflitos e auditoria. Ver [revisão de 20/10/2026](regras-horas-2026-10-20.md).
 
 ## Estrutura técnica

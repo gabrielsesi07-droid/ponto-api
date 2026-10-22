@@ -303,6 +303,62 @@ try {
     assert.equal((await sql`SELECT 1 FROM horacerta.month_closings`).length, 0);
     assert.equal((await sql`SELECT after_value->>'reason' reason FROM horacerta.audit WHERE action='Mês reaberto'`)[0].reason, reason);
   });
+  await scenario('configurações salvas pelo coordenador chegam aos novos pontos; o histórico mantém as regras da época', async () => {
+    const manage = await import('../app/api/manage/route.ts');
+    const current = (await sql`SELECT rules FROM horacerta.settings WHERE id=1`)[0].rules;
+    const custom = (first) => ({
+      ...current, approval_required: true, daily_minutes: 420, weekday_bonus: first,
+      day_policies: { ...current.day_policies, weekday: { normal_minutes: 420, tiers: [{ up_to_minutes: 120, bonus: first }, { up_to_minutes: 240, bonus: 75 }, { up_to_minutes: null, bonus: 100 }] } },
+    });
+    const longDay = day => point({ date: day, start: '06:00', end: '19:00', break_minutes: 60, break_mode: 'custom', break_start: '12:00' });
+    // Only the coordinator can change the calculator.
+    await sql`UPDATE horacerta.users SET pin_change_required=false WHERE id IN (${boss}::uuid,${worker}::uuid)`;
+    context.memberId = worker;
+    const denied = await request(manage.POST, 'POST', '/api/manage', { entity: 'settings', data: custom(50) }, 403);
+    assert.match(denied.error, /exclusiva do coordenador/);
+    context.memberId = boss;
+    const auditBefore = (await sql`SELECT count(*)::int count FROM horacerta.audit WHERE action='Regras de horas'`)[0].count;
+    await request(manage.POST, 'POST', '/api/manage', { entity: 'settings', data: custom(50) });
+    assert.deepEqual((await sql`SELECT rules FROM horacerta.settings WHERE id=1`)[0].rules, custom(50));
+    assert.equal((await sql`SELECT count(*)::int count FROM horacerta.audit WHERE action='Regras de horas'`)[0].count, auditBefore + 1);
+    // Invalid calculators are rejected before they reach the database.
+    const decreasing = custom(50);
+    decreasing.day_policies.weekday.tiers = [{ up_to_minutes: 240, bonus: 50 }, { up_to_minutes: 120, bonus: 75 }, { up_to_minutes: null, bonus: 100 }];
+    await request(manage.POST, 'POST', '/api/manage', { entity: 'settings', data: decreasing }, 400);
+    assert.deepEqual((await sql`SELECT rules FROM horacerta.settings WHERE id=1`)[0].rules, custom(50));
+
+    context.memberId = worker;
+    const first = await request(entries.POST, 'POST', '/api/entries', longDay(date(-5)));
+    const firstEntry = await stored(first.id);
+    assert.deepEqual(firstEntry.rules, custom(50));
+    assert.equal(firstEntry.status, 'Pendente');
+    const [firstResult] = calculate([firstEntry]);
+    assert.equal(firstResult.normal, 420);
+    assert.equal(firstResult.extra, 300);
+    assert.deepEqual(firstResult.breakdown.map(item => [item.minutes, item.bonus, item.amount]), [[120, 50, 90], [120, 75, 105], [60, 100, 60]]);
+    assert.equal(firstResult.amount, 255);
+
+    // A later change applies to new points only; the first one keeps what it was calculated with.
+    context.memberId = boss;
+    await request(manage.POST, 'POST', '/api/manage', { entity: 'settings', data: custom(80) });
+    context.memberId = worker;
+    const second = await request(entries.POST, 'POST', '/api/entries', longDay(date(-4)));
+    const secondEntry = await stored(second.id);
+    assert.deepEqual(secondEntry.rules, custom(80));
+    assert.equal(calculate([secondEntry])[0].amount, 273);
+    assert.deepEqual((await stored(first.id)).rules, custom(50));
+    assert.equal(calculate([await stored(first.id)])[0].amount, 255);
+
+    // Retroactive entries follow the saved switch.
+    context.memberId = boss;
+    await request(manage.POST, 'POST', '/api/manage', { entity: 'settings', data: { ...custom(80), allow_retro: false } });
+    context.memberId = worker;
+    await request(entries.POST, 'POST', '/api/entries', longDay(date(-3)), 403);
+    context.memberId = boss;
+    await sql`DELETE FROM horacerta.audit WHERE entry_id IN (${first.id}::uuid,${second.id}::uuid)`;
+    await sql`DELETE FROM horacerta.entries WHERE id IN (${first.id}::uuid,${second.id}::uuid)`;
+    await sql`UPDATE horacerta.settings SET rules=${JSON.stringify(current)}::jsonb WHERE id=1`;
+  });
   console.log(`\n${passed} cenários passaram usando handlers reais, SQL real e PostgreSQL PGlite em memória. Nenhum banco remoto foi acessado.`);
 } catch (error) {
   console.error(error);

@@ -1305,6 +1305,7 @@ export function Workspace() {
                     rules={data.settings}
                     onSaved={afterSave}
                     demo={demo}
+                    onOpenHistory={() => go("entries")}
                   />
                 ) : (
                   <Blank
