@@ -55,7 +55,7 @@ export function OrderShiftPanel({orderId, meId, userId, demo, admin = false, wor
         <div className="mt-3 grid grid-cols-2 gap-3">
           {([['start','Início do turno'],['end','Fim do turno'],['break_start','Início do intervalo'],['break_end','Fim do intervalo']] as const).map(([key,label]) => <label key={key}>{label}<input type="time" value={form[key]} disabled={busy} onChange={e => setForm(v => ({...v,[key]:e.target.value}))}/></label>)}
         </div>
-        <p className="mt-2 text-xs muted">Carga prevista: {duration(net)}. Para turno sem pausa, informe o mesmo horário no início e no fim do intervalo. Para virada de dia, registre cada data separadamente.</p>
+        <p className="mt-2 text-xs muted">Carga prevista: {duration(net)}. Para turno sem pausa, informe o mesmo horário no início e no fim do intervalo. O turno não atravessa a meia-noite; os pontos que passam das 24h são divididos por data automaticamente.</p>
         {saved && <label className="mt-3">Motivo da correção<textarea value={reason} minLength={10} maxLength={1000} onChange={e => setReason(e.target.value)}/></label>}
         <Button type="button" className="mt-3" disabled={busy || (saved && reason.trim().length < 10) || (owner !== meId && !admin)} onClick={() => void save()}>{busy ? <LoaderCircle className="animate-spin" size={16}/> : <LockKeyhole size={16}/>} {saved ? 'Salvar correção' : 'Confirmar e travar meu turno'}</Button>
       </>}

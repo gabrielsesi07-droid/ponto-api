@@ -167,14 +167,19 @@ export function EditDialog({
           break_mode: customBreak ? 'custom' : 'automatic',
         };
         if (parts && partBreaks) {
-          for (const [i, part] of parts.entries()) {
-            await api("/api/entries", {
-              ...base,
-              ...part,
-              ...(e && i === 0 ? { id: e.id, version: e.version } : {}),
-              break_minutes: partBreaks[i],
-              break_start: customBreak && partBreaks[i] > 0 ? form.break_start || null : null,
-            });
+          // Dia seguinte primeiro: se o primeiro dia falhar, o dia seguinte é desfeito e nada fica pela metade.
+          const send = (i: number) => api<{ id: string; version: number }>("/api/entries", {
+            ...base,
+            ...parts[i],
+            ...(e && i === 0 ? { id: e.id, version: e.version } : {}),
+            break_minutes: partBreaks[i],
+            break_start: customBreak && partBreaks[i] > 0 ? form.break_start || null : null,
+          });
+          const next = await send(1).catch(err => { throw new Error(`Dia ${parts[1].date.split('-').reverse().join('/')}: ${(err as Error).message}`); });
+          try { await send(0); }
+          catch (err) {
+            await api("/api/entries", { id: next.id, version: next.version }, "DELETE").catch(() => undefined);
+            throw new Error(`Dia ${parts[0].date.split('-').reverse().join('/')}: ${(err as Error).message} Nada foi salvo; ajuste e tente de novo.`);
           }
         } else
           await api("/api/entries", {

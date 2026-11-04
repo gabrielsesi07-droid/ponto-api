@@ -138,7 +138,8 @@ export async function POST(req: Request) {
         409,
         "Existe sobreposição de horários ou o registro foi atualizado por outra pessoa. Atualize a lista.",
       );
-    return Response.json({ ok: true, id });
+    const [{ version }] = await sql`SELECT version FROM horacerta.entries WHERE id=${id}::uuid`;
+    return Response.json({ ok: true, id, version });
   } catch (e) {
     if ((e as {code?:string}).code === 'P0001') return failure(new ApiError(409, (e as Error).message));
     return failure(e);

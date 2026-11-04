@@ -437,6 +437,7 @@ export function OrderEditor({
               <input
                 required
                 type="datetime-local"
+                min={form.starts_at || undefined}
                 value={form.ends_at}
                 onChange={(e) => change("ends_at", e.target.value)}
               />
