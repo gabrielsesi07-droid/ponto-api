@@ -27,6 +27,7 @@ import { compensationSchema, DEFAULT_MONTHLY_HOURS } from '@/lib/compensation';
 import { automaticBreakForDay, workedMinutes } from '@/lib/manual-work';
 import { OrderShiftPanel } from './order-shift-panel';
 import { entryTimeIssue } from '@/lib/entry-time-feedback';
+import { isOvernight, normalizeEnd, splitOvernight } from '@/lib/overnight-shift';
 import { requestApi } from '@/lib/api-client';
 import './entry-editor.css';
 export type Editor =
@@ -67,7 +68,7 @@ export function EditDialog({
           order_id: e?.order_id || editor.order?.id || '',
           date: e?.date || (editor.order?.date && editor.order.date <= today() ? editor.order.date : today()),
           start: e?.start.slice(0, 5) || "",
-          end: e?.end?.slice(0, 5) || "",
+          end: e?.end?.slice(0, 5) === "24:00" ? "00:00" : e?.end?.slice(0, 5) || "",
           break_minutes: e?.break_minutes ?? 0,
           break_start: e?.break_start?.slice(0,5) || '',
           work_type: e?.work_type || 'work',
@@ -101,10 +102,28 @@ export function EditDialog({
   const sameDay = editor.kind === 'entry'
     ? state.entries.filter(x => x.user_id === entryOwner && x.date === form.date && x.id !== e?.id)
     : [];
-  const breakMinutes = customBreak ? Number(form.break_minutes) : automaticBreakForDay(String(form.start), String(form.end), sameDay);
-  const closedMonth = editor.kind === 'entry' && isClosedMonth(state, String(form.date));
-  const workMinutes = editor.kind === 'entry' ? workedMinutes(String(form.start), String(form.end), breakMinutes) : null;
-  const timeIssue = editor.kind === 'entry' ? entryTimeIssue(String(form.start), String(form.end), breakMinutes) : null;
+  const startTime = String(form.start), endTime = normalizeEnd(startTime, String(form.end));
+  // Saída antes da entrada = virou o dia: grava um registro até 24:00 e outro a partir de 00:00.
+  const parts = editor.kind === 'entry' && !e && isOvernight(startTime, endTime) ? splitOvernight(String(form.date), startTime, endTime) : null;
+  const nextDaySame = parts ? state.entries.filter(x => x.user_id === entryOwner && x.date === parts[1].date) : [];
+  const customTotal = Number(form.break_minutes);
+  const breakAfterMidnight = !!form.break_start && String(form.break_start) < startTime;
+  const partBreaks: [number, number] | null = parts
+    ? customBreak ? (breakAfterMidnight ? [0, customTotal] : [customTotal, 0])
+      : [automaticBreakForDay(parts[0].start, parts[0].end, sameDay), automaticBreakForDay(parts[1].start, parts[1].end, nextDaySame)]
+    : null;
+  const breakMinutes = partBreaks ? partBreaks[0] + partBreaks[1] : customBreak ? customTotal : automaticBreakForDay(startTime, endTime, sameDay);
+  const closedMonth = editor.kind === 'entry' && (isClosedMonth(state, String(form.date)) || (!!parts && isClosedMonth(state, parts[1].date)));
+  const workMinutes = editor.kind === 'entry'
+    ? parts && partBreaks
+      ? (workedMinutes(parts[0].start, parts[0].end, partBreaks[0]) ?? 0) + (workedMinutes(parts[1].start, parts[1].end, partBreaks[1]) ?? 0) || null
+      : workedMinutes(startTime, endTime, breakMinutes)
+    : null;
+  const timeIssue = editor.kind !== 'entry' ? null
+    : parts && partBreaks
+      ? parts[1].date > today() ? 'O dia seguinte ainda não chegou. Registre o trabalho só depois que ele terminar.'
+        : entryTimeIssue(parts[0].start, parts[0].end, partBreaks[0]) || entryTimeIssue(parts[1].start, parts[1].end, partBreaks[1])
+      : entryTimeIssue(startTime, endTime, breakMinutes);
   const input = (
     key: string,
     label: string,
@@ -138,19 +157,33 @@ export function EditDialog({
     setBusy(true);
     setError("");
     try {
-      if (editor.kind === "entry")
-        await api("/api/entries", {
+      if (editor.kind === "entry") {
+        const base = {
           ...form,
           order_id: form.order_id || null,
           user_id: e?.user_id || state.me.id,
           client_id: e?.client_id || null,
           service_type: e?.service_type || "",
-          end: form.end || null,
-          break_minutes: breakMinutes,
           break_mode: customBreak ? 'custom' : 'automatic',
-          break_start: customBreak && breakMinutes > 0 ? form.break_start || null : null,
-          ...(e ? { id: e.id, version: e.version } : {}),
-        });
+        };
+        if (parts && partBreaks) {
+          for (const [i, part] of parts.entries()) {
+            await api("/api/entries", {
+              ...base,
+              ...part,
+              break_minutes: partBreaks[i],
+              break_start: customBreak && partBreaks[i] > 0 ? form.break_start || null : null,
+            });
+          }
+        } else
+          await api("/api/entries", {
+            ...base,
+            end: endTime || null,
+            break_minutes: breakMinutes,
+            break_start: customBreak && breakMinutes > 0 ? form.break_start || null : null,
+            ...(e ? { id: e.id, version: e.version } : {}),
+          });
+      }
       else {
         const checked = editor.kind === 'profile' && String(form.monthly_salary).trim() !== ''
           ? compensationSchema.safeParse({ monthly_salary: Number(form.monthly_salary), monthly_hours: Number(form.monthly_hours) }) : null;
@@ -257,10 +290,7 @@ export function EditDialog({
               <h3 id="entry-hours-title" className="entry-section-title"><span>02</span>Horários realizados</h3>
               <div className="entry-fields">
               {input("start", "Entrada", "time", true)}
-              {input("end", "Saída (HH:MM)", "text", true, {
-                placeholder: "18:00 ou 24:00",
-                pattern: "([01][0-9]|2[0-3]):[0-5][0-9]|24:00",
-                maxLength: 5,
+              {input("end", "Saída", "time", true, {
                 "aria-invalid": !!timeIssue || undefined,
                 "aria-describedby": timeIssue ? "entry-time-issue" : undefined,
               })}
@@ -274,7 +304,7 @@ export function EditDialog({
                 <p className="text-sm" aria-live="polite">Intervalo {customBreak ? 'específico' : 'automático'}: {breakMinutes} minutos.</p>
               </div>
               {timeIssue ? <p id="entry-time-issue" role="alert" className="full rounded-lg bg-red-50 p-3 text-sm text-red-800">{timeIssue}</p> :
-              <p className="full rounded-lg bg-blue-50 p-3 text-sm" aria-live="polite">{workMinutes === null ? 'Informe entrada, saída e intervalo para conferir a duração. Se o trabalho passou da meia-noite, registre cada data separadamente: até 24:00 no primeiro dia e a partir de 00:00 no seguinte.' : `Tempo de trabalho: ${Math.floor(workMinutes / 60)}h ${String(workMinutes % 60).padStart(2,'0')}min, descontado o intervalo. As horas extras são calculadas ao salvar, somando os serviços do dia.`}</p>}
+              <p className="full rounded-lg bg-blue-50 p-3 text-sm" aria-live="polite">{workMinutes === null ? 'Informe entrada, saída e intervalo para conferir a duração. Se a saída for de madrugada (ex.: 15:00 → 02:00), ela será gravada no dia seguinte.' : `${parts ? `Jornada atravessa a meia-noite: será salva em dois registros (${parts[0].date.split('-').reverse().join('/')} e ${parts[1].date.split('-').reverse().join('/')}). ` : ''}Tempo de trabalho: ${Math.floor(workMinutes / 60)}h ${String(workMinutes % 60).padStart(2,'0')}min, descontado o intervalo. As horas extras são calculadas ao salvar, somando os serviços do dia.`}</p>}
               </div></section>
               <section className="entry-section" aria-labelledby="entry-notes-title">
               <h3 id="entry-notes-title" className="entry-section-title"><span>03</span>Detalhes do registro</h3>

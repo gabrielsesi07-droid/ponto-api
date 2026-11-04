@@ -8,7 +8,7 @@ const toMinutes = (s: string) => Number(s.slice(0, 2)) * 60 + Number(s.slice(3, 
 export function entryTimeIssue(start: string, end: string, pause: number): string | null {
   if (!validStart(start) || !validEnd(end)) return null;
   if (toMinutes(end) <= toMinutes(start))
-    return "A saída deve ser depois da entrada. Se o trabalho passou da meia-noite, registre cada data separadamente: até 24:00 no primeiro dia e a partir de 00:00 no seguinte.";
+    return "A saída deve ser depois da entrada. Em um registro já salvo, não é possível virar o dia: ajuste a saída para até 00:00 e crie outro registro para a madrugada.";
   if (Number.isInteger(pause) && pause >= 0 && toMinutes(end) - toMinutes(start) <= pause)
     return "O intervalo deve ser menor que o tempo entre a entrada e a saída.";
   return null;
