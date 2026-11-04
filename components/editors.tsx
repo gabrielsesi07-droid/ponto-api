@@ -104,7 +104,7 @@ export function EditDialog({
     : [];
   const startTime = String(form.start), endTime = normalizeEnd(startTime, String(form.end));
   // Saída antes da entrada = virou o dia: grava um registro até 24:00 e outro a partir de 00:00.
-  const parts = editor.kind === 'entry' && !e && isOvernight(startTime, endTime) ? splitOvernight(String(form.date), startTime, endTime) : null;
+  const parts = editor.kind === 'entry' && isOvernight(startTime, endTime) ? splitOvernight(String(form.date), startTime, endTime) : null;
   const nextDaySame = parts ? state.entries.filter(x => x.user_id === entryOwner && x.date === parts[1].date) : [];
   const customTotal = Number(form.break_minutes);
   const breakAfterMidnight = !!form.break_start && String(form.break_start) < startTime;
@@ -171,6 +171,7 @@ export function EditDialog({
             await api("/api/entries", {
               ...base,
               ...part,
+              ...(e && i === 0 ? { id: e.id, version: e.version } : {}),
               break_minutes: partBreaks[i],
               break_start: customBreak && partBreaks[i] > 0 ? form.break_start || null : null,
             });
