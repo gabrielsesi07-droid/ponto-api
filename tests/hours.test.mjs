@@ -279,3 +279,16 @@ test("v1: arredondamento histórico por registro permanece preservado", () => {
   ]);
   assert.deepEqual(rows.map(r => r.amount), [0.28, 0.28, 0.28]);
 });
+test("jornada que atravessa a meia-noite conta como um único ponto: a madrugada segue a cota do dia em que começou", () => {
+  const rules = currentDefaults;
+  const [night, dawn] = calculate([
+    entry({ id: "a", date: "2026-10-29", start: "15:00", end: "24:00", break_minutes: 0, rules }),
+    entry({ id: "b", date: "2026-10-30", start: "00:00", end: "02:00", break_minutes: 0, rules }),
+  ]);
+  assert.equal(night.normal, 480);
+  assert.equal(night.extra, 60);
+  assert.equal(dawn.normal, 0);
+  assert.equal(dawn.extra, 120);
+  const [alone] = calculate([entry({ id: "c", date: "2026-10-30", start: "00:00", end: "02:00", break_minutes: 0, rules })]);
+  assert.equal(alone.normal, 120);
+});

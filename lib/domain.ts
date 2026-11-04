@@ -212,6 +212,21 @@ export function calculate(entries: Entry[]): Calculated[] {
     const key = `${e.user_id}:${e.date}`, span = daySpans.get(key);
     daySpans.set(key, [Math.min(span?.[0] ?? 1440, minutes(e.start)), Math.max(span?.[1] ?? 0, minutes(e.end))]);
   }
+  // A jornada que atravessa a meia-noite é gravada em duas datas, mas é um único ponto:
+  // o trecho que começa às 00:00 logo após outro que termina às 24:00 usa a cota, o tipo de dia
+  // e as faixas do dia em que a jornada começou.
+  const finishedAtMidnight = new Map<string, Entry>();
+  for (const e of entries) if (e.end && e.end.slice(0, 5) === "24:00") finishedAtMidnight.set(`${e.user_id}:${e.date}`, e);
+  const previousDay = (date: string) => new Date(new Date(date + "T12:00:00Z").getTime() - 86400000).toISOString().slice(0, 10);
+  const workday = (e: Entry): Pick<Entry, "date" | "holiday"> => {
+    let current = e;
+    for (let hops = 0; hops < 3 && current.start.slice(0, 5) === "00:00"; hops++) {
+      const before = finishedAtMidnight.get(`${current.user_id}:${previousDay(current.date)}`);
+      if (!before) break;
+      current = before;
+    }
+    return current;
+  };
   return [...entries]
     .sort((a, b) =>
       (a.date + a.start + a.id).localeCompare(b.date + b.start + b.id),
@@ -220,8 +235,10 @@ export function calculate(entries: Entry[]): Calculated[] {
       const worked = e.end
         ? Math.max(0, minutes(e.end) - minutes(e.start) - e.break_minutes)
         : 0;
-      const k = kind(e),
-        key = `${e.user_id}:${e.date}`;
+      const day = workday(e);
+      const k = kind(day),
+        key = `${e.user_id}:${day.date}`,
+        spanKey = `${e.user_id}:${e.date}`;
       const legacyBonus =
           k === "Sábado"
             ? e.rules.saturday_bonus
@@ -251,7 +268,7 @@ export function calculate(entries: Entry[]): Calculated[] {
       let eligible = worked, calculation_warning: string | undefined;
       if (mode === "all_extra") eligible = 0;
       else if (mode === "shift" && e.shift && e.end && worked > 0) {
-        const pause = breakWindow(e, daySpans.get(key)!);
+        const pause = breakWindow(e, daySpans.get(spanKey)!);
         calculation_warning = pause.warning;
         if (!pause.warning) {
           eligible = overlap(minutes(e.start), minutes(e.end), minutes(e.shift.start), minutes(e.shift.end));
@@ -274,7 +291,7 @@ export function calculate(entries: Entry[]): Calculated[] {
         if (inTier > 0) {
           let amount = 0;
           if (!missing_rate) {
-            const moneyKey = JSON.stringify([e.user_id, e.date, e.rules.currency, rate, tier.bonus]);
+            const moneyKey = JSON.stringify([e.user_id, day.date, e.rules.currency, rate, tier.bonus]);
             const previousMinutes = paidMinutes.get(moneyKey) || 0;
             const value = (n: number) => roundMoney((n / 60) * rate * (1 + tier.bonus / 100));
             amount = roundMoney(value(previousMinutes + inTier) - value(previousMinutes));
