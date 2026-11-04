@@ -91,6 +91,12 @@ export function EntriesTable({
           Editar
         </Button>
       )}
+      {!admin && canEditEntry(state.me, e, false, approvalRequired) && (
+        <Button disabled={busy} size="sm" variant="ghost" aria-label={`Excluir lançamento de ${date(e.date)}`} title="Excluir para registrar novamente" onClick={() => onDelete(e)} className="action text-red-700">
+          <Trash2 size={16} />
+          Excluir
+        </Button>
+      )}
       {admin && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

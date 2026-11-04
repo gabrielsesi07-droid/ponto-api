@@ -286,10 +286,11 @@ export function Workspace() {
     [deleting, setDeleting] = useState<Entry | null>(null),
     [busy, setBusy] = useState(false),
     [exporting, setExporting] = useState(false);
+  const rangeSwapped = period === "custom" && !!customFrom && !!customTo && customFrom > customTo;
   const bounds = monthBounds(month),
     range =
       period === "custom"
-        ? { from: customFrom, to: customTo }
+        ? rangeSwapped ? { from: customTo, to: customFrom } : { from: customFrom, to: customTo }
         : period === "week"
           ? {
               from: new Date(
@@ -877,26 +878,37 @@ export function Workspace() {
                           ]}
                         />
                       </label>
-                      {period === "custom" && (
-                        <>
-                          <label>
-                            De
-                            <input
-                              type="date"
-                              value={customFrom}
-                              onChange={(e) => setCustomFrom(e.target.value)}
-                            />
-                          </label>
-                          <label>
-                            Até
-                            <input
-                              type="date"
-                              value={customTo}
-                              onChange={(e) => setCustomTo(e.target.value)}
-                            />
-                          </label>
-                        </>
-                      )}
+                      <label>
+                        De
+                        <input
+                          type="date"
+                          aria-label="Data inicial"
+                          max={range.to}
+                          value={range.from}
+                          onChange={(e) => {
+                            if (!e.target.value) return;
+                            setCustomTo(range.to);
+                            setCustomFrom(e.target.value);
+                            setPeriod("custom");
+                          }}
+                        />
+                      </label>
+                      <label>
+                        Até
+                        <input
+                          type="date"
+                          aria-label="Data final"
+                          min={range.from}
+                          value={range.to}
+                          onChange={(e) => {
+                            if (!e.target.value) return;
+                            setCustomFrom(range.from);
+                            setCustomTo(e.target.value);
+                            setPeriod("custom");
+                          }}
+                        />
+                      </label>
+                      {rangeSwapped && <p role="alert" className="basis-full text-sm text-amber-800">A data inicial estava depois da final; mostrando de {range.from.split("-").reverse().join("/")} a {range.to.split("-").reverse().join("/")}.</p>}
                       <label className="min-w-36">
                         Status
                         <Pick

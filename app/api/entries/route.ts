@@ -9,6 +9,7 @@ import {
 } from "@/lib/server";
 import { minutes, today, type Entry, type Rules } from "@/lib/domain";
 import { automaticBreakForDay } from '@/lib/manual-work';
+import { canEditEntry } from '@/lib/entry-access';
 import { workTypeSchema, validateBreakPosition } from '@/lib/entry-validation';
 const schema = z.object({
   id: z.string().uuid().optional(),
@@ -173,11 +174,17 @@ export async function PATCH(req: Request) {
 export async function DELETE(req: Request) {
   try {
     const me = await member();
-    coordinator(me);
     const p = z
         .object({ id: z.string().uuid(), version: z.number().int() })
         .parse(await payload(req)),
       sql = db();
+    if (me.role !== "coordinator") {
+      // Colaborador só exclui o próprio ponto, nas mesmas condições em que pode editá-lo.
+      const [own] = await sql`SELECT user_id,status FROM horacerta.entries WHERE id=${p.id}::uuid AND deleted_at IS NULL`;
+      const [{ rules }] = await sql`SELECT rules FROM horacerta.settings WHERE id=1`;
+      if (!own || own.user_id !== me.id || !canEditEntry(me, own as Pick<Entry, 'user_id' | 'status'>, false, (rules as Rules).approval_required))
+        throw new ApiError(403, "Você só pode excluir seus próprios pontos ainda não aprovados. Peça ao coordenador para os demais.");
+    }
     const [, r] = await sql.transaction([
       sql`SELECT pg_advisory_xact_lock(2849061701)`,
       sql`WITH old AS (SELECT * FROM horacerta.entries WHERE id=${p.id} AND version=${p.version} AND deleted_at IS NULL FOR UPDATE), changed AS (UPDATE horacerta.entries e SET deleted_at=now(),version=e.version+1 FROM old WHERE e.id=old.id RETURNING e.*) INSERT INTO horacerta.audit(actor_id,entry_id,action,before_value,after_value) SELECT ${me.id}::uuid,changed.id,'delete',to_jsonb(old),to_jsonb(changed) FROM changed JOIN old USING(id) RETURNING entry_id`,
